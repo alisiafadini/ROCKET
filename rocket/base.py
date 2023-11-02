@@ -1,3 +1,72 @@
 '''
 Include modified subclasses of AlphaFold
 '''
+
+from openfold.model.model import AlphaFold
+from openfold.utils.tensor_utils import tensor_tree_map
+import torch
+
+class MSABiasAF(AlphaFold):
+    """
+    AlphaFold with trainable bias in MSA space
+    """
+
+    def __init__(self, config):
+        super(MSABiasAF, self).__init__(config)
+    
+    def _biasMSA(self, feats):
+        # TODO: How could we replace the hardcoded the dimensions here?
+        feats["msa_feat"][:, :, 25:48] = (
+            feats["msa_feat"][:, :, 25:48] + feats["msa_feat_bias"]
+        )
+        return feats
+    
+    def iteration(self, feats, prevs, _recycle=True, biasMSA=True):
+        if biasMSA:
+            feats = self._biasMSA(feats)
+        super(MSABiasAF, self).iteration(feats, prevs, _recycle)
+
+    def forward(self, batch, num_iters=1, biasMSA=True):
+        """
+        Args:
+            batch:
+                Dictionary of arguments outlined in Algorithm 2. Keys must
+                include the official names of the features in the
+                supplement subsection 1.2.9.
+            
+            num_iters:
+                Number of recycling loops. Default 1, no recycling
+        """
+        m_1_prev, z_prev, x_prev = None, None, None
+        prevs = [m_1_prev, z_prev, x_prev]
+        is_grad_enabled = torch.is_grad_enabled()
+
+        # Main recycling loop
+        for cycle_no in range(num_iters):
+            # Select the features for the current recycling cycle
+            fetch_cur_batch = lambda t: t[..., cycle_no]
+            feats = tensor_tree_map(fetch_cur_batch, batch)
+
+            # Enable grad iff we're training and it's the final recycling layer
+            is_final_iter = cycle_no == (num_iters - 1)
+            with torch.set_grad_enabled(is_grad_enabled and is_final_iter):
+                if is_final_iter:
+                    # Sidestep AMP bug (PyTorch issue #65766)
+                    if torch.is_autocast_enabled():
+                        torch.clear_autocast_cache()
+
+                # Run the next iteration of the model
+                outputs, m_1_prev, z_prev, x_prev = self.iteration(
+                    feats, prevs, _recycle=(num_iters > 1), biasMSA=biasMSA
+                )
+
+                if not is_final_iter:
+                    del outputs
+                    prevs = [m_1_prev, z_prev, x_prev]
+                    del m_1_prev, z_prev, x_prev
+        # Run auxiliary heads
+        outputs.update(self.aux_heads(outputs))
+        
+        return outputs
+    
+

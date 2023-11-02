@@ -1,3 +1,3 @@
 '''
-Inlcude LLG targets and mroe
+Inlcude LLG targets and more
 '''
