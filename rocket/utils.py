@@ -1,6 +1,60 @@
 import torch
 import numpy as np
 import reciprocalspaceship as rs
+from rocket import utils
+
+
+def move_tensors_to_device_inplace(processed_features, device=utils.try_gpu()):
+    """
+    Moves PyTorch tensors in a dictionary to the specified device in-place.
+
+    Args:
+        processed_features (dict): Dictionary containing tensors.
+        device (str): Device to move tensors to (e.g., "cuda:0", "cpu").
+    """
+    # Iterate through the keys and values in the input dictionary
+    for key, value in processed_features.items():
+        # Check if the value is a PyTorch tensor
+        if isinstance(value, torch.Tensor):
+            # Move the tensor to the specified device in-place
+            processed_features[key] = value.to(device)
+
+
+def move_tensors_to_device(processed_features, device=utils.try_gpu()):
+    """
+    Moves PyTorch tensors in a dictionary to the specified device.
+
+    Args:
+        processed_features (dict): Dictionary containing tensors.
+        device (str): Device to move tensors to (e.g., "cuda:0", "cpu").
+
+    Returns:
+        dict: Dictionary with tensors moved to the specified device.
+    """
+    # Create a new dictionary to store processed features with tensors moved to the device
+    processed_features_on_device = {}
+
+    # Iterate through the keys and values in the input dictionary
+    for key, value in processed_features.items():
+        # Check if the value is a PyTorch tensor
+        if isinstance(value, torch.Tensor):
+            # Move the tensor to the specified device
+            value = value.to(device)
+        # Add the key-value pair to the new dictionary
+        processed_features_on_device[key] = value
+
+    # Return the new dictionary with tensors moved to the device
+    return processed_features_on_device
+
+
+def convert_feat_tensors_to_numpy(dictionary):
+    numpy_dict = {}
+    for key, value in dictionary.items():
+        if isinstance(value, torch.Tensor):
+            numpy_dict[key] = value.detach().cpu().numpy()
+        else:
+            numpy_dict[key] = value
+    return numpy_dict
 
 
 def try_gpu(i=0):
