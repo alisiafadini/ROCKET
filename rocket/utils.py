@@ -1,10 +1,16 @@
 import torch
 import numpy as np
 import reciprocalspaceship as rs
-from rocket import utils
+from rocket import structurefactors
 
 
-def move_tensors_to_device_inplace(processed_features, device=utils.try_gpu()):
+def try_gpu(i=0):
+    if torch.cuda.device_count() >= i + 1:
+        return torch.device(f"cuda:{i}")
+    return torch.device("cpu")
+
+
+def move_tensors_to_device_inplace(processed_features, device=try_gpu()):
     """
     Moves PyTorch tensors in a dictionary to the specified device in-place.
 
@@ -20,7 +26,7 @@ def move_tensors_to_device_inplace(processed_features, device=utils.try_gpu()):
             processed_features[key] = value.to(device)
 
 
-def move_tensors_to_device(processed_features, device=utils.try_gpu()):
+def move_tensors_to_device(processed_features, device=try_gpu()):
     """
     Moves PyTorch tensors in a dictionary to the specified device.
 
@@ -57,12 +63,6 @@ def convert_feat_tensors_to_numpy(dictionary):
     return numpy_dict
 
 
-def try_gpu(i=0):
-    if torch.cuda.device_count() >= i + 1:
-        return torch.device(f"cuda:{i}")
-    return torch.device("cpu")
-
-
 def is_list_or_tuple(x):
     return isinstance(x, list) or isinstance(x, tuple)
 
@@ -89,3 +89,28 @@ def load_mtz(mtz):
     dataset.compute_dHKL(inplace=True)
 
     return dataset
+
+
+def load_tng_data(tng_file, device=try_gpu()):
+    tng = load_mtz(tng_file).dropna()
+
+    # Generate PhaserTNG tensors
+    eps = torch.tensor(tng["EPS"].values, device=device)
+    centric = torch.tensor(tng["CENT"].values, device=device).bool()
+    dobs = torch.tensor(tng["DOBS"].values, device=device)
+    feff = torch.tensor(tng["FEFF"].values, device=device)
+    bin_labels = torch.tensor(tng["BIN"].values, device=device)
+
+    sigmaN = structurefactors.calculate_Sigma_atoms(feff, eps, bin_labels)
+    Edata = structurefactors.normalize_Fs(feff, eps, sigmaN, bin_labels)
+
+    data_dict = {
+        "EDATA": Edata,
+        "EPS": eps,
+        "CENTRIC": centric,
+        "DOBS": dobs,
+        "FEFF": feff,
+        "BIN_LABELS": bin_labels,
+    }
+
+    return data_dict

@@ -1,10 +1,11 @@
-'''
+"""
 Include modified subclasses of AlphaFold
-'''
+"""
 
 from openfold.model.model import AlphaFold
 from openfold.utils.tensor_utils import tensor_tree_map
 import torch
+
 
 class MSABiasAF(AlphaFold):
     """
@@ -13,14 +14,14 @@ class MSABiasAF(AlphaFold):
 
     def __init__(self, config):
         super(MSABiasAF, self).__init__(config)
-    
+
     def _biasMSA(self, feats):
         # TODO: How could we replace the hardcoded the dimensions here?
         feats["msa_feat"][:, :, 25:48] = (
             feats["msa_feat"][:, :, 25:48] + feats["msa_feat_bias"]
         )
         return feats
-    
+
     def iteration(self, feats, prevs, _recycle=True, biasMSA=True):
         if biasMSA:
             feats = self._biasMSA(feats)
@@ -33,7 +34,7 @@ class MSABiasAF(AlphaFold):
                 Dictionary of arguments outlined in Algorithm 2. Keys must
                 include the official names of the features in the
                 supplement subsection 1.2.9.
-            
+
             num_iters:
                 Number of recycling loops. Default 1, no recycling
         """
@@ -66,7 +67,5 @@ class MSABiasAF(AlphaFold):
                     del m_1_prev, z_prev, x_prev
         # Run auxiliary heads
         outputs.update(self.aux_heads(outputs))
-        
-        return outputs
-    
 
+        return outputs
