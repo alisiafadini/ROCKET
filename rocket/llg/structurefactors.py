@@ -7,7 +7,7 @@ import numpy as np
 from SFC_Torch import SFcalculator
 
 
-def compute_FCalcs(pdb_file, mtz_file, Flabel, SigFlabel, Freelabel=None):
+def initial_SFC(pdb_file, mtz_file, Flabel, SigFlabel, Freelabel=None):
     sfcalculator = SFcalculator(
         pdb_file,
         mtz_file,
@@ -26,23 +26,18 @@ def compute_FCalcs(pdb_file, mtz_file, Flabel, SigFlabel, Freelabel=None):
     return sfcalculator
 
 
-def ftotal_amplitudes(sfcalculator, F_attr):
-    F_out = getattr(sfcalculator, F_attr)
-    F_out_mag_notsorted = torch.abs(F_out)
-
-    # sort by res
-    dHKL_tensor = torch.from_numpy(sfcalculator.dHKL)
-    sorted_indices = torch.argsort(dHKL_tensor, descending=True)
-    F_out_mag = F_out_mag_notsorted[sorted_indices]
-
-    return F_out_mag
+def ftotal_amplitudes(Ftotal, dHKL, sort_by_res=True):
+    F_mag = torch.abs(Ftotal)
+    sorted_indices = np.argsort(dHKL)[::-1]
+    if sort_by_res:
+        F_mag = F_mag[sorted_indices]
+    return F_mag
 
 
 def ftotal_phis(sfcalculator, F_attr):
     PI_on_180 = 0.017453292519943295
     F_out = getattr(sfcalculator, F_attr)
     F_out_phase = torch.angle(F_out) / PI_on_180
-
     return F_out_phase
 
 

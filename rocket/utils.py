@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 import reciprocalspaceship as rs
-from rocket import structurefactors
+from rocket.llg import structurefactors
 
 
 def try_gpu(i=0):
@@ -89,28 +89,3 @@ def load_mtz(mtz):
     dataset.compute_dHKL(inplace=True)
 
     return dataset
-
-
-def load_tng_data(tng_file, device=try_gpu()):
-    tng = load_mtz(tng_file).dropna()
-
-    # Generate PhaserTNG tensors
-    eps = torch.tensor(tng["EPS"].values, device=device)
-    centric = torch.tensor(tng["CENT"].values, device=device).bool()
-    dobs = torch.tensor(tng["DOBS"].values, device=device)
-    feff = torch.tensor(tng["FEFF"].values, device=device)
-    bin_labels = torch.tensor(tng["BIN"].values, device=device)
-
-    sigmaN = structurefactors.calculate_Sigma_atoms(feff, eps, bin_labels)
-    Edata = structurefactors.normalize_Fs(feff, eps, sigmaN, bin_labels)
-
-    data_dict = {
-        "EDATA": Edata,
-        "EPS": eps,
-        "CENTRIC": centric,
-        "DOBS": dobs,
-        "FEFF": feff,
-        "BIN_LABELS": bin_labels,
-    }
-
-    return data_dict
