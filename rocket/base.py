@@ -4,6 +4,7 @@ Include modified subclasses of AlphaFold
 
 from openfold.model.model import AlphaFold
 from openfold.utils.tensor_utils import tensor_tree_map
+from openfold.config import model_config
 import torch
 
 
@@ -16,7 +17,6 @@ class MSABiasAF(AlphaFold):
         super(MSABiasAF, self).__init__(config)
 
     def _biasMSA(self, feats):
-        # TODO: How could we replace the hardcoded the dimensions here?
         feats["msa_feat"][:, :, 25:48] = (
             feats["msa_feat"][:, :, 25:48] + feats["msa_feat_bias"]
         )
@@ -25,9 +25,9 @@ class MSABiasAF(AlphaFold):
     def iteration(self, feats, prevs, _recycle=True, biasMSA=True):
         if biasMSA:
             feats = self._biasMSA(feats)
-        super(MSABiasAF, self).iteration(feats, prevs, _recycle)
+        return super(MSABiasAF, self).iteration(feats, prevs, _recycle)
 
-    def forward(self, batch, num_iters=1, biasMSA=True):
+    def forward(self, batch, num_iters=2, biasMSA=True):
         """
         Args:
             batch:
