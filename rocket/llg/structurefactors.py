@@ -28,10 +28,14 @@ def initial_SFC(pdb_file, mtz_file, Flabel, SigFlabel, Freelabel=None):
 
 def ftotal_amplitudes(Ftotal, dHKL, sort_by_res=True):
     F_mag = torch.abs(Ftotal)
-    sorted_indices = np.argsort(dHKL)[::-1]
+    # sorted_indices = np.argsort(dHKL)[::-1]
+    # if sort_by_res:
+    # F_mag = F_mag[sorted_indices]
+    dHKL_tensor = torch.from_numpy(dHKL)
     if sort_by_res:
-        F_mag = F_mag[sorted_indices]
-    return F_mag
+        sorted_indices = torch.argsort(dHKL_tensor, descending=True)
+        F_out_mag = F_mag[sorted_indices]
+    return F_out_mag
 
 
 def ftotal_phis(sfcalculator, F_attr):
