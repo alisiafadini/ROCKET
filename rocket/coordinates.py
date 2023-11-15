@@ -6,6 +6,7 @@ from rocket import utils
 import torch
 import numpy as np
 from openfold.np import residue_constants
+from SFC_Torch import SFcalculator
 
 
 def write_pdb_with_positions(input_pdb_file, positions, output_pdb_file):
@@ -125,7 +126,7 @@ def kabsch_align_matrices(tensor1, tensor2):
     covariance_matrix = torch.matmul(tensor2_centered.t(), tensor1_centered)
 
     # Perform Singular Value Decomposition (SVD) on the covariance matrix
-    U, _, Vt = torch.linalg.LA.svd(covariance_matrix)
+    U, _, Vt = torch.linalg.svd(covariance_matrix)
 
     # Calculate the rotation matrix
     rotation_matrix = torch.matmul(U, Vt)
@@ -210,3 +211,20 @@ def update_sfcalculator(sfmodel):
     sfmodel.init_scales(requires_grad=True)
     sfmodel.calc_ftotal()
     return sfmodel
+
+
+def initialize_model_frac_pos(model_file, tng_file, device=utils.try_gpu()):
+    sfcalculator_model = SFcalculator(
+        model_file,
+        tng_file,
+        expcolumns=["FP", "SIGFP"],
+        set_experiment=True,
+        testset_value=0,
+        device=device,
+    )
+    target_pos = sfcalculator_model.atom_pos_orth
+    sfcalculator_model.atom_pos_frac = sfcalculator_model.atom_pos_frac * 0.00
+    sfcalculator_model.atom_pos_orth = sfcalculator_model.atom_pos_orth * 0.00
+    sfcalculator_model.atom_pos_frac.requires_grad = True
+
+    return sfcalculator_model, target_pos
