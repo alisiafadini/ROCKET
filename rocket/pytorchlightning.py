@@ -2,6 +2,7 @@
 Include customized pytorch lightning module implementation
 """
 
+import torch
 import pytorch_lightning as pl
 from pytorch_lightning.profiler import PyTorchProfiler
 
@@ -17,7 +18,6 @@ class XYZBiasRefiner(pl.LightningModule):
     def __init__(
         self,
         lr,
-        num_epochs,
         device,
         preset,
         feats,
@@ -29,7 +29,6 @@ class XYZBiasRefiner(pl.LightningModule):
     ):
         super().__init__()
         self.lr = lr
-        self.num_epochs = num_epochs
         self.device = device
         self.feats = feats
         self.pdb_in = ref_pdb
@@ -78,3 +77,13 @@ class XYZBiasRefiner(pl.LightningModule):
         )
 
         return loss
+
+    def configure_optimizers(self):
+        return torch.optim.Adam(self.parameters(), lr=self.lr)
+
+    def training_epoch_end(self, outputs):
+        # Log mean loss at the end of each epoch
+        avg_loss = torch.stack([x for x in outputs]).mean()
+        self.log("avg_loss", avg_loss, prog_bar=True)
+
+        # TODO: is there anything else to log? pLDDT, MSE loss to truth, etc.
