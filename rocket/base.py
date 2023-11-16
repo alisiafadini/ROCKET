@@ -5,6 +5,10 @@ Include modified subclasses of AlphaFold
 from openfold.model.model import AlphaFold
 from openfold.utils.tensor_utils import tensor_tree_map
 from openfold.config import model_config
+from openfold.utils.import_weights import import_jax_weights_
+from openfold.utils.script_utils import get_model_basename
+
+
 import torch
 
 
@@ -13,8 +17,15 @@ class MSABiasAF(AlphaFold):
     AlphaFold with trainable bias in MSA space
     """
 
-    def __init__(self, config):
+    def __init__(self, config, preset):
         super(MSABiasAF, self).__init__(config)
+
+        # AlphaFold params
+        path = f"/net/cci-gpu-00/raid1/scratch1/alisia/programs/openfold/openfold_xtal/openfold/resources/params/params_{preset}.npz"
+        model_basename = get_model_basename(path)
+        model_version = "_".join(model_basename.split("_")[1:])
+        import_jax_weights_(self, path, version=model_version)
+        self.eval()
 
     def _biasMSA(self, feats):
         feats["msa_feat"][:, :, 25:48] = (
