@@ -25,7 +25,7 @@ class MSABiasAF(AlphaFold):
         model_basename = get_model_basename(path)
         model_version = "_".join(model_basename.split("_")[1:])
         import_jax_weights_(self, path, version=model_version)
-        self.eval()
+        self.eval()  # without this, dropout enabled
 
     def _biasMSA(self, feats):
         feats["msa_feat"][:, :, 25:48] = (

@@ -20,7 +20,7 @@ class LLGloss(torch.nn.Module):
     Ecalc = llgloss.compute_Ecalc(xyz_orth)
     llgloss.refine_sigmaA_adam(Ecalc.detach(), n_step=50)
     llgloss.freeze_sigmaA()
-    
+
     # Loss calculation for each step
     loss = -llgloss(xyz_orth, bin_labels=[1,2,3], num_batch=10, sub_ratio=0.3)
 
@@ -35,7 +35,7 @@ class LLGloss(torch.nn.Module):
         self.sfc = sfc
         self.device = device
         data_dict = llg_utils.load_tng_data(tng_file, device=device)
-        
+
         self.register_buffer("Eobs", data_dict["EDATA"])
         self.Eobs: torch.Tensor
         self.register_buffer("Eps", data_dict["EPS"])
@@ -48,7 +48,6 @@ class LLGloss(torch.nn.Module):
         self.Feff: torch.Tensor
         self.register_buffer("bin_labels", data_dict["BIN_LABELS"])
         self.bin_labels: torch.Tensor
-
         self.unique_bins = torch.unique(self.bin_labels)
 
     def init_sigmaAs(self, Ecalc):
@@ -70,7 +69,7 @@ class LLGloss(torch.nn.Module):
 
     def freeze_sigmaA(self):
         self.sigmaAs = [sigmaA.requires_grad_(False) for sigmaA in self.sigmaAs]
-    
+
     def unfreeze_sigmaA(self):
         self.sigmaAs = [sigmaA.requires_grad_(True) for sigmaA in self.sigmaAs]
 
@@ -127,6 +126,9 @@ class LLGloss(torch.nn.Module):
         Fm = llg_sf.ftotal_amplitudes(Fc, self.sfc.dHKL, sort_by_res=True)
         sigmaP = llg_sf.calculate_Sigma_atoms(Fm, self.Eps, self.bin_labels)
         Ecalc = llg_sf.normalize_Fs(Fm, self.Eps, sigmaP, self.bin_labels)
+        self.Ecalc = Ecalc
+        self.Fc = Fc
+        self.sigmaP = sigmaP
         return Ecalc
 
     def forward(
@@ -138,22 +140,23 @@ class LLGloss(torch.nn.Module):
                 Orthogonal coordinates of proteins, coming from AF2 model, send to SFC
 
             bin_labels: None or List[int]
-                Labels of bins used in the loss calculation. If None, will use the whole miller indices. 
+                Labels of bins used in the loss calculation. If None, will use the whole miller indices.
                 Serve as a proxy for resolution selection
 
             num_batch: int
                 Number of batches
-                    
+
             sub_ratio: float between 0.0 and 1.0
-                Fraction of mini-batch samplling over all miller indices, 
+                Fraction of mini-batch sampling over all miller indices,
                 e.g. 0.3 meaning each batch sample 30% of miller indices
         """
-        Ecalc = self.compute_Ecalc(xyz_ort)
+        # Ecalc = self.compute_Ecalc(xyz_ort)
+        Ecalc = self.Ecalc
         llg = 0.0
-        
+
         if bin_labels is None:
             bin_labels = self.unique_bins
-        
+
         for i, label in enumerate(bin_labels):
             index_i = self.bin_labels == label
             Ecalc_i = Ecalc[index_i]
@@ -163,17 +166,13 @@ class LLGloss(torch.nn.Module):
             sigmaA_i = self.sigmaAs[i]
             for j in range(num_batch):
                 sub_boolean_mask = np.random.rand(len(Eob_i)) < sub_ratio
-                llg_ij = llg_utils.llgItot_calculate(sigmaA_i, 
-                                                     Dobs_i[sub_boolean_mask], 
-                                                     Eob_i[sub_boolean_mask], 
-                                                     Ecalc_i[sub_boolean_mask], 
-                                                     Centric_i[sub_boolean_mask]).sum()
+                llg_ij = llg_utils.llgItot_calculate(
+                    sigmaA_i,
+                    Dobs_i[sub_boolean_mask],
+                    Eob_i[sub_boolean_mask],
+                    Ecalc_i[sub_boolean_mask],
+                    Centric_i[sub_boolean_mask],
+                ).sum()
                 llg = llg + llg_ij
-            
+
         return llg
-        
-        
-
-
-
-

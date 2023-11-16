@@ -7,6 +7,7 @@ from rocket import utils
 from tqdm import tqdm
 import numpy as np
 
+
 def load_tng_data(tng_file, device=utils.try_gpu()):
     tng = utils.load_mtz(tng_file).dropna()
 
@@ -30,6 +31,7 @@ def load_tng_data(tng_file, device=utils.try_gpu()):
     }
 
     return data_dict
+
 
 def llgIa_calculate(sigmaA, dobs, Eeff, Ec):
     # acentric reflections
@@ -183,20 +185,11 @@ def llgTot_calculate(sigmaA, E, Ec, centric_tensor):
 #     return sigma_As
 
 
-def sigmaA_from_model(
-    E_true, phi_true, sfcalculator_model, eps, sigmaN_model, bin_labels
-):
+def sigmaA_from_model(E_true, phi_true, E_model, Fcs, dHKL, bin_labels):
     phitrue_rad = np.deg2rad(phi_true)
 
-    E_model = structurefactors.normalize_Fs(
-        structurefactors.ftotal_amplitudes(sfcalculator_model, "Ftotal_HKL"),
-        eps,
-        sigmaN_model,
-        bin_labels,
-    )
-
     phimodel = utils.assert_numpy(
-        structurefactors.ftotal_phis(sfcalculator_model, "Ftotal_HKL")
+        structurefactors.ftotal_phis(Fcs, dHKL, sort_by_res=True)
     )
     phimodel_rad = np.deg2rad(phimodel)
 
