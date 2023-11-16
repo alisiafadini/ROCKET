@@ -4,7 +4,6 @@ Include customized pytorch lightning module implementation
 
 import torch
 import pytorch_lightning as pl
-from pytorch_lightning.profiler import PyTorchProfiler
 
 from openfold.config import model_config
 

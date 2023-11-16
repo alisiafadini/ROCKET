@@ -3,6 +3,7 @@ Inlcude customized pytorch Dataset implementation
 """
 
 from torch.utils.data import Dataset
+from torch.utils.data import DataLoader
 
 
 class IndexedDataset(Dataset):
@@ -19,3 +20,20 @@ class IndexedDataset(Dataset):
         batch_indices = idx
 
         return batch, batch_indices
+
+
+def load_batches(all_data: IndexedDataset, num_batches: int):
+    batch_sizes = int(len(all_data["EDATA"]) / num_batches)
+    data_loader = DataLoader(all_data, batch_size=batch_sizes, shuffle=True)
+
+    return data_loader
+
+
+"""
+E.g. to access batches:
+
+for batch_data, batch_indices in data_loader:
+    print(batch_data["EDATA"].shape)
+    print(batch_indices)
+
+"""
