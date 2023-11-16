@@ -77,7 +77,7 @@ for epoch in tqdm(range(num_epochs)):
     llgloss.sigmaAs = sigmas
 
     # LLG loss
-    loss = -llgloss(aligned_xyz, bin_labels=None, num_batch=1, sub_ratio=1.1)
+    loss = -llgloss(aligned_xyz, bin_labels=None, num_batch=3, sub_ratio=0.3)
     print(loss)
 
     loss.backward()

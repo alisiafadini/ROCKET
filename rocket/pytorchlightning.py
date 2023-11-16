@@ -37,7 +37,7 @@ class XYZBiasRefiner(pl.LightningModule):
 
         # Initialize SFC instance and reference positions
         sfc = llg_sf.initial_SFC(self.pdb_in, tng_file, "FP", "SIGFP")
-        self.ref_xyz = sfc.atom_pos_orth
+        self.ref_xyz = sfc.atom_pos_orth.clone()
 
         # Initialize MSA bias model
         self.af_bias = rocket.MSABiasAF(model_config(preset, train=True), preset).to(
@@ -59,11 +59,11 @@ class XYZBiasRefiner(pl.LightningModule):
 
         if update:
             # sigmaA calculation
-            Ecalc = self.llgloss.compute_Ecalc(aligned_xyz)
+            Ecalc, Fc = self.llgloss.compute_Ecalc(aligned_xyz, return_Fc=True)
             sigmas = llg_utils.sigmaA_from_model(
                 rocket.utils.assert_numpy(self.llgloss.Eobs),
                 self.phitrue,
-                self.llgloss.Ecalc,
+                Ecalc,
                 self.llgloss.Fc,
                 self.llgloss.sfc.dHKL,
                 self.llgloss.bin_labels,

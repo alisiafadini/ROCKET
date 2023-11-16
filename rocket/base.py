@@ -38,7 +38,7 @@ class MSABiasAF(AlphaFold):
             feats = self._biasMSA(feats)
         return super(MSABiasAF, self).iteration(feats, prevs, _recycle)
 
-    def forward(self, batch, num_iters=2, biasMSA=True):
+    def forward(self, batch, num_iters=1, biasMSA=True):
         """
         Args:
             batch:

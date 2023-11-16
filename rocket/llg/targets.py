@@ -119,20 +119,21 @@ class LLGloss(torch.nn.Module):
                 i, index_i, n_steps=n_steps, sub_ratio=sub_ratio, lr=lr, verbose=verbose
             )
 
-    def compute_Ecalc(self, xyz_orth) -> torch.Tensor:
+    def compute_Ecalc(self, xyz_orth, return_Fc=False) -> torch.Tensor:
         self.sfc.calc_fprotein(atoms_position_tensor=xyz_orth)
         self.sfc.calc_fsolvent()
         Fc = self.sfc.calc_ftotal()
         Fm = llg_sf.ftotal_amplitudes(Fc, self.sfc.dHKL, sort_by_res=True)
         sigmaP = llg_sf.calculate_Sigma_atoms(Fm, self.Eps, self.bin_labels)
         Ecalc = llg_sf.normalize_Fs(Fm, self.Eps, sigmaP, self.bin_labels)
-        self.Ecalc = Ecalc
-        self.Fc = Fc
-        self.sigmaP = sigmaP
-        return Ecalc
+
+        if return_Fc:
+            return Ecalc, Fc
+        else:
+            return Ecalc
 
     def forward(
-        self, xyz_ort: torch.Tensor, bin_labels=None, num_batch=1, sub_ratio=0.3
+        self, xyz_ort: torch.Tensor, bin_labels=None, num_batch=1, sub_ratio=1.0
     ):
         """
         Args:
@@ -150,8 +151,7 @@ class LLGloss(torch.nn.Module):
                 Fraction of mini-batch sampling over all miller indices,
                 e.g. 0.3 meaning each batch sample 30% of miller indices
         """
-        # Ecalc = self.compute_Ecalc(xyz_ort)
-        Ecalc = self.Ecalc
+        Ecalc = self.compute_Ecalc(xyz_ort)
         llg = 0.0
 
         if bin_labels is None:
