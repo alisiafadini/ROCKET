@@ -12,20 +12,6 @@ from rocket.llg import utils as llg_utils
 from rocket import coordinates as rk_coordinates
 from rocket.llg import structurefactors as llg_sf
 
-"""
-class XYZRefiner(....):
-   def __init__(...):
-      sfc = initialize_SFC(...)
-      self.llgloss = LLGloss(sfc, tng_file)
-      self.af2 = AF2bias(...config)
-
-  def training_step(...):
-      pred_xyz = self.af2(...)
-      aligend_xyz = align(pred_xyz, target_xyz)
-      loss = self.llgloss(aligned_xyz) 
-      
-"""
-
 
 class XYZBiasRefiner(pl.LightningModule):
     def __init__(
@@ -63,7 +49,7 @@ class XYZBiasRefiner(pl.LightningModule):
         # Initialize LLGloss instance
         self.llgloss = rocket.llg.targets.LLGloss(sfc, tng_file, device)
 
-    def training_step(self, batch, update=True):
+    def training_step(self, update=True):
         # AF2 pass
         af2_results = self.af_bias(
             self.feats, num_iters=1, biasMSA=True
@@ -86,6 +72,7 @@ class XYZBiasRefiner(pl.LightningModule):
             )
             self.llgloss.sigmaAs = sigmas
 
+        # LLG loss calculation
         loss = -self.llgloss(
             aligned_xyz, bin_labels=None, num_batch=self.batch_num, sub_ratio=1.1
         )
