@@ -28,9 +28,6 @@ def initial_SFC(pdb_file, mtz_file, Flabel, SigFlabel, Freelabel=None):
 
 def ftotal_amplitudes(Ftotal, dHKL, sort_by_res=True):
     F_mag = torch.abs(Ftotal)
-    # sorted_indices = np.argsort(dHKL)[::-1]
-    # if sort_by_res:
-    # F_mag = F_mag[sorted_indices]
     dHKL_tensor = torch.from_numpy(dHKL)
     if sort_by_res:
         sorted_indices = torch.argsort(dHKL_tensor, descending=True)
@@ -38,11 +35,14 @@ def ftotal_amplitudes(Ftotal, dHKL, sort_by_res=True):
     return F_out_mag
 
 
-def ftotal_phis(sfcalculator, F_attr):
+def ftotal_phis(Fc, dHKL, sort_by_res=True):
     PI_on_180 = 0.017453292519943295
-    F_out = getattr(sfcalculator, F_attr)
-    F_out_phase = torch.angle(F_out) / PI_on_180
-    return F_out_phase
+    Fc_phase = torch.angle(Fc) / PI_on_180
+    dHKL_tensor = torch.from_numpy(dHKL)
+    if sort_by_res:
+        sorted_indices = torch.argsort(dHKL_tensor, descending=True)
+        Fc_phase = Fc_phase[sorted_indices]
+    return Fc_phase
 
 
 def compute_sigmaA_true(Eobs, phiobs, Ecalc, phicalc, bin_labels):
