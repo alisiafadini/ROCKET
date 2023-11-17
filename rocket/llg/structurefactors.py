@@ -5,9 +5,17 @@ Functions relating model structure factor manipulation and normalization
 import torch
 import numpy as np
 from SFC_Torch import SFcalculator
+import SFC_Torch as SFC
 
 
-def initial_SFC(pdb_file, mtz_file, Flabel, SigFlabel, Freelabel=None):
+def initial_SFC(
+    pdb_file,
+    mtz_file,
+    Flabel,
+    SigFlabel,
+    Freelabel=None,
+    device=SFC.utils.try_gpu(),
+):
     sfcalculator = SFcalculator(
         pdb_file,
         mtz_file,
@@ -15,6 +23,7 @@ def initial_SFC(pdb_file, mtz_file, Flabel, SigFlabel, Freelabel=None):
         freeflag=Freelabel,
         set_experiment=True,
         testset_value=0,
+        device=device,
     )
 
     sfcalculator.inspect_data(verbose=False)

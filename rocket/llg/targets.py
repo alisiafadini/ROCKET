@@ -173,6 +173,7 @@ class LLGloss(torch.nn.Module):
                     Ecalc_i[sub_boolean_mask],
                     Centric_i[sub_boolean_mask],
                 ).sum()
+                # print("Batch {}".format(j), llg_ij.item())
                 llg = llg + llg_ij
 
         return llg
