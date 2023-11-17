@@ -72,7 +72,7 @@ class XYZBiasRefiner(pl.LightningModule):
 
         # LLG loss calculation
         loss = -self.llgloss(
-            aligned_xyz, bin_labels=None, num_batch=self.batch_num, sub_ratio=1.1
+            aligned_xyz, bin_labels=None, num_batch=self.batch_num, sub_ratio=0.3
         )
 
         return loss
