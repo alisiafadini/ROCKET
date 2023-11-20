@@ -10,6 +10,18 @@ from SFC_Torch import SFcalculator
 import torch.nn as nn
 
 
+def select_CA_elements(data):
+    return [element.endswith("-CA") for element in data]
+
+
+def select_CA_from_craname(cra_name_list):
+    boolean_mask = select_CA_elements(cra_name_list)
+    cra_CAs_list = [
+        element for element, mask in zip(cra_name_list, boolean_mask) if mask
+    ]
+    return cra_CAs_list, boolean_mask
+
+
 def calculate_mse_loss_per_residue(tensor1, tensor2, residue_numbers):
     mse_losses = []
     mse_criterion = nn.MSELoss(reduction="mean")
