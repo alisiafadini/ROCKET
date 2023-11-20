@@ -7,6 +7,29 @@ import torch
 import numpy as np
 from openfold.np import residue_constants
 from SFC_Torch import SFcalculator
+import torch.nn as nn
+
+
+def calculate_mse_loss_per_residue(tensor1, tensor2, residue_numbers):
+    mse_losses = []
+    mse_criterion = nn.MSELoss(reduction="mean")
+
+    for residue in set(residue_numbers):
+        # Find indices of atoms with the current residue number in tensor1
+        indices1 = [i for i, x in enumerate(residue_numbers) if x == residue]
+
+        if len(indices1) > 0:
+            # Extract coordinates for atoms with the current residue number in tensor1
+            coords1 = tensor1[indices1, :]
+
+            # Extract coordinates for atoms with the current residue number in tensor2
+            coords2 = tensor2[indices1, :]
+
+            # Calculate MSE loss for the coordinates of atoms with the same residue number
+            mse_loss = mse_criterion(coords1, coords2)
+            mse_losses.append(mse_loss.item())
+
+    return mse_losses
 
 
 def write_pdb_with_positions(input_pdb_file, positions, output_pdb_file):
