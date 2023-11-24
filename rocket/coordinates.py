@@ -38,7 +38,8 @@ def calculate_mse_loss_per_residue(tensor1, tensor2, residue_numbers):
             coords2 = tensor2[indices1, :]
 
             # Calculate MSE loss for the coordinates of atoms with the same residue number
-            mse_loss = mse_criterion(coords1, coords2)
+            #mse_loss = mse_criterion(coords1, coords2)
+            mse_loss = torch.sqrt(torch.sum((coords1 - coords2)**2))
             mse_losses.append(mse_loss.item())
 
     return mse_losses
