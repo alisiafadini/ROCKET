@@ -10,6 +10,166 @@ from SFC_Torch import SFcalculator
 import torch.nn as nn
 
 
+"""
+def rigidbody_refine(xyz, llgloss):
+    initial_model = utils.assert_numpy(xyz)
+    propose_rmcom = torch.tensor(
+        initial_model - np.mean(initial_model, axis=0),
+        device=llgloss.device,
+        dtype=torch.float32,
+    )
+    propose_com = torch.tensor(
+        np.mean(initial_model, axis=0), device=llgloss.device, dtype=torch.float32
+    )
+
+    # llgloss.sfc.get_scales_lbfgs()
+    trans_vec, rot_v1, rot_v2, loss_track_pose = find_rigidbody_matrix(
+            llgloss, propose_com, propose_rmcom, llgloss.device
+        )
+
+    
+    transform = construct_SO3(rot_v1, rot_v2)
+    optimized_xyz = torch.matmul(propose_rmcom, transform) + propose_com + trans_vec
+
+    return optimized_xyz, loss_track_pose
+"""
+
+
+def rigidbody_refine(xyz, llgloss):
+    propose_rmcom = xyz - torch.mean(xyz, dim=0)
+    propose_com = torch.mean(xyz, dim=0)
+
+    # llgloss.sfc.get_scales_lbfgs()
+    trans_vec, rot_v1, rot_v2, loss_track_pose = find_rigidbody_matrix(
+        llgloss,
+        propose_com.clone().detach(),
+        propose_rmcom.clone().detach(),
+        llgloss.device,
+    )
+
+    transform = construct_SO3(rot_v1, rot_v2)
+    optimized_xyz = torch.matmul(propose_rmcom, transform) + propose_com + trans_vec
+
+    return optimized_xyz, loss_track_pose
+
+
+def pose_train(
+    llgloss,
+    rot_v1,
+    rot_v2,
+    trans_vec,
+    propose_com,
+    propose_rmcom,
+    lr=5e-4,
+    n_steps=500,
+    loss_track=[],
+):
+    def pose_steptrain(optimizer):
+        temp_R = construct_SO3(rot_v1, rot_v2)
+        temp_model = torch.matmul(propose_rmcom, temp_R) + propose_com + trans_vec
+
+        loss = -llgloss(temp_model, bin_labels=None, num_batch=1, sub_ratio=1.1)
+
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+        return loss.item()
+
+    optimizer = torch.optim.Adam([rot_v1, rot_v2, trans_vec], lr=lr)
+    for k in range(n_steps):
+        temp = pose_steptrain(optimizer)
+        loss_track.append(temp)
+
+    return loss_track
+
+
+def find_rigidbody_matrix(llgloss, propose_com, propose_rmcom, device):
+    q = torch.tensor([1.0, 0.0, 0.0, 0.0], dtype=torch.float32)
+    unit_R = quaternions_to_SO3(q)
+    v1, v2 = decompose_SO3(unit_R)
+    rot_v1 = torch.tensor(utils.assert_numpy(v1), device=device, requires_grad=True)
+    rot_v2 = torch.tensor(utils.assert_numpy(v2), device=device, requires_grad=True)
+    trans_vec = torch.tensor([0.0, 0.0, 0.0], device=device, requires_grad=True)
+
+    loss_track_pose = pose_train(
+        llgloss,
+        rot_v1,
+        rot_v2,
+        trans_vec,
+        propose_com,
+        propose_rmcom,
+        loss_track=[],
+    )
+
+    return trans_vec, rot_v1, rot_v2, loss_track_pose
+
+
+def construct_SO3(v1, v2):
+    """
+    Construct a continuous representation of SO(3) rotation with two 3D vectors
+    https://arxiv.org/abs/1812.07035
+    Parameters
+    ----------
+    v1, v2: 3D tensors
+        Real-valued tensor in 3D space
+    Returns
+    -------
+    R, A 3*3 SO(3) rotation matrix
+    """
+    e1 = v1 / torch.norm(v1)
+    u2 = v2 - e1 * torch.tensordot(e1, v2, dims=1)
+    e2 = u2 / torch.norm(u2)
+    e3 = torch.cross(e1, e2)
+    R = torch.stack((e1, e2, e3)).T
+    return R
+
+
+def decompose_SO3(R, a=1, b=1, c=1):
+    """
+    Decompose the rotation matrix into the two vector representation
+    This decomposition is not unique, so a, b, c can be set as arbitray constants you like
+    C != 0
+    Parameters
+    ----------
+    R: 3*3 tensors
+        Real-valued rotation matrix
+    Returns
+    -------
+    v1, v2: Two real-valued 3D tensors, as the continuous representation of the rotation matrix
+    """
+    assert c != 0, "Give a nonzero c!"
+    v1 = a * R[:, 0]
+    v2 = b * R[:, 0] + c * R[:, 1]
+
+    return v1, v2
+
+
+def quaternions_to_SO3(q):
+    """
+    Normalizes q and maps to group matrix.
+    https://en.wikipedia.org/wiki/Quaternions_and_spatial_rotation#Quaternion-derived_rotation_matrix
+    https://danceswithcode.net/engineeringnotes/quaternions/quaternions.html
+    """
+    # q = assert_tensor(q, torch.float32)
+    q = q / q.norm(p=2, dim=-1, keepdim=True)
+    r, i, j, k = q[..., 0], q[..., 1], q[..., 2], q[..., 3]
+
+    return torch.stack(
+        [
+            1 - 2 * j * j - 2 * k * k,
+            2 * (i * j - r * k),
+            2 * (i * k + r * j),
+            2 * (i * j + r * k),
+            1 - 2 * i * i - 2 * k * k,
+            2 * (j * k - r * i),
+            2 * (i * k - r * j),
+            2 * (j * k + r * i),
+            1 - 2 * i * i - 2 * j * j,
+        ],
+        -1,
+    ).view(*q.shape[:-1], 3, 3)
+
+
 def select_CA_elements(data):
     return [element.endswith("-CA") for element in data]
 
@@ -38,8 +198,8 @@ def calculate_mse_loss_per_residue(tensor1, tensor2, residue_numbers):
             coords2 = tensor2[indices1, :]
 
             # Calculate MSE loss for the coordinates of atoms with the same residue number
-            #mse_loss = mse_criterion(coords1, coords2)
-            mse_loss = torch.sqrt(torch.sum((coords1 - coords2)**2))
+            # mse_loss = mse_criterion(coords1, coords2)
+            mse_loss = torch.sqrt(torch.sum((coords1 - coords2) ** 2))
             mse_losses.append(mse_loss.item())
 
     return mse_losses
