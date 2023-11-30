@@ -250,23 +250,34 @@ def fractionalize_torch(atom_pos_orth, unitcell, spacegroup, device=utils.try_gp
     return atom_pos_frac
 
 
-def extract_allatoms(outputs, feats):
-    atom_types = residue_constants.atom_types
-    pdb_lines = []
-    atom_mask = outputs["final_atom_mask"]
+def extract_allatoms(outputs, feats, cra_name_sfc: list):
+    atom_mask = outputs["final_atom_mask"] # shape [n_res, 37]
+    n_res = atom_mask.shape[0]
+
+    # get atom positions in vectorized manner
+    ## outputs["final_atom_positions"], shape [n_res, 37, 3]
+    positions_atom = outputs["final_atom_positions"][atom_mask==1.0] # [n_atom, 3]
+
+    # get plddt in vectorized manner
+    ## outputs["plddt"], shape [n_res]
+    plddt_atom = outputs["plddt"].reshape([-1, 1]).repeat([1,37])[atom_mask==1.0] # shape [n_atom,]
+
+    # get cra_name from AF2, [chain-resid-resname-atomname,...]
+    res_names = utils.assert_numpy([i+"-" for i in list(residue_constants.residue_atoms.keys())])
     aatype = feats["aatype"]
-    atom_positions = outputs["final_atom_positions"]
-    # residue_index = feats["residue_index"].to(torch.int32)
+    aatype_1d = res_names[utils.assert_numpy(aatype[:,1], arr_type=int)]
+    chain_resid = np.array(["A-" + str(i) + "-" for i in range(n_res)]) # TODO: here we assume all residues in same chain A
+    crname_repeats = np.char.add(chain_resid, aatype_1d).reshape(-1,1).repeat(37, axis=-1) # [n_res, 37]
+    crname_atom = crname_repeats[utils.assert_numpy(atom_mask)==1]
+    atom_types_repeats = utils.assert_numpy(residue_constants.atom_types).reshape(1,37).repeat(n_res, axis=0)  # [n_res, 37]
+    aname_atom = atom_types_repeats[utils.assert_numpy(atom_mask)==1]
+    cra_name_af = np.char.add(crname_atom, aname_atom).tolist()
 
-    n = aatype.shape[0]
-    # Add all atom sites.
-    for i in range(n):
-        for atom_name, pos, mask in zip(atom_types, atom_positions[i], atom_mask[i]):
-            if mask < 0.5:
-                continue
-            pdb_lines.append(pos)
+    # reorder and assert the same topology
+    reorder_index = utils.assert_numpy([cra_name_af.index(i) for i in cra_name_sfc], arr_type=int)
+    assert np.all(utils.assert_numpy(cra_name_af)[reorder_index] == utils.assert_numpy(cra_name_sfc)), "Mismatch topolgy between AF and SFC!"
 
-    return torch.stack(pdb_lines)
+    return positions_atom[reorder_index], plddt_atom[reorder_index]
 
 
 def extract_atoms_and_backbone(outputs, feats):
