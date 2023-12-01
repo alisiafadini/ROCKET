@@ -263,8 +263,8 @@ def extract_allatoms(outputs, feats, cra_name_sfc: list):
     plddt_atom = outputs["plddt"].reshape([-1, 1]).repeat([1,37])[atom_mask==1.0] # shape [n_atom,]
 
     # get cra_name from AF2, [chain-resid-resname-atomname,...]
-    res_names = utils.assert_numpy([i+"-" for i in list(residue_constants.residue_atoms.keys())])
-    aatype = feats["aatype"]
+    res_names = utils.assert_numpy([i+"-" for i in list(residue_constants.restype_1to3.values())] + ["UNK-"])
+    aatype = feats["aatype"] # TODO: tackle the match between UNK and real non-standard aa name from SFC
     aatype_1d = res_names[utils.assert_numpy(aatype[:,1], arr_type=int)]
     chain_resid = np.array(["A-" + str(i) + "-" for i in range(n_res)]) # TODO: here we assume all residues in same chain A
     crname_repeats = np.char.add(chain_resid, aatype_1d).reshape(-1,1).repeat(37, axis=-1) # [n_res, 37]
