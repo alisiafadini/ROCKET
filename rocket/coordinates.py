@@ -8,6 +8,7 @@ import numpy as np
 from openfold.np import residue_constants
 from SFC_Torch import SFcalculator
 import torch.nn as nn
+import time
 
 
 """
@@ -75,12 +76,76 @@ def pose_train(
         optimizer.step()
         return loss.item()
 
+    start_time = time.time()
     optimizer = torch.optim.Adam([rot_v1, rot_v2, trans_vec], lr=lr)
     for k in range(n_steps):
+        # start_time = time.time()
+        temp = pose_steptrain(optimizer)
+        # elapsed_time = time.time() - start_time
+        loss_track.append(temp)
+
+    elapsed_time = time.time() - start_time
+    print(f"Step {k+1}/{n_steps} - Time taken: {elapsed_time:.4f} seconds")
+
+    return loss_track
+
+
+"""
+def pose_train(
+    llgloss,
+    rot_v1,
+    rot_v2,
+    trans_vec,
+    propose_com,
+    propose_rmcom,
+    lr=1e-4,
+    max_epochs_total=500,
+    max_epochs_without_improvement=10,
+    loss_threshold=0.1,
+    loss_track=[],
+):
+    def pose_steptrain(optimizer):
+        temp_R = construct_SO3(rot_v1, rot_v2)
+        temp_model = torch.matmul(propose_rmcom, temp_R) + propose_com + trans_vec
+
+        loss = -llgloss(temp_model, bin_labels=None, num_batch=1, sub_ratio=1.1)
+
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+        return loss.item()
+
+    optimizer = torch.optim.Adam([rot_v1, rot_v2, trans_vec], lr=lr)
+
+    best_loss = float("inf")
+    epochs_without_improvement = 0
+
+    # start_time = time.time()
+    for epoch in range(max_epochs_total):
         temp = pose_steptrain(optimizer)
         loss_track.append(temp)
 
+        # Check if the loss has improved
+        if temp < best_loss - loss_threshold:
+            best_loss = temp
+            epochs_without_improvement = 0
+        else:
+            epochs_without_improvement += 1
+
+        if epochs_without_improvement == max_epochs_without_improvement:
+            # print(
+            #    f"Stopping optimization as the loss has not improved for {max_epochs_without_improvement} epochs."
+            # )
+            break
+
+    # elapsed_time = time.time() - start_time
+    # print(
+    #        f"Epoch {epoch + 1} - Loss: {temp:.4f} - Time taken: {elapsed_time:.4f} seconds"
+    #    )
+
     return loss_track
+
+"""
 
 
 def find_rigidbody_matrix(llgloss, propose_com, propose_rmcom, device):
@@ -182,6 +247,14 @@ def select_CA_from_craname(cra_name_list):
     return cra_CAs_list, boolean_mask
 
 
+def update_bfactors(plddts):
+    # Use Tom Terwilliger's formula to convert plddt to Bfactor and update sfcalculator instance
+    deltas = 1.5 * torch.exp(4 * (0.7 - 0.01 * plddts))
+    b_factors = (8 * torch.pi**2 * deltas**2) / 3
+
+    return b_factors
+
+
 def calculate_mse_loss_per_residue(tensor1, tensor2, residue_numbers):
     mse_losses = []
     mse_criterion = nn.MSELoss(reduction="mean")
@@ -251,31 +324,50 @@ def fractionalize_torch(atom_pos_orth, unitcell, spacegroup, device=utils.try_gp
 
 
 def extract_allatoms(outputs, feats, cra_name_sfc: list):
-    atom_mask = outputs["final_atom_mask"] # shape [n_res, 37]
+    atom_mask = outputs["final_atom_mask"]  # shape [n_res, 37]
     n_res = atom_mask.shape[0]
 
     # get atom positions in vectorized manner
     ## outputs["final_atom_positions"], shape [n_res, 37, 3]
-    positions_atom = outputs["final_atom_positions"][atom_mask==1.0] # [n_atom, 3]
+    positions_atom = outputs["final_atom_positions"][atom_mask == 1.0]  # [n_atom, 3]
 
     # get plddt in vectorized manner
     ## outputs["plddt"], shape [n_res]
-    plddt_atom = outputs["plddt"].reshape([-1, 1]).repeat([1,37])[atom_mask==1.0] # shape [n_atom,]
+    plddt_atom = (
+        outputs["plddt"].reshape([-1, 1]).repeat([1, 37])[atom_mask == 1.0]
+    )  # shape [n_atom,]
 
     # get cra_name from AF2, [chain-resid-resname-atomname,...]
-    res_names = utils.assert_numpy([i+"-" for i in list(residue_constants.restype_1to3.values())] + ["UNK-"])
-    aatype = feats["aatype"] # TODO: tackle the match between UNK and real non-standard aa name from SFC
-    aatype_1d = res_names[utils.assert_numpy(aatype[:,1], arr_type=int)]
-    chain_resid = np.array(["A-" + str(i) + "-" for i in range(n_res)]) # TODO: here we assume all residues in same chain A
-    crname_repeats = np.char.add(chain_resid, aatype_1d).reshape(-1,1).repeat(37, axis=-1) # [n_res, 37]
-    crname_atom = crname_repeats[utils.assert_numpy(atom_mask)==1]
-    atom_types_repeats = utils.assert_numpy(residue_constants.atom_types).reshape(1,37).repeat(n_res, axis=0)  # [n_res, 37]
-    aname_atom = atom_types_repeats[utils.assert_numpy(atom_mask)==1]
+    res_names = utils.assert_numpy(
+        [i + "-" for i in list(residue_constants.restype_1to3.values())] + ["UNK-"]
+    )
+    aatype = feats[
+        "aatype"
+    ]  # TODO: tackle the match between UNK and real non-standard aa name from SFC
+    aatype_1d = res_names[utils.assert_numpy(aatype[:, 1], arr_type=int)]
+    chain_resid = np.array(
+        ["A-" + str(i) + "-" for i in range(n_res)]
+    )  # TODO: here we assume all residues in same chain A
+    crname_repeats = (
+        np.char.add(chain_resid, aatype_1d).reshape(-1, 1).repeat(37, axis=-1)
+    )  # [n_res, 37]
+    crname_atom = crname_repeats[utils.assert_numpy(atom_mask) == 1]
+    atom_types_repeats = (
+        utils.assert_numpy(residue_constants.atom_types)
+        .reshape(1, 37)
+        .repeat(n_res, axis=0)
+    )  # [n_res, 37]
+    aname_atom = atom_types_repeats[utils.assert_numpy(atom_mask) == 1]
     cra_name_af = np.char.add(crname_atom, aname_atom).tolist()
 
     # reorder and assert the same topology
-    reorder_index = utils.assert_numpy([cra_name_af.index(i) for i in cra_name_sfc], arr_type=int)
-    assert np.all(utils.assert_numpy(cra_name_af)[reorder_index] == utils.assert_numpy(cra_name_sfc)), "Mismatch topolgy between AF and SFC!"
+    reorder_index = utils.assert_numpy(
+        [cra_name_af.index(i) for i in cra_name_sfc], arr_type=int
+    )
+    assert np.all(
+        utils.assert_numpy(cra_name_af)[reorder_index]
+        == utils.assert_numpy(cra_name_sfc)
+    ), "Mismatch topolgy between AF and SFC!"
 
     return positions_atom[reorder_index], plddt_atom[reorder_index]
 

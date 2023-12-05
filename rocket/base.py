@@ -87,8 +87,28 @@ class MSABiasAFv2(MSABiasAF):
     AlphaFold with trainable bias + trainable linear combination in MSA space
     """
 
+    """
+    def _biasMSA(self, feats):
+        print(feats["msa_feat"][:, :, 25:48].shape)
+        print(feats["msa_feat_weights"].shape)
+        feats["msa_feat"][:, :, 25:48] = (
+            torch.einsum(
+                "ijkl,in->njkl",
+                feats["msa_feat"][:, :, 25:48],
+                feats["msa_feat_weights"],
+            )
+            + feats["msa_feat_bias"]
+        )
+        return feats
+    """
+
     def _biasMSA(self, feats):
         feats["msa_feat"][:, :, 25:48] = (
-            torch.einsum("ijkl,in->njkl", feats["msa_feat"][:, :, 25:48], feats["msa_feat_weights"]) + feats["msa_feat_bias"]
+            torch.einsum(
+                "ijk,in->njk",
+                feats["msa_feat"][:, :, 25:48],
+                feats["msa_feat_weights"],
+            )
+            + feats["msa_feat_bias"]
         )
         return feats

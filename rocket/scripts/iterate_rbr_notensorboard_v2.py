@@ -19,7 +19,7 @@ tensorboard_writer = SummaryWriter()
 
 # General settings
 preset = "model_1"
-device = "cuda:1"
+device = "cuda:0"
 
 # Load external files
 tng_file = "../../run_openfold/3hak/3hak/3hak-tng_withrfree.mtz"
@@ -50,15 +50,19 @@ msa_params_bias = torch.zeros((512, 103, 23, 21), requires_grad=True, device=dev
 device_processed_features["msa_feat_bias"] = msa_params_bias
 
 # Add linear recombination weights
-msa_params_weights = torch.eye(512, dtype=torch.float32, requires_grad=True, device=device)
+msa_params_weights = (
+    torch.eye(512, dtype=torch.float32, device=device).unsqueeze(2).repeat(1, 1, 21)
+)
 device_processed_features["msa_feat_weights"] = msa_params_weights
+
+device_processed_features["msa_feat_weights"].requires_grad_(True)
 
 # SFC initialization, only have to do it once
 sfc = llg_sf.initial_SFC(
     input_pdb, tng_file, "FP", "SIGFP", Freelabel="FreeR_flag", device=device
 )
 reference_pos = sfc.atom_pos_orth
-sfc.atom_b_iso = true_Bs.to(device)
+# sfc.atom_b_iso = true_Bs.to(device)
 
 # Load true positions
 sfc_true = llg_sf.initial_SFC(
@@ -73,18 +77,19 @@ llgloss = rocket.llg.targets.LLGloss(sfc, tng_file, device)
 # Model initialization
 af_bias = rocket.MSABiasAFv2(model_config(preset, train=True), preset).to(device)
 
-lr_s = 5e-3  # OG: 0.0001
-lr_w = 0.01
+lr_s = 1e-3  # OG: 0.0001
+lr_w = 5e-3
 optimizer = torch.optim.Adam(
-    [{"params_bias": device_processed_features["msa_feat_bias"], "lr": lr_s},
-     {"params_weights": device_processed_features["msa_feat_weights"], "lr": lr_w}]
+    [
+        {"params": device_processed_features["msa_feat_bias"], "lr": lr_s},
+        {"params": device_processed_features["msa_feat_weights"], "lr": lr_w},
+    ]
 )
 
-num_epochs = 1000
+num_epochs = 400
 num_batch = 1
 sub_ratio = 1.0
-name = "rbr"
-
+name = "rbr-nodrop-pseudoBs"
 
 # Initialize best variables for alignement
 best_loss = float("inf")
@@ -105,16 +110,21 @@ for epoch in tqdm(range(num_epochs)):
     # Avoid passing through graph a second time
     feats_copy = copy.deepcopy(device_processed_features)
     feats_copy["msa_feat_bias"] = device_processed_features["msa_feat_bias"].clone()
-    feats_copy["msa_feat_weights"] = device_processed_features["msa_feat_weights"].clone()
+    feats_copy["msa_feat_weights"] = device_processed_features[
+        "msa_feat_weights"
+    ].clone()
 
     # AF2 pass
     af2_output = af_bias(feats_copy, num_iters=1, biasMSA=True)
 
     # position alignment
-    xyz_orth_sfc = rk_coordinates.extract_allatoms(
-        af2_output, device_processed_features
+    xyz_orth_sfc, plddts = rk_coordinates.extract_allatoms(
+        af2_output, device_processed_features, llgloss.sfc.cra_name
     )
     aligned_xyz = rk_coordinates.align_positions(xyz_orth_sfc, best_pos)
+
+    pseudo_Bs = rk_coordinates.update_bfactors(plddts)
+    llgloss.sfc.atom_b_iso = pseudo_Bs.detach()
 
     # Residue MSE loss
 
@@ -182,21 +192,20 @@ for epoch in tqdm(range(num_epochs)):
     sigmas_by_epoch.append(sigmas_dict)
 
     if epoch == 0:
-    # tensorboard_writer.add_scalar("Loss", loss.item(), epoch)
+        # tensorboard_writer.add_scalar("Loss", loss.item(), epoch)
         tensorboard_writer.add_scalar("LLG", llg_estimate, epoch)
 
-    
-
         tensorboard_writer = SummaryWriter(
-            log_dir="tensorboard_runs/LLG_msabias_runs/{epoch}it-lr{lr}-{b}batch-{r}subr-trueBs-drop0.6-0.0-0.0-{name}".format(
-                epoch=num_epochs, lr=lr_s, b=num_batch, r=sub_ratio, name=name
+            log_dir="tensorboard_runs/LLG_msabias_runs/{epoch}it-lr{lr}{lrw}-{b}batch-{r}subr-{name}".format(
+                epoch=num_epochs, lr=lr_s, lrw=lr_w, b=num_batch, r=sub_ratio, name=name
             )
         )
 
     llgloss.sfc.savePDB(
-        "tensorboard_runs/LLG_msabias_runs/{epoch}it-lr{lr}-{b}batch-{r}subr-trueBs-drop0.6-0.0-0.0-{name}/{epoch_it}.pdb".format(
+        "tensorboard_runs/LLG_msabias_runs/{epoch}it-lr{lr}{lrw}-{b}batch-{r}subr-{name}/{epoch_it}.pdb".format(
             epoch=num_epochs,
             lr=lr_s,
+            lrw=lr_w,
             b=num_batch,
             r=sub_ratio,
             epoch_it=epoch,
@@ -217,44 +226,43 @@ for epoch in tqdm(range(num_epochs)):
 mse_losses_array = np.array(mse_losses_by_epoch)
 
 np.save(
-    "tensorboard_runs/LLG_msabias_runs/{epoch}it-lr{lr}-{b}batch-{r}subr-trueBs-drop0.6-0.0-0.0-{name}/mse_losses_matrix.npy".format(
-        epoch=num_epochs, lr=lr_s, b=num_batch, r=sub_ratio, name=name
+    "tensorboard_runs/LLG_msabias_runs/{epoch}it-lr{lr}{lrw}-{b}batch-{r}subr-{name}/mse_losses_matrix.npy".format(
+        epoch=num_epochs, lr=lr_s, lrw=lr_w, b=num_batch, r=sub_ratio, name=name
     ),
     mse_losses_array,
 )
 
 with open(
-    "tensorboard_runs/LLG_msabias_runs/{epoch}it-lr{lr}-{b}batch-{r}subr-trueBs-drop0.6-0.0-0.0-{name}/sigmas_by_epoch.pkl".format(
-        epoch=num_epochs, lr=lr_s, b=num_batch, r=sub_ratio, name=name
+    "tensorboard_runs/LLG_msabias_runs/{epoch}it-lr{lr}{lrw}-{b}batch-{r}subr-{name}/sigmas_by_epoch.pkl".format(
+        epoch=num_epochs, lr=lr_s, lrw=lr_w, b=num_batch, r=sub_ratio, name=name
     ),
     "wb",
 ) as file:
     pickle.dump(sigmas_by_epoch, file)
 
 with open(
-    "tensorboard_runs/LLG_msabias_runs/{epoch}it-lr{lr}-{b}batch-{r}subr-trueBs-drop0.6-0.0-0.0-{name}/rbrloss_by_epoch.pkl".format(
-        epoch=num_epochs, lr=lr_s, b=num_batch, r=sub_ratio, name=name
+    "tensorboard_runs/LLG_msabias_runs/{epoch}it-lr{lr}{lrw}-{b}batch-{r}subr-{name}/rbrloss_by_epoch.pkl".format(
+        epoch=num_epochs, lr=lr_s, lrw=lr_w, b=num_batch, r=sub_ratio, name=name
     ),
     "wb",
 ) as file:
     pickle.dump(rbr_loss_by_epoch, file)
 
 with open(
-    "tensorboard_runs/LLG_msabias_runs/{epoch}it-lr{lr}-{b}batch-{r}subr-trueBs-drop0.6-0.0-0.0-{name}/LLGloss_by_epoch.pkl".format(
-        epoch=num_epochs, lr=lr_s, b=num_batch, r=sub_ratio, name=name
+    "tensorboard_runs/LLG_msabias_runs/{epoch}it-lr{lr}{lrw}-{b}batch-{r}subr-{name}/LLGloss_by_epoch.pkl".format(
+        epoch=num_epochs, lr=lr_s, lrw=lr_w, b=num_batch, r=sub_ratio, name=name
     ),
     "wb",
 ) as file:
     pickle.dump(llg_losses, file)
 
 with open(
-    "tensorboard_runs/LLG_msabias_runs/{epoch}it-lr{lr}-{b}batch-{r}subr-trueBs-drop0.6-0.0-0.0-{name}/biases_by_epoch.pkl".format(
-        epoch=num_epochs, lr=lr_s, b=num_batch, r=sub_ratio, name=name
+    "tensorboard_runs/LLG_msabias_runs/{epoch}it-lr{lr}{lrw}-{b}batch-{r}subr-{name}/biases_by_epoch.pkl".format(
+        epoch=num_epochs, lr=lr_s, lrw=lr_w, b=num_batch, r=sub_ratio, name=name
     ),
     "wb",
 ) as file:
     pickle.dump(biases_by_epoch, file)
-
 
 
 # Close the TensorBoard writer
