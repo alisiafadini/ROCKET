@@ -61,7 +61,7 @@ sfc = llg_sf.initial_SFC(
     input_pdb, tng_file, "FP", "SIGFP", Freelabel="FreeR_flag", device=device
 )
 reference_pos = sfc.atom_pos_orth
-# sfc.atom_b_iso = true_Bs.to(device)
+sfc.atom_b_iso = true_Bs.to(device)
 
 # Load true positions
 sfc_true = llg_sf.initial_SFC(
@@ -88,7 +88,7 @@ optimizer = torch.optim.Adam(
 num_epochs = 400
 num_batch = 1
 sub_ratio = 1.0
-name = "rbr-nodrop-pseudoBs"
+name = "rbr-nodrop-trueBs"
 
 # Initialize best variables for alignement
 best_loss = float("inf")
@@ -122,8 +122,8 @@ for epoch in tqdm(range(num_epochs)):
     )
     aligned_xyz = rk_coordinates.align_positions(xyz_orth_sfc, best_pos)
 
-    pseudo_Bs = rk_coordinates.update_bfactors(plddts)
-    llgloss.sfc.atom_b_iso = pseudo_Bs.detach()
+    # pseudo_Bs = rk_coordinates.update_bfactors(plddts)
+    # llgloss.sfc.atom_b_iso = pseudo_Bs.detach()
 
     # Residue MSE loss
 
