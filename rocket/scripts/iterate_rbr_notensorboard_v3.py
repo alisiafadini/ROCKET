@@ -74,7 +74,7 @@ del sfc_true
 llgloss = rocket.llg.targets.LLGloss(sfc, tng_file, device)
 
 # Model initialization
-af_bias = rocket.MSABiasAFv2(model_config(preset, train=True), preset).to(device)
+af_bias = rocket.MSABiasAFv3(model_config(preset, train=True), preset).to(device)
 
 lr_s = 1e-3  # OG: 0.0001
 lr_w = 5e-3
