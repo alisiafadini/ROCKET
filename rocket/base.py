@@ -112,3 +112,15 @@ class MSABiasAFv2(MSABiasAF):
             + feats["msa_feat_bias"]
         )
         return feats
+
+
+class MSABiasAFv3(MSABiasAF):
+    """
+    AlphaFold with trainable bias + trainable linear combination in MSA space
+    """
+
+    def _biasMSA(self, feats):
+        feats["msa_feat"][:, :, 25:48] = (
+            feats["msa_feat"][:, :, 25:48] * feats["msa_feat_weights"] + feats["msa_feat_bias"]
+        )
+        return feats
