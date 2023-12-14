@@ -1,7 +1,7 @@
 """
 Include modified subclasses of AlphaFold
 """
-
+import re
 from openfold.model.model import AlphaFold
 #from openfold.utils.tensor_utils import tensor_tree_map
 from rocket.utils import tensor_tree_map
@@ -30,6 +30,25 @@ class MSABiasAF(AlphaFold):
         model_version = "_".join(model_basename.split("_")[1:])
         import_jax_weights_(self, params_path, version=model_version)
         self.eval()  # without this, dropout enabled
+
+
+    def freeze(self, skip_str : None|str = None):
+        """
+        freeze AF2 parameters, skip those parameters with str match
+        """
+        for name, params in self.parameters():
+            if re.match(skip_str, name) is None:
+                params.requires_grad_(False)
+    
+
+    def unfreeze(self, skip_str : None|str = None):
+        """
+        unfreeze AF2 parameters, skip those parameters with str match
+        """
+        for name, params in self.parameters():
+            if re.match(skip_str, name) is None:
+                params.requires_grad_(True)
+                
 
     def _biasMSA(self, feats):
         feats["msa_feat"][:, :, 25:48] = (
