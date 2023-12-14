@@ -46,12 +46,12 @@ with open("../../run_openfold/3hak/3hak/true_Bs.pickle", "rb") as file:
 # Initiate bias feature
 
 # TODO: replace the hardcoded the dimensions here?
-msa_params_bias = torch.zeros((512, 103, 23, 21), requires_grad=True, device=device)
+msa_params_bias = torch.zeros((512, 103, 23), requires_grad=True, device=device)
 device_processed_features["msa_feat_bias"] = msa_params_bias
 
 # Add linear recombination weights
 msa_params_weights = (
-    torch.eye(512, dtype=torch.float32, device=device).unsqueeze(2).repeat(1, 1, 21)
+    torch.eye(512, dtype=torch.float32, device=device)#.unsqueeze(2).repeat(1, 1, 21)
 )
 device_processed_features["msa_feat_weights"] = msa_params_weights
 
@@ -62,7 +62,7 @@ sfc = llg_sf.initial_SFC(
     input_pdb, tng_file, "FP", "SIGFP", Freelabel="FreeR_flag", device=device
 )
 reference_pos = sfc.atom_pos_orth
-# sfc.atom_b_iso = true_Bs.to(device)
+#sfc.atom_b_iso = true_Bs.to(device)
 
 # Load true positions
 sfc_true = llg_sf.initial_SFC(
@@ -77,8 +77,8 @@ llgloss = rocket.llg.targets.LLGloss(sfc, tng_file, device)
 # Model initialization
 af_bias = rocket.MSABiasAFv2(model_config(preset, train=True), preset).to(device)
 
-lr_s = 1e-3  # OG: 0.0001
-lr_w = 5e-3
+lr_s = 1e-2  # OG: 0.0001
+lr_w = 1e-3
 optimizer = torch.optim.Adam(
     [
         {"params": device_processed_features["msa_feat_bias"], "lr": lr_s},
@@ -86,10 +86,11 @@ optimizer = torch.optim.Adam(
     ]
 )
 
-num_epochs = 400
+num_epochs = 100
 num_batch = 1
 sub_ratio = 1.0
-name = "rbr-nodrop-pseudoBs"
+reg_lambda = 20.0
+name = "rbr-nodrop-pseudoBs-v2-L1{}".format(reg_lambda)
 
 # Initialize best variables for alignement
 best_loss = float("inf")
@@ -164,12 +165,17 @@ for epoch in tqdm(range(num_epochs)):
         optimized_xyz, bin_labels=None, num_batch=num_batch, sub_ratio=sub_ratio
     )
 
+    L1loss = feats_copy["msa_feat_weights"].abs().sum()
+    total_loss = loss + reg_lambda * L1loss
+
     llg_estimate = loss.item() / (sub_ratio * num_batch)
 
     print("Loss", loss.item())
     print("LLG Estimate", llg_estimate)
     print("RBR Initial loss", loss_track_pose[0])
     print("RBR Final loss", loss_track_pose[-1])
+    print("L1loss x lambda", L1loss.item() * reg_lambda)
+    print("total_loss", total_loss.item() )
 
     if loss < best_loss:
         best_loss = loss
@@ -218,7 +224,11 @@ for epoch in tqdm(range(num_epochs)):
     bias = torch.mean(device_processed_features["msa_feat_bias"].abs())
     biases_by_epoch.append(bias.item())
 
-    loss.backward()
+    #print("BIAS FIRST DIMENSION", torch.mean(device_processed_features["msa_feat_bias"][:,:,0].abs()))
+    #print("BIAS SECOND DIMENSION", torch.mean(device_processed_features["msa_feat_bias"][:,:,1].abs()))
+    #print("BIAS LAST DIMENSION", torch.mean(device_processed_features["msa_feat_bias"][:,:,2].abs()))
+
+    total_loss.backward()
     optimizer.step()
     # scheduler.step()
 

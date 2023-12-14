@@ -3,7 +3,8 @@ Include modified subclasses of AlphaFold
 """
 
 from openfold.model.model import AlphaFold
-from openfold.utils.tensor_utils import tensor_tree_map
+#from openfold.utils.tensor_utils import tensor_tree_map
+from rocket.utils import tensor_tree_map
 from openfold.config import model_config
 from openfold.utils.import_weights import import_jax_weights_
 from openfold.utils.script_utils import get_model_basename
@@ -124,6 +125,8 @@ class MSABiasAFv3(MSABiasAF):
 
     def _biasMSA(self, feats):
         feats["msa_feat"][:, :, 25:48] = (
-            feats["msa_feat"][:, :, 25:48] * feats["msa_feat_weights"] + feats["msa_feat_bias"]
+            feats["msa_feat"][:, :, 25:48].clone() * feats["msa_feat_weights"]
+            + feats["msa_feat_bias"]
         )
+
         return feats

@@ -1,7 +1,38 @@
 import torch
 import numpy as np
 import reciprocalspaceship as rs
-from rocket.llg import structurefactors
+from functools import partial
+
+def dict_map(fn, dic, leaf_type, exclude_keys={"msa_feat_bias", "msa_feat_weights"}):
+    if exclude_keys is None:
+        exclude_keys = set()
+
+    new_dict = {}
+    for k, v in dic.items():
+        if k in exclude_keys:
+            new_dict[k] = v  # Keep the key-value pair as it is
+        elif type(v) is dict:
+            new_dict[k] = dict_map(fn, v, leaf_type, exclude_keys)
+        else:
+            new_dict[k] = tree_map(fn, v, leaf_type)
+
+    return new_dict
+
+
+def tree_map(fn, tree, leaf_type):
+    if isinstance(tree, dict):
+        return dict_map(fn, tree, leaf_type)
+    elif isinstance(tree, list):
+        return [tree_map(fn, x, leaf_type) for x in tree]
+    elif isinstance(tree, tuple):
+        return tuple([tree_map(fn, x, leaf_type) for x in tree])
+    elif isinstance(tree, leaf_type):
+        return fn(tree)
+    else:
+        print(type(tree))
+        raise ValueError("Not supported")
+
+tensor_tree_map = partial(tree_map, leaf_type=torch.Tensor)
 
 
 def try_gpu(i=0):
