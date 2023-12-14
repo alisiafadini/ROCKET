@@ -32,23 +32,31 @@ class MSABiasAF(AlphaFold):
         self.eval()  # without this, dropout enabled
 
 
-    def freeze(self, skip_str : None|str = None):
+    def freeze(self, skip_str=None):
         """
         freeze AF2 parameters, skip those parameters with str match
         """
-        for name, params in self.parameters():
-            if re.match(skip_str, name) is None:
-                params.requires_grad_(False)
+        if skip_str is None:
+            for params in self.parameters():
+               params.requires_grad_(False) 
+        else:
+            for name, params in self.named_parameters():
+                if re.match(skip_str, name) is None:
+                    params.requires_grad_(False)
     
 
-    def unfreeze(self, skip_str : None|str = None):
+    def unfreeze(self, skip_str=None):
         """
         unfreeze AF2 parameters, skip those parameters with str match
         """
-        for name, params in self.parameters():
-            if re.match(skip_str, name) is None:
-                params.requires_grad_(True)
-                
+        if skip_str is None:
+            for params in self.parameters():
+               params.requires_grad_(True) 
+        else:
+            for name, params in self.named_parameters():
+                if re.match(skip_str, name) is None:
+                    params.requires_grad_(True)
+
 
     def _biasMSA(self, feats):
         feats["msa_feat"][:, :, 25:48] = (

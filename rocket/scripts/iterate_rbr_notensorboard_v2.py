@@ -21,6 +21,9 @@ tensorboard_writer = SummaryWriter()
 preset = "model_1"
 device = "cuda:0"
 
+# Using LBFGS in RBR or not
+RBR_LBFGS = True
+
 # Load external files
 tng_file = "../../run_openfold/3hak/3hak/3hak-tng_withrfree.mtz"
 tng_dict = llg_utils.load_tng_data(tng_file, device=device)
@@ -39,9 +42,9 @@ device_processed_features = rocket.utils.move_tensors_to_device(
 )
 del processed_features
 
-with open("../../run_openfold/3hak/3hak/true_Bs.pickle", "rb") as file:
-    # Load the data from the pickle file
-    true_Bs = pickle.load(file)
+# with open("../../run_openfold/3hak/3hak/true_Bs.pickle", "rb") as file:
+#     # Load the data from the pickle file
+#     true_Bs = pickle.load(file)
 
 # Initiate bias feature
 
@@ -61,14 +64,15 @@ device_processed_features["msa_feat_weights"].requires_grad_(True)
 sfc = llg_sf.initial_SFC(
     input_pdb, tng_file, "FP", "SIGFP", Freelabel="FreeR_flag", device=device
 )
-reference_pos = sfc.atom_pos_orth
+reference_pos = sfc.atom_pos_orth.clone()
 #sfc.atom_b_iso = true_Bs.to(device)
 
 # Load true positions
 sfc_true = llg_sf.initial_SFC(
     true_pdb, tng_file, "FP", "SIGFP", Freelabel="FreeR_flag", device=device
 )
-true_pos = sfc_true.atom_pos_orth
+true_pos = sfc_true.atom_pos_orth.clone()
+true_Bs = sfc_true.atom_b_iso.clone()
 del sfc_true
 
 # LLG initialization
@@ -76,6 +80,7 @@ llgloss = rocket.llg.targets.LLGloss(sfc, tng_file, device)
 
 # Model initialization
 af_bias = rocket.MSABiasAFv2(model_config(preset, train=True), preset).to(device)
+af_bias.freeze() # Free all AF2 parameters to save time
 
 lr_s = 1e-2  # OG: 0.0001
 lr_w = 1e-3
@@ -88,7 +93,7 @@ optimizer = torch.optim.Adam(
 
 num_epochs = 100
 num_batch = 1
-sub_ratio = 1.0
+sub_ratio = 0.7
 reg_lambda = 20.0
 name = "rbr-nodrop-pseudoBs-v2-L1{}".format(reg_lambda)
 
@@ -155,7 +160,7 @@ for epoch in tqdm(range(num_epochs)):
 
     # Call rigid body refinement
     optimized_xyz, loss_track_pose = rk_coordinates.rigidbody_refine(
-        aligned_xyz, llgloss
+        aligned_xyz, llgloss, lbfgs=RBR_LBFGS
     )
 
     rbr_loss_by_epoch.append(loss_track_pose)
