@@ -17,14 +17,17 @@ class MSABiasAF(AlphaFold):
     AlphaFold with trainable bias in MSA space
     """
 
-    def __init__(self, config, preset):
+    def __init__(self, 
+                 config, 
+                 preset,
+                 params_root="/net/cci-gpu-00/raid1/scratch1/alisia/programs/openfold/openfold_xtal/openfold/resources/params/"):
         super(MSABiasAF, self).__init__(config)
 
         # AlphaFold params
-        path = f"/net/cci-gpu-00/raid1/scratch1/alisia/programs/openfold/openfold_xtal/openfold/resources/params/params_{preset}.npz"
-        model_basename = get_model_basename(path)
+        params_path = params_root + f"params_{preset}.npz"
+        model_basename = get_model_basename(params_path)
         model_version = "_".join(model_basename.split("_")[1:])
-        import_jax_weights_(self, path, version=model_version)
+        import_jax_weights_(self, params_path, version=model_version)
         self.eval()  # without this, dropout enabled
 
     def _biasMSA(self, feats):
