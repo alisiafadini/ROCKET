@@ -10,6 +10,7 @@ from rocket import coordinates as rk_coordinates
 from rocket.llg import structurefactors as llg_sf
 from openfold.config import model_config
 from torch.optim import lr_scheduler
+import time
 
 
 from torch.utils.tensorboard import SummaryWriter
@@ -53,9 +54,9 @@ msa_params_bias = torch.zeros((512, 103, 23), requires_grad=True, device=device)
 device_processed_features["msa_feat_bias"] = msa_params_bias
 
 # Add linear recombination weights
-msa_params_weights = (
-    torch.eye(512, dtype=torch.float32, device=device)#.unsqueeze(2).repeat(1, 1, 21)
-)
+msa_params_weights = torch.eye(
+    512, dtype=torch.float32, device=device
+)  # .unsqueeze(2).repeat(1, 1, 21)
 device_processed_features["msa_feat_weights"] = msa_params_weights
 
 device_processed_features["msa_feat_weights"].requires_grad_(True)
@@ -65,7 +66,7 @@ sfc = llg_sf.initial_SFC(
     input_pdb, tng_file, "FP", "SIGFP", Freelabel="FreeR_flag", device=device
 )
 reference_pos = sfc.atom_pos_orth.clone()
-#sfc.atom_b_iso = true_Bs.to(device)
+# sfc.atom_b_iso = true_Bs.to(device)
 
 # Load true positions
 sfc_true = llg_sf.initial_SFC(
@@ -80,7 +81,7 @@ llgloss = rocket.llg.targets.LLGloss(sfc, tng_file, device)
 
 # Model initialization
 af_bias = rocket.MSABiasAFv2(model_config(preset, train=True), preset).to(device)
-af_bias.freeze() # Free all AF2 parameters to save time
+af_bias.freeze()  # Free all AF2 parameters to save time
 
 lr_s = 1e-2  # OG: 0.0001
 lr_w = 1e-3
@@ -91,11 +92,11 @@ optimizer = torch.optim.Adam(
     ]
 )
 
-num_epochs = 100
+num_epochs = 250
 num_batch = 1
-sub_ratio = 0.7
-reg_lambda = 20.0
-name = "rbr-nodrop-pseudoBs-v2-L1{}".format(reg_lambda)
+sub_ratio = 1.0
+reg_lambda = 0.0
+name = "rbr-nodrop-trueBs-v2-L1{}".format(reg_lambda)
 
 # Initialize best variables for alignement
 best_loss = float("inf")
@@ -129,8 +130,8 @@ for epoch in tqdm(range(num_epochs)):
     )
     aligned_xyz = rk_coordinates.align_positions(xyz_orth_sfc, best_pos)
 
-    pseudo_Bs = rk_coordinates.update_bfactors(plddts)
-    llgloss.sfc.atom_b_iso = pseudo_Bs.detach()
+    # pseudo_Bs = rk_coordinates.update_bfactors(plddts)
+    # llgloss.sfc.atom_b_iso = pseudo_Bs.detach()
 
     # Residue MSE loss
 
@@ -177,16 +178,16 @@ for epoch in tqdm(range(num_epochs)):
 
     print("Loss", loss.item())
     print("LLG Estimate", llg_estimate)
-    print("RBR Initial loss", loss_track_pose[0])
-    print("RBR Final loss", loss_track_pose[-1])
-    print("L1loss x lambda", L1loss.item() * reg_lambda)
-    print("total_loss", total_loss.item() )
+    # print("RBR Initial loss", loss_track_pose[0])
+    # print("RBR Final loss", loss_track_pose[-1])
+    # print("L1loss x lambda", L1loss.item() * reg_lambda)
+    # print("total_loss", total_loss.item() )
 
     if loss < best_loss:
         best_loss = loss
         best_epoch = epoch
         best_pos = aligned_xyz.clone()
-        print(f"Best epoch: {best_epoch}, Best loss: {llg_estimate}")
+        # print(f"Best epoch: {best_epoch}, Best loss: {llg_estimate}")
 
         # Reset the counter when a new best epoch is found
         epochs_since_last_improvement = 0
@@ -229,9 +230,9 @@ for epoch in tqdm(range(num_epochs)):
     bias = torch.mean(device_processed_features["msa_feat_bias"].abs())
     biases_by_epoch.append(bias.item())
 
-    #print("BIAS FIRST DIMENSION", torch.mean(device_processed_features["msa_feat_bias"][:,:,0].abs()))
-    #print("BIAS SECOND DIMENSION", torch.mean(device_processed_features["msa_feat_bias"][:,:,1].abs()))
-    #print("BIAS LAST DIMENSION", torch.mean(device_processed_features["msa_feat_bias"][:,:,2].abs()))
+    # print("BIAS FIRST DIMENSION", torch.mean(device_processed_features["msa_feat_bias"][:,:,0].abs()))
+    # print("BIAS SECOND DIMENSION", torch.mean(device_processed_features["msa_feat_bias"][:,:,1].abs()))
+    # print("BIAS LAST DIMENSION", torch.mean(device_processed_features["msa_feat_bias"][:,:,2].abs()))
 
     total_loss.backward()
     optimizer.step()

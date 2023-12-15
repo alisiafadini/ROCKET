@@ -128,14 +128,7 @@ def pose_train_lbfgs(
     )
 
     for k in range(n_steps):
-        start_time_loop = time.time()
         temp = optimizer.step(closure)
-        # print(temp.item())
-        elapsed_time_loop = time.time() - start_time_loop
-        # print(
-        #    f"Step {k}- Time taken optimizer_closure: {elapsed_time_loop:.4f} seconds"
-        # )
-
         loss_track.append(temp.item())
     elapsed_time = time.time() - start_time
     print(f"Step {k+1}/{n_steps} - Time taken optimizer: {elapsed_time:.4f} seconds")
