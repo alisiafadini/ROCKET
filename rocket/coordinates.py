@@ -95,6 +95,7 @@ def pose_train(
 
     return loss_track
 
+
 def pose_train_lbfgs(
     llgloss,
     rot_v1,
@@ -102,27 +103,44 @@ def pose_train_lbfgs(
     trans_vec,
     propose_com,
     propose_rmcom,
-    lr=0.01,
+    lr=0.005,
     n_steps=10,
     loss_track=[],
 ):
     def closure():
+        start_time_loop = time.time()
+        optimizer.zero_grad()
         temp_R = construct_SO3(rot_v1, rot_v2)
         temp_model = torch.matmul(propose_rmcom, temp_R) + propose_com + trans_vec
         loss = -llgloss(temp_model, bin_labels=None, num_batch=1, sub_ratio=1.0)
-        optimizer.zero_grad()
         loss.backward()
+        elapsed_time_loop = time.time() - start_time_loop
         return loss
 
     start_time = time.time()
-    optimizer = torch.optim.LBFGS([rot_v1, rot_v2, trans_vec], lr=lr)
+
+    optimizer = torch.optim.LBFGS(
+        [rot_v1, rot_v2, trans_vec],
+        lr=lr,
+        line_search_fn="strong_wolfe",
+        tolerance_change=1e-3,
+        max_iter=1,
+    )
+
     for k in range(n_steps):
+        start_time_loop = time.time()
         temp = optimizer.step(closure)
-        # elapsed_time = time.time() - start_time
+        # print(temp.item())
+        elapsed_time_loop = time.time() - start_time_loop
+        # print(
+        #    f"Step {k}- Time taken optimizer_closure: {elapsed_time_loop:.4f} seconds"
+        # )
+
         loss_track.append(temp.item())
     elapsed_time = time.time() - start_time
-    print(f"Step {k+1}/{n_steps} - Time taken: {elapsed_time:.4f} seconds")
+    print(f"Step {k+1}/{n_steps} - Time taken optimizer: {elapsed_time:.4f} seconds")
     return loss_track
+
 
 """
 def pose_train(
@@ -201,6 +219,7 @@ def find_rigidbody_matrix(llgloss, propose_com, propose_rmcom, device):
     )
     return trans_vec, rot_v1, rot_v2, loss_track_pose
 
+
 def find_rigidbody_matrix_lbfgs(llgloss, propose_com, propose_rmcom, device):
     q = torch.tensor([1.0, 0.0, 0.0, 0.0], dtype=torch.float32)
     unit_R = quaternions_to_SO3(q)
@@ -219,7 +238,6 @@ def find_rigidbody_matrix_lbfgs(llgloss, propose_com, propose_rmcom, device):
         loss_track=[],
     )
     return trans_vec, rot_v1, rot_v2, loss_track_pose
-
 
 
 def construct_SO3(v1, v2):
