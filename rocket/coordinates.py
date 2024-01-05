@@ -36,6 +36,86 @@ def rigidbody_refine(xyz, llgloss):
 """
 
 
+def find_rigidbody_matrix_lbfgs_quat(llgloss, propose_com, propose_rmcom, device):
+    q = torch.tensor(
+        [1.0, 0.0, 0.0, 0.0], dtype=torch.float32, device=device, requires_grad=True
+    )
+    trans_vec = torch.tensor([0.0, 0.0, 0.0], device=device, requires_grad=True)
+
+    loss_track_pose = pose_train_lbfgs_quat(
+        llgloss,
+        q,
+        trans_vec,
+        propose_com,
+        propose_rmcom,
+        loss_track=[],
+    )
+    print(loss_track_pose)
+    return trans_vec, q, loss_track_pose
+
+
+def rigidbody_refine_quat(xyz, llgloss, lbfgs=False):
+    propose_rmcom = xyz - torch.mean(xyz, dim=0)
+    propose_com = torch.mean(xyz, dim=0)
+
+    # llgloss.sfc.get_scales_lbfgs()
+    if lbfgs:
+        trans_vec, q, loss_track_pose = find_rigidbody_matrix_lbfgs_quat(
+            llgloss,
+            propose_com.clone().detach(),
+            propose_rmcom.clone().detach(),
+            llgloss.device,
+        )
+    else:
+        trans_vec, rot_v1, rot_v2, loss_track_pose = find_rigidbody_matrix(
+            llgloss,
+            propose_com.clone().detach(),
+            propose_rmcom.clone().detach(),
+            llgloss.device,
+        )
+
+    transform = quaternions_to_SO3(q)
+    optimized_xyz = torch.matmul(propose_rmcom, transform) + propose_com + trans_vec
+
+    return optimized_xyz, loss_track_pose
+
+
+def pose_train_lbfgs_quat(
+    llgloss,
+    q,
+    trans_vec,
+    propose_com,
+    propose_rmcom,
+    lr=150.0,
+    n_steps=15,
+    loss_track=[],
+):
+    def closure():
+        optimizer.zero_grad()
+        temp_R = quaternions_to_SO3(q)
+        temp_model = torch.matmul(propose_rmcom, temp_R) + propose_com + trans_vec
+        loss = -llgloss(
+            temp_model, bin_labels=None, num_batch=1, sub_ratio=1.0, solvent=False
+        )
+        loss.backward()
+        return loss
+
+    optimizer = torch.optim.LBFGS(
+        [q, trans_vec],
+        lr=lr,
+        line_search_fn="strong_wolfe",
+        tolerance_change=1e-3,
+        max_iter=1,
+    )
+
+    for k in range(n_steps):
+        temp = optimizer.step(closure)
+        loss_track.append(temp.item())
+
+    print(f"Step {k+1}/{n_steps} - Loss: {temp.item()}")
+    return loss_track
+
+
 def rigidbody_refine(xyz, llgloss, lbfgs=False):
     propose_rmcom = xyz - torch.mean(xyz, dim=0)
     propose_com = torch.mean(xyz, dim=0)
@@ -104,7 +184,7 @@ def pose_train_lbfgs(
     propose_com,
     propose_rmcom,
     lr=0.005,
-    n_steps=10,
+    n_steps=50,
     loss_track=[],
 ):
     def closure():
@@ -114,7 +194,6 @@ def pose_train_lbfgs(
         temp_model = torch.matmul(propose_rmcom, temp_R) + propose_com + trans_vec
         loss = -llgloss(temp_model, bin_labels=None, num_batch=1, sub_ratio=1.0)
         loss.backward()
-        elapsed_time_loop = time.time() - start_time_loop
         return loss
 
     start_time = time.time()
