@@ -29,7 +29,14 @@ def initial_SFC(
     sfcalculator.inspect_data(verbose=False)
     sfcalculator.calc_fprotein()
     sfcalculator.calc_fsolvent()
-    sfcalculator.init_scales(requires_grad=True)
+    sfcalculator.get_scales_lbfgs(
+        ls_steps=10,
+        r_steps=10,
+        ls_lr=0.01,
+        r_lr=0.01,
+        initialize=True,
+        verbose=False,
+    )
     sfcalculator.calc_ftotal()
 
     return sfcalculator

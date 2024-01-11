@@ -119,14 +119,34 @@ class LLGloss(torch.nn.Module):
                 i, index_i, n_steps=n_steps, sub_ratio=sub_ratio, lr=lr, verbose=verbose
             )
 
-    def compute_Ecalc(self, xyz_orth, solvent=True, return_Fc=False) -> torch.Tensor:
+    def compute_Ecalc(self, xyz_orth, solvent=True, return_Fc=False, update_scales=False) -> torch.Tensor:
         self.sfc.calc_fprotein(atoms_position_tensor=xyz_orth)
 
         if solvent:
             self.sfc.calc_fsolvent()
+            if update_scales:
+                self.sfc.get_scales_lbfgs(
+                    ls_steps=10,
+                    r_steps=10,
+                    ls_lr=0.01,
+                    r_lr=0.01,
+                    initialize=True,
+                    verbose=False,
+                )
             Fc = self.sfc.calc_ftotal()
         else:
-            Fc = self.sfc.Fprotein_HKL
+            # MH note: we need scales here, even without solvent contribution
+            self.sfc.Fmask_HKL = torch.zeros_like(self.sfc.Fprotein_HKL)
+            if update_scales:
+                self.sfc.get_scales_lbfgs(
+                    ls_steps=10,
+                    r_steps=10,
+                    ls_lr=0.01,
+                    r_lr=0.01,
+                    initialize=True,
+                    verbose=False,
+                )
+            Fc = self.sfc.calc_ftotal()
 
         Fm = llg_sf.ftotal_amplitudes(Fc, self.sfc.dHKL, sort_by_res=True)
         sigmaP = llg_sf.calculate_Sigma_atoms(Fm, self.Eps, self.bin_labels)
@@ -144,8 +164,10 @@ class LLGloss(torch.nn.Module):
         num_batch=1,
         sub_ratio=1.0,
         solvent=True,
+        update_scales=False,
     ):
         """
+        TODO: Use rfree label in the LLG calculation
         Args:
             xyz_orth: torch.Tensor, [N_atoms, 3] in angstroms
                 Orthogonal coordinates of proteins, coming from AF2 model, send to SFC
@@ -161,7 +183,7 @@ class LLGloss(torch.nn.Module):
                 Fraction of mini-batch sampling over all miller indices,
                 e.g. 0.3 meaning each batch sample 30% of miller indices
         """
-        Ecalc = self.compute_Ecalc(xyz_ort, solvent=solvent)
+        Ecalc = self.compute_Ecalc(xyz_ort, solvent=solvent, update_scales=update_scales)
         llg = 0.0
 
         if bin_labels is None:
