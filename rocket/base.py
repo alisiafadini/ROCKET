@@ -67,7 +67,7 @@ class MSABiasAFv1(AlphaFold):
     def iteration(self, feats, prevs, _recycle=True, biasMSA=True):
         if biasMSA:
             feats = self._biasMSA(feats)
-        return super(MSABiasAF, self).iteration(feats, prevs, _recycle)
+        return super(MSABiasAFv1, self).iteration(feats, prevs, _recycle)
 
     def forward(self, batch, num_iters=1, biasMSA=True):
         """
@@ -113,7 +113,7 @@ class MSABiasAFv1(AlphaFold):
         return outputs
 
 
-class MSABiasAFv2(MSABiasAF):
+class MSABiasAFv2(MSABiasAFv1):
     """
     AlphaFold with trainable bias + trainable linear combination in MSA space
     """
@@ -145,7 +145,7 @@ class MSABiasAFv2(MSABiasAF):
         return feats
 
 
-class MSABiasAFv3(MSABiasAF):
+class MSABiasAFv3(MSABiasAFv1):
     """
     AlphaFold with trainable bias + trainable linear combination in MSA space
     """
