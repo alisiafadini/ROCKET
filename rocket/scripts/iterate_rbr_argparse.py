@@ -362,7 +362,9 @@ def main():
     # Average plddt per iteration
     np.save(
         "{path}/{r}/outputs/{out}/mean_it_plddt.npy".format(
-            path=path, r=args.file_root, out=output_name, it=iteration
+            path=path,
+            r=args.file_root,
+            out=output_name,
         ),
         np.array(mean_it_plddts),
     )
@@ -370,7 +372,9 @@ def main():
     # LLG per iteration
     np.save(
         "{path}/{r}/outputs/{out}/LLG_it.npy".format(
-            path=path, r=args.file_root, out=output_name, it=iteration
+            path=path,
+            r=args.file_root,
+            out=output_name,
         ),
         rk_utils.assert_numpy(llg_losses),
     )
@@ -378,7 +382,9 @@ def main():
     # MSE loss per iteration
     np.save(
         "{path}/{r}/outputs/{out}/MSE_loss_it.npy".format(
-            path=path, r=args.file_root, out=output_name, it=iteration
+            path=path,
+            r=args.file_root,
+            out=output_name,
         ),
         rk_utils.assert_numpy(mse_losses_by_epoch),
     )
@@ -386,7 +392,9 @@ def main():
     # Mean plddt per residue (over iterations)
     np.save(
         "{path}/{r}/outputs/{out}/mean_plddt_res.npy".format(
-            path=path, r=args.file_root, out=output_name, it=iteration
+            path=path,
+            r=args.file_root,
+            out=output_name,
         ),
         np.mean(np.array(all_pldtts), axis=0),
     )
@@ -394,7 +402,9 @@ def main():
     # Iteration sigmaA dictionary
     with open(
         "{path}/{r}/outputs/{out}/sigmas_by_epoch.pkl".format(
-            path=path, r=args.file_root, out=output_name, it=iteration
+            path=path,
+            r=args.file_root,
+            out=output_name,
         ),
         "wb",
     ) as file:
