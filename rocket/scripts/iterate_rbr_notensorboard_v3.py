@@ -26,13 +26,13 @@ device = "cuda:0"
 RBR_LBFGS = True
 
 # Load external files
-tng_file = "../../run_openfold/3hak/3hak/3hak-tng_withrfree.mtz"
-tng_dict = llg_utils.load_tng_data(tng_file, device=device)
+tng_file = "../../run_openfold/3hak/3hak/3hak-tng_withrfree_hres4A.mtz"
 
 input_pdb = "../../run_openfold/3hak/3hak/phaserpred-aligned.pdb"
 true_pdb = "../../run_openfold/3hak/3hak/3hak_noalts.pdb"
 
-phitrue = np.load("../../run_openfold/3hak/3hak/3hak-phitrue.npy")
+phitrue = np.load("../../run_openfold/3hak/3hak/3hak-phitrue-nosolvent-hres4A.npy")
+Etrue = np.load("../../run_openfold/3hak/3hak/3hak-Etrue-nosolvent-hres4A.npy")
 
 with open("../../run_openfold/3hak/3hak/3hak_processed_feats.pickle", "rb") as file:
     # Load the data from the pickle file
@@ -81,8 +81,8 @@ llgloss = rocket.llg.targets.LLGloss(sfc, tng_file, device)
 af_bias = rocket.MSABiasAFv3(model_config(preset, train=True), preset).to(device)
 af_bias.freeze()  # Free all AF2 parameters to save time
 
-lr_s = 1e-3  # OG: 0.0001
-lr_w = 5e-1
+lr_s = 1e-2  # OG: 0.0001
+lr_w = 1e-1
 optimizer = torch.optim.Adam(
     [
         {"params": device_processed_features["msa_feat_bias"], "lr": lr_s},
@@ -90,11 +90,11 @@ optimizer = torch.optim.Adam(
     ]
 )
 
-num_epochs = 1000
-num_batch = 1
-sub_ratio = 1.0
+num_epochs = 500
+num_batch = 5
+sub_ratio = 0.6
 reg_lambda = 0.0
-name = "pseudoBs-v3-addmod5e3-thresh2.55-weightsandbias-confBs-nosolv-align0"
+name = "pseudoBs-v3-nomod-confBs-nosolv-alignbest-sigmanosolv-4Acut"
 
 # Initialize best variables for alignement
 best_loss = float("inf")
@@ -140,6 +140,7 @@ for epoch in tqdm(range(num_epochs)):
     llgloss.sfc.atom_b_iso = pseudo_Bs.detach()
 
     aligned_xyz = rk_coordinates.align_positions(xyz_orth_sfc, best_pos, pseudo_Bs)
+    print("aligned_xyz", aligned_xyz[0:20, :])
     # aligned_xyz = rk_coordinates.align_positions(xyz_orth_sfc, best_pos)
 
     # Residue MSE loss
@@ -158,8 +159,16 @@ for epoch in tqdm(range(num_epochs)):
 
     # sigmaA calculation
     Ecalc, Fc = llgloss.compute_Ecalc(aligned_xyz, return_Fc=True)
+    # sigmas = llg_utils.sigmaA_from_model(
+    #    rocket.utils.assert_numpy(llgloss.Eobs),
+    #    phitrue,
+    #    Ecalc,
+    #    Fc,
+    #    llgloss.sfc.dHKL,
+    #    llgloss.bin_labels,
+    # )
     sigmas = llg_utils.sigmaA_from_model(
-        rocket.utils.assert_numpy(llgloss.Eobs),
+        Etrue,
         phitrue,
         Ecalc,
         Fc,
@@ -207,18 +216,18 @@ for epoch in tqdm(range(num_epochs)):
     print("Loss", loss.item())
     print("LLG Estimate", llg_estimate)
 
-    # if loss < best_loss:
-    #    best_loss = loss
-    #    best_epoch = epoch
-    #    best_pos = optimized_xyz.clone()
-    # print(f"Best epoch: {best_epoch}, Best loss: {llg_estimate}")
+    if loss < best_loss:
+        best_loss = loss
+        best_epoch = epoch
+        best_pos = optimized_xyz.clone()
+        # print(f"Best epoch: {best_epoch}, Best loss: {llg_estimate}")
 
-    # Reset the counter when a new best epoch is found
-    #    epochs_since_last_improvement = 0
+        # Reset the counter when a new best epoch is found
+        epochs_since_last_improvement = 0
 
-    # else:
-    # Increase the counter if no improvement
-    #    epochs_since_last_improvement += 1
+    else:
+        # Increase the counter if no improvement
+        epochs_since_last_improvement += 1
 
     sigmas_dict = {
         f"sigma_{i + 1}": sigma_value for i, sigma_value in enumerate(sigmas)
@@ -246,22 +255,14 @@ for epoch in tqdm(range(num_epochs)):
 
     total_loss.backward()
 
-    ### Try plddt-based gradient weighting
-    print(
-        "grads before mul",
-        torch.mean(device_processed_features["msa_feat_bias"].grad),
-    )
-
-    # plddt_weights = 1 / (af2_output["plddt"] * 0.01 - 0.7)
-
-    plddt_weights = 2.55 * torch.exp(-(af2_output["plddt"] * 0.01))
-    plddt_weights_mod1 = torch.where(
-        plddt_weights <= 1, 1 * plddt_weights, plddt_weights
-    )
-    plddt_weights_mod = torch.where(
-        plddt_weights_mod1 > 1, 5e3 * plddt_weights_mod1, plddt_weights_mod1
-    )
-    expanded_weights = plddt_weights_mod.view(1, -1, 1)
+    # plddt_weights = 2.22 * torch.exp(-(af2_output["plddt"] * 0.01))
+    # plddt_weights_mod1 = torch.where(
+    #    plddt_weights <= 1, 1 * plddt_weights, plddt_weights
+    # )
+    # plddt_weights_mod = torch.where(
+    #    plddt_weights_mod1 > 1, 5e3 * plddt_weights_mod1, plddt_weights_mod1
+    # )
+    # expanded_weights = plddt_weights_mod.view(1, -1, 1)
 
     add_bias_pre_grads = torch.mean(
         torch.mean(device_processed_features["msa_feat_bias"].grad, dim=0), dim=1
@@ -271,33 +272,18 @@ for epoch in tqdm(range(num_epochs)):
         torch.mean(device_processed_features["msa_feat_weights"].grad, dim=0), dim=1
     )
 
-    device_processed_features["msa_feat_bias"].grad = torch.mul(
-        device_processed_features["msa_feat_bias"].grad, expanded_weights
-    )
+    # device_processed_features["msa_feat_bias"].grad = torch.mul(
+    #    device_processed_features["msa_feat_bias"].grad, expanded_weights
+    # )
 
-    device_processed_features["msa_feat_weights"].grad = torch.mul(
-        device_processed_features["msa_feat_weights"].grad, expanded_weights
-    )
+    # device_processed_features["msa_feat_weights"].grad = torch.mul(
+    #    device_processed_features["msa_feat_weights"].grad, expanded_weights
+    # )
 
-    print(
-        "grads after mul",
-        torch.mean(device_processed_features["msa_feat_bias"].grad),
-    )
-    print("pseudoBs shape", af2_output["plddt"].shape)
     # print("pseudoBs min", min(plddt_weights_mod))
     # print("pseudoBs max", max(plddt_weights_mod))
     print("pLDDT min", min(af2_output["plddt"]))
     print("pLDDT max", max(af2_output["plddt"]))
-
-    print("START TESTING")
-    print(
-        "msa_feat_bias.grad shape",
-        device_processed_features["msa_feat_bias"].grad.shape,
-    )
-    print(
-        "msa_feat_weights.grad shape",
-        device_processed_features["msa_feat_weights"].grad.shape,
-    )
 
     add_bias_grads = torch.mean(
         torch.mean(device_processed_features["msa_feat_bias"].grad, dim=0), dim=1
@@ -307,18 +293,13 @@ for epoch in tqdm(range(num_epochs)):
         torch.mean(device_processed_features["msa_feat_weights"].grad, dim=0), dim=1
     )
 
-    print(
-        "mean dim 1 shape",
-        add_bias_grads.shape,
-    )
-
-    print("FINISH TESTING")
-
     ###########
     optimizer.step()
     # scheduler.step()
 
 # save grad update info
+
+plddt_weights_mod = np.array(0)
 
 np.save(
     "tensorboard_runs/LLG_msabias_runs/{epoch}it-lr{lr}{lrw}-{b}batch-{r}subr-{name}/add_bias_grads.npy".format(
