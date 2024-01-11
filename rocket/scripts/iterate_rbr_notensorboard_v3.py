@@ -25,6 +25,10 @@ device = "cuda:0"
 # Using LBFGS in RBR or not
 RBR_LBFGS = True
 
+
+# Update SFC scales or not
+SCALE_FLAG = True
+
 # Load external files
 tng_file = "../../run_openfold/3hak/3hak/3hak-tng_withrfree_hres4A.mtz"
 
@@ -158,15 +162,8 @@ for epoch in tqdm(range(num_epochs)):
     mse_losses_by_epoch.append(total_mse_loss)
 
     # sigmaA calculation
-    Ecalc, Fc = llgloss.compute_Ecalc(aligned_xyz, return_Fc=True)
-    # sigmas = llg_utils.sigmaA_from_model(
-    #    rocket.utils.assert_numpy(llgloss.Eobs),
-    #    phitrue,
-    #    Ecalc,
-    #    Fc,
-    #    llgloss.sfc.dHKL,
-    #    llgloss.bin_labels,
-    # )
+    Ecalc, Fc = llgloss.compute_Ecalc(aligned_xyz, return_Fc=True, update_scales=False)
+
     sigmas = llg_utils.sigmaA_from_model(
         Etrue,
         phitrue,
@@ -206,6 +203,7 @@ for epoch in tqdm(range(num_epochs)):
         num_batch=num_batch,
         sub_ratio=sub_ratio,
         solvent=False,
+        update_scales=SCALE_FLAG
     )
 
     L1loss = feats_copy["msa_feat_weights"].abs().sum()
@@ -215,6 +213,7 @@ for epoch in tqdm(range(num_epochs)):
 
     print("Loss", loss.item())
     print("LLG Estimate", llg_estimate)
+    print(f"R_work: {llgloss.sfc.r_work.item():<7.3f}", f"R_free: {llgloss.sfc.r_free.item():<7.3f}")
 
     if loss < best_loss:
         best_loss = loss
@@ -247,7 +246,7 @@ for epoch in tqdm(range(num_epochs)):
             name=name,
         )
     )
-
+    
     llg_losses.append(llg_estimate)
 
     bias = torch.mean(device_processed_features["msa_feat_bias"].abs())
