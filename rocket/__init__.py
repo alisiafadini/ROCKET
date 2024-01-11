@@ -1,5 +1,5 @@
 # Top Level API
-from rocket.base import MSABiasAF,MSABiasAFv2,MSABiasAFv3
+from rocket.base import MSABiasAFv1,MSABiasAFv2,MSABiasAFv3
 from rocket.llg.targets import LLGloss
 
 # Submodules
