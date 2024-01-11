@@ -3,7 +3,8 @@ Include modified subclasses of AlphaFold
 """
 import re
 from openfold.model.model import AlphaFold
-#from openfold.utils.tensor_utils import tensor_tree_map
+
+# from openfold.utils.tensor_utils import tensor_tree_map
 from rocket.utils import tensor_tree_map
 from openfold.config import model_config
 from openfold.utils.import_weights import import_jax_weights_
@@ -13,16 +14,18 @@ from openfold.utils.script_utils import get_model_basename
 import torch
 
 
-class MSABiasAF(AlphaFold):
+class MSABiasAFv1(AlphaFold):
     """
     AlphaFold with trainable bias in MSA space
     """
 
-    def __init__(self, 
-                 config, 
-                 preset,
-                 params_root="/net/cci-gpu-00/raid1/scratch1/alisia/programs/openfold/openfold_xtal/openfold/resources/params/"):
-        super(MSABiasAF, self).__init__(config)
+    def __init__(
+        self,
+        config,
+        preset,
+        params_root="/net/cci-gpu-00/raid1/scratch1/alisia/programs/openfold/openfold_xtal/openfold/resources/params/",
+    ):
+        super(MSABiasAFv1, self).__init__(config)
 
         # AlphaFold params
         params_path = params_root + f"params_{preset}.npz"
@@ -31,19 +34,17 @@ class MSABiasAF(AlphaFold):
         import_jax_weights_(self, params_path, version=model_version)
         self.eval()  # without this, dropout enabled
 
-
     def freeze(self, skip_str=None):
         """
         freeze AF2 parameters, skip those parameters with str match
         """
         if skip_str is None:
             for params in self.parameters():
-               params.requires_grad_(False) 
+                params.requires_grad_(False)
         else:
             for name, params in self.named_parameters():
                 if re.match(skip_str, name) is None:
                     params.requires_grad_(False)
-    
 
     def unfreeze(self, skip_str=None):
         """
@@ -51,12 +52,11 @@ class MSABiasAF(AlphaFold):
         """
         if skip_str is None:
             for params in self.parameters():
-               params.requires_grad_(True) 
+                params.requires_grad_(True)
         else:
             for name, params in self.named_parameters():
                 if re.match(skip_str, name) is None:
                     params.requires_grad_(True)
-
 
     def _biasMSA(self, feats):
         feats["msa_feat"][:, :, 25:48] = (
