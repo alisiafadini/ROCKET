@@ -186,8 +186,9 @@ def llgTot_calculate(sigmaA, E, Ec, centric_tensor):
 
 
 def sigmaA_from_model(E_true, phi_true, E_model, Fcs, dHKL, bin_labels):
-    phitrue_rad = np.deg2rad(phi_true)
+    # TODO naming Etrue vs Eobs
 
+    phitrue_rad = np.deg2rad(phi_true)
     phimodel = utils.assert_numpy(
         structurefactors.ftotal_phis(Fcs, dHKL, sort_by_res=True)
     )
@@ -205,6 +206,8 @@ def sigmaA_from_model(E_true, phi_true, E_model, Fcs, dHKL, bin_labels):
 
 
 def compute_sigmaA_true(Eobs, phiobs, Ecalc, phicalc, bin_labels):
+    # TODO naming Etrue vs Eobs
+
     # Combine the absolute values and phase difference into sigmaA_true
     sigmaA_true = Eobs * Ecalc * np.cos(phiobs - phicalc)
     data = np.stack((sigmaA_true, bin_labels), axis=1)

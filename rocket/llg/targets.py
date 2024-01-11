@@ -119,7 +119,9 @@ class LLGloss(torch.nn.Module):
                 i, index_i, n_steps=n_steps, sub_ratio=sub_ratio, lr=lr, verbose=verbose
             )
 
-    def compute_Ecalc(self, xyz_orth, solvent=True, return_Fc=False, update_scales=False) -> torch.Tensor:
+    def compute_Ecalc(
+        self, xyz_orth, solvent=True, return_Fc=False, update_scales=False
+    ) -> torch.Tensor:
         self.sfc.calc_fprotein(atoms_position_tensor=xyz_orth)
 
         if solvent:
@@ -183,7 +185,9 @@ class LLGloss(torch.nn.Module):
                 Fraction of mini-batch sampling over all miller indices,
                 e.g. 0.3 meaning each batch sample 30% of miller indices
         """
-        Ecalc = self.compute_Ecalc(xyz_ort, solvent=solvent, update_scales=update_scales)
+        Ecalc = self.compute_Ecalc(
+            xyz_ort, solvent=solvent, update_scales=update_scales
+        )
         llg = 0.0
 
         if bin_labels is None:
