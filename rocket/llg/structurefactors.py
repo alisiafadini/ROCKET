@@ -30,10 +30,10 @@ def initial_SFC(
     sfcalculator.calc_fprotein()
     sfcalculator.calc_fsolvent()
     sfcalculator.get_scales_lbfgs(
-        ls_steps=10,
-        r_steps=10,
-        ls_lr=0.01,
-        r_lr=0.01,
+        ls_steps=5,
+        r_steps=5,
+        ls_lr=0.001,
+        r_lr=0.001,
         initialize=True,
         verbose=False,
     )
