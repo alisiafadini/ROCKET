@@ -114,7 +114,7 @@ biases_by_epoch = []
 
 
 for epoch in tqdm(range(num_epochs)):
-    optimizer.zero_grad()
+    optimizer.zero_grad(set_to_none=True)
 
     if epoch == 0:
         # tensorboard_writer.add_scalar("Loss", loss.item(), epoch)
@@ -127,14 +127,14 @@ for epoch in tqdm(range(num_epochs)):
         )
 
     # Avoid passing through graph a second time
-    feats_copy = copy.deepcopy(device_processed_features)
-    feats_copy["msa_feat_bias"] = device_processed_features["msa_feat_bias"].clone()
-    feats_copy["msa_feat_weights"] = device_processed_features[
-        "msa_feat_weights"
-    ].clone()
+    # feats_copy = copy.deepcopy(device_processed_features)
+    # feats_copy["msa_feat_bias"] = device_processed_features["msa_feat_bias"].clone()
+    # feats_copy["msa_feat_weights"] = device_processed_features[
+    #     "msa_feat_weights"
+    # ].clone()
 
     # AF2 pass
-    af2_output = af_bias(feats_copy, num_iters=1, biasMSA=True)
+    af2_output = af_bias(device_processed_features, num_iters=1, biasMSA=True)
 
     # position alignment
     xyz_orth_sfc, plddts = rk_coordinates.extract_allatoms(
@@ -206,7 +206,7 @@ for epoch in tqdm(range(num_epochs)):
         update_scales=SCALE_FLAG
     )
 
-    L1loss = feats_copy["msa_feat_weights"].abs().sum()
+    L1loss = device_processed_features["msa_feat_weights"].abs().sum()
     total_loss = loss + reg_lambda * L1loss
 
     llg_estimate = loss.item() / (sub_ratio * num_batch)
@@ -293,7 +293,7 @@ for epoch in tqdm(range(num_epochs)):
     )
 
     ###########
-    optimizer.step()
+    optimizer.step(retain_graph=True)
     # scheduler.step()
 
 # save grad update info
