@@ -127,26 +127,22 @@ class LLGloss(torch.nn.Module):
         if solvent:
             self.sfc.calc_fsolvent()
             if update_scales:
-                self.sfc.get_scales_lbfgs(
-                    ls_steps=5,
-                    r_steps=5,
-                    ls_lr=0.001,
-                    r_lr=0.001,
-                    initialize=True,
-                    verbose=False,
+                self.sfc.get_scales_adam(
+                    lr=0.01, 
+                    n_steps=10, 
+                    sub_ratio=0.7, 
+                    initialize=False, 
                 )
             Fc = self.sfc.calc_ftotal()
         else:
             # MH note: we need scales here, even without solvent contribution
             self.sfc.Fmask_HKL = torch.zeros_like(self.sfc.Fprotein_HKL)
             if update_scales:
-                self.sfc.get_scales_lbfgs(
-                    ls_steps=5,
-                    r_steps=5,
-                    ls_lr=0.001,
-                    r_lr=0.001,
-                    initialize=True,
-                    verbose=False,
+                self.sfc.get_scales_adam(
+                    lr=0.01, 
+                    n_steps=10, 
+                    sub_ratio=0.7, 
+                    initialize=False, 
                 )
             Fc = self.sfc.calc_ftotal()
 
