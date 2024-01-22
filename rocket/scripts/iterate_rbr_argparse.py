@@ -109,6 +109,21 @@ def parse_arguments():
         help=("Optional additional identified"),
     )
 
+    parser.add_argument(
+        "-flag",
+        "--free_flag",
+        type=str,
+        default="R-free-flags",
+        help=("Optional additional identified"),
+    )
+
+    parser.add_argument(
+        "-chain",
+        "--added_chain",
+        help="additional chain in asu",
+        action=argparse.BooleanOptionalAction,
+    )
+
     return parser.parse_args()
 
 
@@ -130,15 +145,23 @@ def main():
     true_pdb = "{p}/{r}/{r}_noalts.pdb".format(p=path, r=args.file_root)
 
     phitrue = np.load(
-        "{p}/{r}/{r}-phitrue-solvent{s}.npy".format(
+        "{p}/{r}/{r}_allchains-phitrue-solvent{s}.npy".format(
             p=path, r=args.file_root, s=args.solvent
         )
     )
     Etrue = np.load(
-        "{p}/{r}/{r}-Etrue-solvent{s}.npy".format(
+        "{p}/{r}/{r}_allchains-Etrue-solvent{s}.npy".format(
             p=path, r=args.file_root, s=args.solvent
         )
     )
+
+    if args.added_chain:
+        constant_fp_added = torch.load(
+            "{p}/{r}/{r}_added_chain_atoms.pt".format(p=path, r=args.file_root)
+        ).to(device=device)
+
+    else:
+        constant_fp_added = None
 
     with open(
         "{p}/{r}/{r}_processed_feats.pickle".format(p=path, r=args.file_root), "rb"
@@ -154,16 +177,17 @@ def main():
 
     # SFC initialization, only have to do it once
     sfc = llg_sf.initial_SFC(
-        input_pdb, tng_file, "FP", "SIGFP", Freelabel="FreeR_flag", device=device
+        input_pdb, tng_file, "FP", "SIGFP", Freelabel=args.free_flag, device=device
     )
     reference_pos = sfc.atom_pos_orth.clone()
 
     # Load true positions
     sfc_true = llg_sf.initial_SFC(
-        true_pdb, tng_file, "FP", "SIGFP", Freelabel="FreeR_flag", device=device
+        true_pdb, tng_file, "FP", "SIGFP", Freelabel=args.free_flag, device=device
     )
     true_pos = sfc_true.atom_pos_orth.clone()
-    true_Bs = sfc_true.atom_b_iso.clone()
+    # true_Bs = sfc_true.atom_b_iso.clone()
+    # true_cras = sfc_true.cra_name
     del sfc_true
 
     # LLG initialization
@@ -189,7 +213,7 @@ def main():
     lr_a = args.lr_add
     lr_m = args.lr_mul
 
-    if args.version != 1:
+    if args.version == 3:
         # Initiate multiplicative cluster bias
         msa_params_weights = torch.ones(
             (512, num_res, 23), requires_grad=True, device=device
@@ -203,6 +227,17 @@ def main():
                 {"params": device_processed_features["msa_feat_weights"], "lr": lr_m},
             ]
         )
+    elif args.version == 2:
+        msa_params_weights = torch.eye(512, dtype=torch.float32, device=device)
+        device_processed_features["msa_feat_weights"] = msa_params_weights
+
+        optimizer = torch.optim.Adam(
+            [
+                {"params": device_processed_features["msa_feat_bias"], "lr": lr_a},
+                {"params": device_processed_features["msa_feat_weights"], "lr": lr_m},
+            ]
+        )
+
     else:
         optimizer = torch.optim.Adam(
             [
@@ -236,6 +271,7 @@ def main():
     llg_losses = []
     all_pldtts = []
     mean_it_plddts = []
+    absolute_msa_changes = []
 
     for iteration in tqdm(range(args.iterations)):
         optimizer.zero_grad()
@@ -251,12 +287,18 @@ def main():
                     f"Warning: Directory '{directory_path}' already exists. Overwriting..."
                 )
 
+        # if iteration == 250:
+        #    lr_a = 1e-4
+        #    lr_m = 1e-3
+
         # Avoid passing through graph a second time
         feats_copy = copy.deepcopy(device_processed_features)
         feats_copy["msa_feat_bias"] = device_processed_features["msa_feat_bias"].clone()
         feats_copy["msa_feat_weights"] = device_processed_features[
             "msa_feat_weights"
         ].clone()
+
+        msa_at_it_start = torch.mean(feats_copy["msa_feat"][:, :, 25:48, 0], dim=(0, 2))
 
         # AF2 pass
         af2_output = af_bias(feats_copy, num_iters=1, biasMSA=True)
@@ -279,6 +321,7 @@ def main():
         cra_calphas_list, calphas_mask = rk_coordinates.select_CA_from_craname(
             sfc.cra_name
         )
+
         # (2) Convert residue names to residue numbers
         residue_numbers = [int(name.split("-")[1]) for name in cra_calphas_list]
         # (3) Calculate total MSE loss
@@ -291,7 +334,10 @@ def main():
         # Calculate (or refine) sigmaA
         # TODO before or after RBR step?
         Ecalc, Fc = llgloss.compute_Ecalc(
-            aligned_xyz, return_Fc=True, update_scales=False
+            aligned_xyz,
+            return_Fc=True,
+            update_scales=True,
+            added_chain=constant_fp_added,
         )
 
         sigmas = llg_utils.sigmaA_from_model(
@@ -314,7 +360,7 @@ def main():
 
         # Rigid body refinement (RBR) step
         optimized_xyz, loss_track_pose = rk_coordinates.rigidbody_refine_quat(
-            aligned_xyz, llgloss, lbfgs=RBR_LBFGS
+            aligned_xyz, llgloss, lbfgs=RBR_LBFGS, added_chain=constant_fp_added
         )
         rbr_loss_by_epoch.append(loss_track_pose)
 
@@ -326,6 +372,7 @@ def main():
             sub_ratio=args.sub_ratio,
             solvent=args.solvent,
             update_scales=args.scale,
+            added_chain=constant_fp_added,
         )
 
         llg_estimate = loss.item() / (args.sub_ratio * args.batches)
@@ -353,6 +400,12 @@ def main():
             f"sigma_{i + 1}": sigma_value for i, sigma_value in enumerate(sigmas)
         }
         sigmas_by_epoch.append(sigmas_dict)
+
+        # Save the absolute difference in mean contribution from each residue channel from previous iteration
+        new_mean = torch.mean(feats_copy["msa_feat"][:, :, 25:48, 0], dim=(0, 2))
+        mean_change = torch.abs(new_mean - msa_at_it_start)
+        absolute_msa_changes.append(rk_utils.assert_numpy(mean_change))
+        print("Mean absolute msa change", torch.mean(mean_change).item())
 
         loss.backward()
         optimizer.step()
@@ -387,6 +440,16 @@ def main():
             out=output_name,
         ),
         rk_utils.assert_numpy(mse_losses_by_epoch),
+    )
+
+    # Absolute MSA change per column per iteration
+    np.save(
+        "{path}/{r}/outputs/{out}/MSA_changes_it.npy".format(
+            path=path,
+            r=args.file_root,
+            out=output_name,
+        ),
+        rk_utils.assert_numpy(absolute_msa_changes),
     )
 
     # Mean plddt per residue (over iterations)

@@ -36,7 +36,9 @@ def rigidbody_refine(xyz, llgloss):
 """
 
 
-def find_rigidbody_matrix_lbfgs_quat(llgloss, propose_com, propose_rmcom, device):
+def find_rigidbody_matrix_lbfgs_quat(
+    llgloss, propose_com, propose_rmcom, device, added_chain=None
+):
     q = torch.tensor(
         [1.0, 0.0, 0.0, 0.0], dtype=torch.float32, device=device, requires_grad=True
     )
@@ -49,12 +51,13 @@ def find_rigidbody_matrix_lbfgs_quat(llgloss, propose_com, propose_rmcom, device
         propose_com,
         propose_rmcom,
         loss_track=[],
+        added_chain=added_chain,
     )
     print(loss_track_pose)
     return trans_vec, q, loss_track_pose
 
 
-def rigidbody_refine_quat(xyz, llgloss, lbfgs=False):
+def rigidbody_refine_quat(xyz, llgloss, lbfgs=False, added_chain=None):
     propose_rmcom = xyz - torch.mean(xyz, dim=0)
     propose_com = torch.mean(xyz, dim=0)
 
@@ -65,6 +68,7 @@ def rigidbody_refine_quat(xyz, llgloss, lbfgs=False):
             propose_com.clone().detach(),
             propose_rmcom.clone().detach(),
             llgloss.device,
+            added_chain=added_chain,
         )
     else:
         trans_vec, rot_v1, rot_v2, loss_track_pose = find_rigidbody_matrix(
@@ -72,6 +76,7 @@ def rigidbody_refine_quat(xyz, llgloss, lbfgs=False):
             propose_com.clone().detach(),
             propose_rmcom.clone().detach(),
             llgloss.device,
+            added_chain=added_chain,
         )
 
     transform = quaternions_to_SO3(q)
@@ -89,14 +94,21 @@ def pose_train_lbfgs_quat(
     lr=150.0,
     n_steps=15,
     loss_track=[],
+    added_chain=None,
 ):
     def closure():
         optimizer.zero_grad()
         temp_R = quaternions_to_SO3(q)
         temp_model = torch.matmul(propose_rmcom, temp_R) + propose_com + trans_vec
         loss = -llgloss(
-            temp_model, bin_labels=None, num_batch=1, sub_ratio=1.0, solvent=False
+            temp_model,
+            bin_labels=None,
+            num_batch=1,
+            sub_ratio=1.0,
+            solvent=False,
+            added_chain=added_chain,
         )
+
         loss.backward()
         return loss
 
@@ -471,11 +483,9 @@ def extract_allatoms(outputs, feats, cra_name_sfc: list):
     n_res = atom_mask.shape[0]
 
     # get atom positions in vectorized manner
-    ## outputs["final_atom_positions"], shape [n_res, 37, 3]
     positions_atom = outputs["final_atom_positions"][atom_mask == 1.0]  # [n_atom, 3]
 
     # get plddt in vectorized manner
-    ## outputs["plddt"], shape [n_res]
     plddt_atom = (
         outputs["plddt"].reshape([-1, 1]).repeat([1, 37])[atom_mask == 1.0]
     )  # shape [n_atom,]
@@ -507,6 +517,7 @@ def extract_allatoms(outputs, feats, cra_name_sfc: list):
     reorder_index = utils.assert_numpy(
         [cra_name_af.index(i) for i in cra_name_sfc], arr_type=int
     )
+
     assert np.all(
         utils.assert_numpy(cra_name_af)[reorder_index]
         == utils.assert_numpy(cra_name_sfc)

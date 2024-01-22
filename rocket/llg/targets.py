@@ -120,18 +120,26 @@ class LLGloss(torch.nn.Module):
             )
 
     def compute_Ecalc(
-        self, xyz_orth, solvent=True, return_Fc=False, update_scales=False
+        self,
+        xyz_orth,
+        solvent=True,
+        return_Fc=False,
+        update_scales=False,
+        added_chain=None,
     ) -> torch.Tensor:
         self.sfc.calc_fprotein(atoms_position_tensor=xyz_orth)
+
+        if added_chain is not None:
+            self.sfc.Fprotein_HKL = self.sfc.Fprotein_HKL + added_chain
 
         if solvent:
             self.sfc.calc_fsolvent()
             if update_scales:
                 self.sfc.get_scales_adam(
-                    lr=0.01, 
-                    n_steps=10, 
-                    sub_ratio=0.7, 
-                    initialize=False, 
+                    lr=0.01,
+                    n_steps=10,
+                    sub_ratio=0.7,
+                    initialize=False,
                 )
             Fc = self.sfc.calc_ftotal()
         else:
@@ -139,10 +147,10 @@ class LLGloss(torch.nn.Module):
             self.sfc.Fmask_HKL = torch.zeros_like(self.sfc.Fprotein_HKL)
             if update_scales:
                 self.sfc.get_scales_adam(
-                    lr=0.01, 
-                    n_steps=10, 
-                    sub_ratio=0.7, 
-                    initialize=False, 
+                    lr=0.01,
+                    n_steps=10,
+                    sub_ratio=0.7,
+                    initialize=False,
                 )
             Fc = self.sfc.calc_ftotal()
 
@@ -163,6 +171,7 @@ class LLGloss(torch.nn.Module):
         sub_ratio=1.0,
         solvent=True,
         update_scales=False,
+        added_chain=None,
     ):
         """
         TODO: Use rfree label in the LLG calculation
@@ -181,8 +190,12 @@ class LLGloss(torch.nn.Module):
                 Fraction of mini-batch sampling over all miller indices,
                 e.g. 0.3 meaning each batch sample 30% of miller indices
         """
+
         Ecalc = self.compute_Ecalc(
-            xyz_ort, solvent=solvent, update_scales=update_scales
+            xyz_ort,
+            solvent=solvent,
+            update_scales=update_scales,
+            added_chain=added_chain,
         )
         llg = 0.0
 

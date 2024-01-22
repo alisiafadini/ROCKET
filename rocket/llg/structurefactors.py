@@ -29,6 +29,7 @@ def initial_SFC(
     sfcalculator.inspect_data(verbose=False)
     sfcalculator.calc_fprotein()
     sfcalculator.calc_fsolvent()
+    # sfcalculator.Fmask_HKL = torch.zeros_like(sfcalculator.Fprotein_HKL)
     sfcalculator.get_scales_lbfgs(
         ls_steps=5,
         r_steps=5,

@@ -155,5 +155,4 @@ class MSABiasAFv3(MSABiasAFv1):
             feats["msa_feat"][:, :, 25:48].clone() * feats["msa_feat_weights"]
             + feats["msa_feat_bias"]
         )
-
         return feats
