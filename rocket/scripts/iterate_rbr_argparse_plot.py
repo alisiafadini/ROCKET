@@ -30,6 +30,13 @@ def parse_arguments():
         help=("File path for directory to data"),
     )
 
+    parser.add_argument(
+        "-prot",
+        "--protein_type",
+        required=True,
+        help=("Type of protein (prion, lyso, or abl)"),
+    )
+
     return parser.parse_args()
 
 
@@ -52,7 +59,8 @@ def main():
     # Load mean plddt per residue
     plddt_per_residue = np.load("{path}/mean_plddt_res.npy".format(path=path))
 
-    # Load pseudoBs for lineouts
+    # Load MSA changes per iteration matrix
+    MSA_changes_matrix = np.load("{path}/MSA_changes_it.npy".format(path=path))
 
     # Load residue shifts
     residue_numbers = np.load("{path}/residue_numbers.npy".format(path=path))
@@ -60,6 +68,36 @@ def main():
         "{path}/meanshift_perresidue_tostart.npy".format(path=path)
     )
     mean_perresidue = np.load("{path}/meanshift_perresidue.npy".format(path=path))
+
+    # Ranges of interest
+    protein_to_labels = {
+        "prion": [
+            "N-terminus",
+            "Loop",
+            "Small Helix",
+            "Hinge",
+            "Control",
+            "C-terminus Helix",
+        ],
+        "lyso": [
+            "Control",
+            "Small Beta Sheet",
+            "Beta+Loop",
+            "Short Helix",
+            "Helices Loop",
+            "Long Helix",
+        ],
+        "abl": [
+            "Gly Loop",
+            "Beta+Loop",
+            "Loop Connection",
+            "Beta+Loop+Beta",
+            "DFG Loop",
+            "Control",
+        ],
+    }
+
+    title_labels = protein_to_labels[args.protein_type]
 
     with open("{path}/pseudoB_lineouts_data.pkl".format(path=path), "rb") as file:
         pseudob_data = pickle.load(file)
@@ -113,8 +151,8 @@ def main():
         )
         tr_ax[i].grid(True)
         tr_ax[i].set_ylabel("{start}-{end}".format(start=range_[0], end=range_[1]))
-    tr_ax[0].set_title("N-terminus", color="darkslategrey")
-    tr_ax[1].set_title("Loop", color="darkslategrey")
+    tr_ax[0].set_title(title_labels[0], color="darkslategrey")
+    tr_ax[1].set_title(title_labels[1], color="darkslategrey")
     tr_ax[-1].set_xlabel("Iteration")
 
     # Subfig [0,2]
@@ -132,8 +170,8 @@ def main():
         )
         tr_ax[i].grid(True)
         tr_ax[i].set_ylabel("{start}-{end}".format(start=range_[0], end=range_[1]))
-    tr_ax[0].set_title("Small Helix", color="darkslategrey")
-    tr_ax[1].set_title("Hinge", color="darkslategrey")
+    tr_ax[0].set_title(title_labels[2], color="darkslategrey")
+    tr_ax[1].set_title(title_labels[3], color="darkslategrey")
     tr_ax[-1].set_xlabel("Iteration")
 
     # Subfig [1,2]
@@ -151,8 +189,8 @@ def main():
         )
         tr_ax[i].grid(True)
         tr_ax[i].set_ylabel("{start}-{end}".format(start=range_[0], end=range_[1]))
-    tr_ax[0].set_title("Control", color="darkslategrey")
-    tr_ax[1].set_title("C-terminus Helix", color="darkslategrey")
+    tr_ax[0].set_title(title_labels[4], color="darkslategrey")
+    tr_ax[1].set_title(title_labels[5], color="darkslategrey")
     tr_ax[-1].set_xlabel("Iteration")
 
     # Subfig [1,0]
@@ -172,21 +210,64 @@ def main():
     )
 
     # Subfig [1,1]
-    br_ax = subfigs[1, 1].subplots(1, 1)
-    map = br_ax.imshow(MSE_loss_matrix.T, cmap="viridis", vmax=2.5)
-    br_ax.set_xlabel("Iteration")
-    br_ax.set_ylabel("Residue Calpha")
-    subfigs[1, 1].colorbar(
-        map,
-        pad=0.05,
-        shrink=0.9,
-        ax=br_ax,
-        label="MSE to True Position ($\mathrm{\AA}$)",
-    )
+    # br_ax = subfigs[1, 1].subplots(1, 1)
+    # map = br_ax.imshow(MSE_loss_matrix.T, cmap="viridis", vmax=2.5)
+    # br_ax.set_xlabel("Iteration")
+    # br_ax.set_ylabel("Residue Calpha")
+    # subfigs[1, 1].colorbar(
+    #    map,
+    #    fraction=1e-2,
+    #    pad=0.05,
+    #   shrink=0.9,
+    #    ax=br_ax,
+    #    label="MSE to True Position ($\mathrm{\AA}$)",
+    # )
 
     fig.suptitle("{}".format(path))
     plt.show()
     fig.savefig("{path}/results.pdf".format(path=path))
+
+    ## MSE loss and MSA changes colormaps figure
+
+    # Create a 2x1 subplot grid
+    fig, subfigs = plt.subplots(2, 1, figsize=(30, 14))
+
+    # Plot the top heatmap (MSE_loss_matrix)
+    top_map = subfigs[0].imshow(MSE_loss_matrix.T, cmap="viridis", vmax=2.5)
+    subfigs[0].set_xlabel("Iteration")
+    subfigs[0].set_ylabel("Residue Calpha")
+    subfigs[0].set_title("MSE Loss")
+
+    # Add colorbar for the top heatmap
+    top_colorbar = fig.colorbar(
+        top_map,
+        fraction=0.05,
+        pad=0.05,
+        shrink=0.9,
+        ax=subfigs[0],
+        label="MSE to True Position ($\mathrm{\AA}$)",
+    )
+
+    # Plot the bottom heatmap (MSA_changes_matrix)
+    bottom_map = subfigs[1].imshow(MSA_changes_matrix.T, cmap="viridis")
+    subfigs[1].set_xlabel("Iteration")
+    subfigs[1].set_ylabel("Residue Calpha")
+    subfigs[1].set_title("MSA Changes")
+
+    # Add colorbar for the bottom heatmap
+    bottom_colorbar = fig.colorbar(
+        bottom_map,
+        fraction=0.05,
+        pad=0.05,
+        shrink=0.9,
+        ax=subfigs[1],
+        label="Change in mean of MSA representation",
+    )
+
+    fig.suptitle("{}".format(path))
+    plt.tight_layout()
+    plt.show()
+    fig.savefig("{path}/results_heatmaps.pdf".format(path=path))
 
 
 if __name__ == "__main__":
