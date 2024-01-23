@@ -191,24 +191,34 @@ def main():
     input_pdb = "{p}/{r}/{r}-pred-aligned.pdb".format(p=path, r=args.file_root)
     true_pdb = "{p}/{r}/{r}_noalts.pdb".format(p=path, r=args.file_root)
 
-    phitrue = np.load(
-        "{p}/{r}/{r}-phitrue-solvent{s}.npy".format(
-            p=path, r=args.file_root, s=args.solvent
-        )
-    )
-    Etrue = np.load(
-        "{p}/{r}/{r}-Etrue-solvent{s}.npy".format(
-            p=path, r=args.file_root, s=args.solvent
-        )
-    )
+    
 
     if args.added_chain:
         constant_fp_added = torch.load(
             "{p}/{r}/{r}_added_chain_atoms.pt".format(p=path, r=args.file_root)
         ).to(device=device)
-
+        phitrue = np.load(
+        "{p}/{r}/{r}_allchains-phitrue-solvent{s}.npy".format(
+            p=path, r=args.file_root, s=args.solvent
+        )
+        )
+        Etrue = np.load(
+            "{p}/{r}/{r}_allchains-Etrue-solvent{s}.npy".format(
+                p=path, r=args.file_root, s=args.solvent
+            )
+        )
     else:
         constant_fp_added = None
+        phitrue = np.load(
+        "{p}/{r}/{r}-phitrue-solvent{s}.npy".format(
+            p=path, r=args.file_root, s=args.solvent
+        )
+        )
+        Etrue = np.load(
+            "{p}/{r}/{r}-Etrue-solvent{s}.npy".format(
+                p=path, r=args.file_root, s=args.solvent
+            )
+        )
 
     with open(
         "{p}/{r}/{r}_processed_feats.pickle".format(p=path, r=args.file_root), "rb"
@@ -293,7 +303,7 @@ def main():
         )
 
     # Run options
-    output_name = "{root}_it{it}_v{v}_lr{a}+{m}_batch{b}_subr{subr}_solv{solv}_scale{scale}_rbr{rbr_opt}_{rbr_lbfgs_lr}_{align}{add}".format(
+    output_name = "{root}_it{it}_v{v}_lr{a}+{m}_batch{b}_subr{subr}_solv{solv}_scale{scale}_rbr{rbr_opt}_{rbr_lbfgs_lr}_ali{align}_{add}".format(
         root=args.file_root,
         it=args.iterations,
         v=args.version,
