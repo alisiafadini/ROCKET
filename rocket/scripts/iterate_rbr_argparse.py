@@ -1,3 +1,25 @@
+"""
+Command line interface of running refinement using rocket
+
+rk.refine 
+    --path             xxxxx             # Path to the parent folder
+    --file_root        xxxxx             # Dataset name in the path folder
+    --version          1                 # Bias version of implementation, 1, 2 or 3
+    --iterations       300               # Number of refinement steps
+    --solvent                            # Turn on the solvent in the llgloss calculation
+    --scale                              # Turn on the SFC update_scale in each step
+    --lr_add           1e-3              # Learning rate of msa_bias
+    --lr_mul           1e-2              # Learning rate of msa_weights
+    --sub_ratio        1.0               # Ratio of reflections for each batch
+    --batches          1                 # Number of batches at each step
+    --rbr_opt          'lbfgs'           # Using 'lbfgs' or 'adam' in the rbr optimization
+    --rbr_lbfgs_lr     150.0             # Learning rate of lbfgs used in RBR
+    --align            'B'               # Kabsch to best (B) or initial (I)
+    --note             xxxx              # Additional notes used in output name
+    --free_flag        'R-free-flags'    # Coloum name for the free flag in mtz file
+    --added_chain                        # Turn on additional chain in the asu
+"""
+
 import copy
 import torch
 import pickle
@@ -20,6 +42,13 @@ def parse_arguments():
         formatter_class=argparse.RawTextHelpFormatter, description=__doc__
     )
 
+    parser.add_argument(
+        "-p",
+        "--path",
+        default="/net/cci/alisia/openfold_tests/run_openfold/test_cases",
+        help=("Path to the parent folder"),
+    )
+    
     # Required arguments
     parser.add_argument(
         "-root",
@@ -45,18 +74,17 @@ def parse_arguments():
     )
 
     # Optional arguments
-
     parser.add_argument("-c", "--cuda", type=int, default=0, help="Cuda device")
     parser.add_argument(
         "-solv",
         "--solvent",
-        help="Solvent calculation in refinement step. Default False.",
+        help="Turn on solvent calculation in refinement step",
         action=argparse.BooleanOptionalAction,
     )
     parser.add_argument(
         "-s",
         "--scale",
-        help="Update scales at each epoch",
+        help="Turn on SFC scale_update at each epoch",
         action=argparse.BooleanOptionalAction,
     )
 
@@ -90,6 +118,20 @@ def parse_arguments():
         type=int,
         default=1,
         help=("Number of batches. Default 1 (no batching)"),
+    )
+
+    parser.add_argument(
+        "--rbr_opt",
+        type=str,
+        default="lbfgs",
+        help=("Optimization algorithm used in RBR, lbfgs or adam"),
+    )
+
+    parser.add_argument(
+        "--rbr_lbfgs_lr",
+        type=float,
+        default=150.0,
+        help=("Learning rate of lbfgs used in RBR"),
     )
 
     parser.add_argument(
@@ -135,11 +177,16 @@ def main():
     preset = "model_1"
     device = "cuda:{}".format(args.cuda)
 
-    # Using LBFGS in RBR or not
-    RBR_LBFGS = True
+    # Using LBFGS or Adam in RBR
+    if args.rbr_opt == "lbfgs":
+        RBR_LBFGS = True
+    elif args.rbr_opt == "adam":
+        RBR_LBFGS = False
+    else:
+        raise ValueError("rbr_opt only supports lbfgs or adam")
 
     # Load external files
-    path = "/net/cci/alisia/openfold_tests/run_openfold/test_cases"
+    path = args.path
     tng_file = "{p}/{r}/{r}-tng_withrfree.mtz".format(p=path, r=args.file_root)
     input_pdb = "{p}/{r}/{r}-pred-aligned.pdb".format(p=path, r=args.file_root)
     true_pdb = "{p}/{r}/{r}_noalts.pdb".format(p=path, r=args.file_root)
@@ -246,7 +293,7 @@ def main():
         )
 
     # Run options
-    output_name = "{root}_it{it}_v{v}_lr{a}+{m}_batch{b}_subr{subr}_solv{solv}_scale{scale}_{align}{add}".format(
+    output_name = "{root}_it{it}_v{v}_lr{a}+{m}_batch{b}_subr{subr}_solv{solv}_scale{scale}_rbr{rbr_opt}_{rbr_lbfgs_lr}_{align}{add}".format(
         root=args.file_root,
         it=args.iterations,
         v=args.version,
@@ -256,6 +303,8 @@ def main():
         subr=args.sub_ratio,
         solv=args.solvent,
         scale=args.scale,
+        rbr_opt=args.rbr_opt,
+        rbr_lbfgs_lr=args.rbr_lbfgs_lr,
         align=args.align,
         add=args.note,
     )
@@ -321,9 +370,10 @@ def main():
         cra_calphas_list, calphas_mask = rk_coordinates.select_CA_from_craname(
             sfc.cra_name
         )
-
+        
         # (2) Convert residue names to residue numbers
         residue_numbers = [int(name.split("-")[1]) for name in cra_calphas_list]
+
         # (3) Calculate total MSE loss
         total_mse_loss = rk_coordinates.calculate_mse_loss_per_residue(
             aligned_xyz[calphas_mask], true_pos[calphas_mask], residue_numbers
@@ -360,7 +410,7 @@ def main():
 
         # Rigid body refinement (RBR) step
         optimized_xyz, loss_track_pose = rk_coordinates.rigidbody_refine_quat(
-            aligned_xyz, llgloss, lbfgs=RBR_LBFGS, added_chain=constant_fp_added
+            aligned_xyz, llgloss, lbfgs=RBR_LBFGS, added_chain=constant_fp_added, lbfgs_lr=args.rbr_lbfgs_lr,
         )
         rbr_loss_by_epoch.append(loss_track_pose)
 
