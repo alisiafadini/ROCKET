@@ -35,9 +35,35 @@ def rigidbody_refine(xyz, llgloss):
     return optimized_xyz, loss_track_pose
 """
 
+def rigidbody_refine_quat(xyz, llgloss, lbfgs=False, added_chain=None, lbfgs_lr=150.0):
+    propose_rmcom = xyz - torch.mean(xyz, dim=0)
+    propose_com = torch.mean(xyz, dim=0)
+    # llgloss.sfc.get_scales_lbfgs()
+    if lbfgs:
+        trans_vec, q, loss_track_pose = find_rigidbody_matrix_lbfgs_quat(
+            llgloss,
+            propose_com.clone().detach(),
+            propose_rmcom.clone().detach(),
+            llgloss.device,
+            added_chain=added_chain,
+            lbfgs_lr=lbfgs_lr
+        )
+    else:
+        trans_vec, q, loss_track_pose = find_rigidbody_matrix_adam_quat(
+            llgloss,
+            propose_com.clone().detach(),
+            propose_rmcom.clone().detach(),
+            llgloss.device,
+            added_chain=added_chain,
+        )
+    transform = quaternions_to_SO3(q)
+    optimized_xyz = torch.matmul(propose_rmcom, transform) + propose_com + trans_vec
+
+    return optimized_xyz, loss_track_pose
+
 
 def find_rigidbody_matrix_lbfgs_quat(
-    llgloss, propose_com, propose_rmcom, device, added_chain=None
+    llgloss, propose_com, propose_rmcom, device, added_chain=None, lbfgs_lr=150.0,
 ):
     q = torch.tensor(
         [1.0, 0.0, 0.0, 0.0], dtype=torch.float32, device=device, requires_grad=True
@@ -51,38 +77,31 @@ def find_rigidbody_matrix_lbfgs_quat(
         propose_com,
         propose_rmcom,
         loss_track=[],
+        lr=lbfgs_lr,
         added_chain=added_chain,
     )
-    print(loss_track_pose)
+    print("RBR Trace", loss_track_pose, flush=True)
     return trans_vec, q, loss_track_pose
 
 
-def rigidbody_refine_quat(xyz, llgloss, lbfgs=False, added_chain=None):
-    propose_rmcom = xyz - torch.mean(xyz, dim=0)
-    propose_com = torch.mean(xyz, dim=0)
-
-    # llgloss.sfc.get_scales_lbfgs()
-    if lbfgs:
-        trans_vec, q, loss_track_pose = find_rigidbody_matrix_lbfgs_quat(
-            llgloss,
-            propose_com.clone().detach(),
-            propose_rmcom.clone().detach(),
-            llgloss.device,
-            added_chain=added_chain,
-        )
-    else:
-        trans_vec, rot_v1, rot_v2, loss_track_pose = find_rigidbody_matrix(
-            llgloss,
-            propose_com.clone().detach(),
-            propose_rmcom.clone().detach(),
-            llgloss.device,
-            added_chain=added_chain,
-        )
-
-    transform = quaternions_to_SO3(q)
-    optimized_xyz = torch.matmul(propose_rmcom, transform) + propose_com + trans_vec
-
-    return optimized_xyz, loss_track_pose
+def find_rigidbody_matrix_adam_quat(
+    llgloss, propose_com, propose_rmcom, device, added_chain=None
+):
+    q = torch.tensor(
+        [1.0, 0.0, 0.0, 0.0], dtype=torch.float32, device=device, requires_grad=True
+    )
+    trans_vec = torch.tensor([0.0, 0.0, 0.0], device=device, requires_grad=True)
+    loss_track_pose = pose_train_adam_quat(
+        llgloss,
+        q,
+        trans_vec,
+        propose_com,
+        propose_rmcom,
+        loss_track=[],
+        added_chain=added_chain,
+    )
+    print("RBR Trace", loss_track_pose, flush=True)
+    return trans_vec, q, loss_track_pose
 
 
 def pose_train_lbfgs_quat(
@@ -108,7 +127,6 @@ def pose_train_lbfgs_quat(
             solvent=False,
             added_chain=added_chain,
         )
-
         loss.backward()
         return loss
 
@@ -119,57 +137,102 @@ def pose_train_lbfgs_quat(
         tolerance_change=1e-3,
         max_iter=1,
     )
-
+    start_time = time.time()
     for k in range(n_steps):
         temp = optimizer.step(closure)
         loss_track.append(temp.item())
-
-    print(f"Step {k+1}/{n_steps} - Loss: {temp.item()}")
+    elapsed_time = time.time() - start_time
+    print(f"LBFGS RBR, {n_steps} steps, time taken: {elapsed_time:.4f} seconds", flush=True)
     return loss_track
 
 
-def rigidbody_refine(xyz, llgloss, lbfgs=False):
-    propose_rmcom = xyz - torch.mean(xyz, dim=0)
-    propose_com = torch.mean(xyz, dim=0)
+# def rigidbody_refine(xyz, llgloss, lbfgs=False):
+#     propose_rmcom = xyz - torch.mean(xyz, dim=0)
+#     propose_com = torch.mean(xyz, dim=0)
 
-    # llgloss.sfc.get_scales_lbfgs()
-    if lbfgs:
-        trans_vec, rot_v1, rot_v2, loss_track_pose = find_rigidbody_matrix_lbfgs(
-            llgloss,
-            propose_com.clone().detach(),
-            propose_rmcom.clone().detach(),
-            llgloss.device,
-        )
-    else:
-        trans_vec, rot_v1, rot_v2, loss_track_pose = find_rigidbody_matrix(
-            llgloss,
-            propose_com.clone().detach(),
-            propose_rmcom.clone().detach(),
-            llgloss.device,
-        )
+#     # llgloss.sfc.get_scales_lbfgs()
+#     if lbfgs:
+#         trans_vec, rot_v1, rot_v2, loss_track_pose = find_rigidbody_matrix_lbfgs(
+#             llgloss,
+#             propose_com.clone().detach(),
+#             propose_rmcom.clone().detach(),
+#             llgloss.device,
+#         )
+#     else:
+#         trans_vec, rot_v1, rot_v2, loss_track_pose = find_rigidbody_matrix(
+#             llgloss,
+#             propose_com.clone().detach(),
+#             propose_rmcom.clone().detach(),
+#             llgloss.device,
+#         )
 
-    transform = construct_SO3(rot_v1, rot_v2)
-    optimized_xyz = torch.matmul(propose_rmcom, transform) + propose_com + trans_vec
+#     transform = construct_SO3(rot_v1, rot_v2)
+#     optimized_xyz = torch.matmul(propose_rmcom, transform) + propose_com + trans_vec
 
-    return optimized_xyz, loss_track_pose
+#     return optimized_xyz, loss_track_pose
+
+def pose_train_adam_quat(
+    llgloss,
+    q,
+    trans_vec,
+    propose_com,
+    propose_rmcom,
+    lr=1e-3,
+    n_steps=100,
+    loss_track=[],
+    added_chain=None
+):
+    def pose_steptrain(optimizer):
+        optimizer.zero_grad()
+        temp_R = quaternions_to_SO3(q)
+        temp_model = torch.matmul(propose_rmcom, temp_R) + propose_com + trans_vec
+        loss = -llgloss(
+            temp_model,
+            bin_labels=None,
+            num_batch=1,
+            sub_ratio=1.0,
+            solvent=False,
+            added_chain=added_chain,
+            )
+        loss.backward()
+        optimizer.step()
+        return loss.item()
+    start_time = time.time()
+    optimizer = torch.optim.Adam([q, trans_vec], lr=lr)
+    for k in range(n_steps):
+        # start_time = time.time()
+        temp = pose_steptrain(optimizer)
+        # elapsed_time = time.time() - start_time
+        loss_track.append(temp)
+    elapsed_time = time.time() - start_time
+    print(f"Adam RBR, {n_steps} steps, time taken: {elapsed_time:.4f} seconds", flush=True)
+    return loss_track
 
 
-def pose_train(
+def pose_train_adam_matrix(
     llgloss,
     rot_v1,
     rot_v2,
     trans_vec,
     propose_com,
     propose_rmcom,
-    lr=5e-4,
-    n_steps=500,
+    lr=1e-3,
+    n_steps=100,
     loss_track=[],
+    added_chain=None
 ):
     def pose_steptrain(optimizer):
+        optimizer.zero_grad()
         temp_R = construct_SO3(rot_v1, rot_v2)
         temp_model = torch.matmul(propose_rmcom, temp_R) + propose_com + trans_vec
-        loss = -llgloss(temp_model, bin_labels=None, num_batch=1, sub_ratio=1.1)
-        optimizer.zero_grad()
+        loss = -llgloss(
+            temp_model,
+            bin_labels=None,
+            num_batch=1,
+            sub_ratio=1.0,
+            solvent=False,
+            added_chain=added_chain,
+            )
         loss.backward()
         optimizer.step()
         return loss.item()
@@ -183,7 +246,7 @@ def pose_train(
         loss_track.append(temp)
 
     elapsed_time = time.time() - start_time
-    print(f"Step {k+1}/{n_steps} - Time taken: {elapsed_time:.4f} seconds")
+    print(f"Step {k+1}/{n_steps} - Time taken: {elapsed_time:.4f} seconds, Loss: {temp:.3f}")
 
     return loss_track
 
@@ -284,7 +347,7 @@ def pose_train(
 """
 
 
-def find_rigidbody_matrix(llgloss, propose_com, propose_rmcom, device):
+def find_rigidbody_matrix_adam(llgloss, propose_com, propose_rmcom, device, added_chain):
     q = torch.tensor([1.0, 0.0, 0.0, 0.0], dtype=torch.float32)
     unit_R = quaternions_to_SO3(q)
     v1, v2 = decompose_SO3(unit_R)
@@ -292,7 +355,7 @@ def find_rigidbody_matrix(llgloss, propose_com, propose_rmcom, device):
     rot_v2 = torch.tensor(utils.assert_numpy(v2), device=device, requires_grad=True)
     trans_vec = torch.tensor([0.0, 0.0, 0.0], device=device, requires_grad=True)
 
-    loss_track_pose = pose_train(
+    loss_track_pose = pose_train_adam_matrix(
         llgloss,
         rot_v1,
         rot_v2,
@@ -300,6 +363,7 @@ def find_rigidbody_matrix(llgloss, propose_com, propose_rmcom, device):
         propose_com,
         propose_rmcom,
         loss_track=[],
+        added_chain=added_chain
     )
     return trans_vec, rot_v1, rot_v2, loss_track_pose
 
