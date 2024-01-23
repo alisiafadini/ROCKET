@@ -192,12 +192,12 @@ def main():
     true_pdb = "{p}/{r}/{r}_noalts.pdb".format(p=path, r=args.file_root)
 
     phitrue = np.load(
-        "{p}/{r}/{r}_allchains-phitrue-solvent{s}.npy".format(
+        "{p}/{r}/{r}-phitrue-solvent{s}.npy".format(
             p=path, r=args.file_root, s=args.solvent
         )
     )
     Etrue = np.load(
-        "{p}/{r}/{r}_allchains-Etrue-solvent{s}.npy".format(
+        "{p}/{r}/{r}-Etrue-solvent{s}.npy".format(
             p=path, r=args.file_root, s=args.solvent
         )
     )
@@ -318,6 +318,8 @@ def main():
     rbr_loss_by_epoch = []
     sigmas_by_epoch = []
     llg_losses = []
+    rfree_by_epoch = []
+    rwork_by_epoch = []
     all_pldtts = []
     mean_it_plddts = []
     absolute_msa_changes = []
@@ -427,6 +429,8 @@ def main():
 
         llg_estimate = loss.item() / (args.sub_ratio * args.batches)
         llg_losses.append(llg_estimate)
+        rwork_by_epoch.append(llgloss.sfc.r_work.item())
+        rfree_by_epoch.append(llgloss.sfc.r_free.item())
 
         llgloss.sfc.atom_pos_orth = optimized_xyz
         # Save postRBR PDB
@@ -490,6 +494,26 @@ def main():
             out=output_name,
         ),
         rk_utils.assert_numpy(mse_losses_by_epoch),
+    )
+
+    # R work per iteration
+    np.save(
+        "{path}/{r}/outputs/{out}/rwork_it.npy".format(
+            path=path,
+            r=args.file_root,
+            out=output_name,
+        ),
+        rk_utils.assert_numpy(rwork_by_epoch),
+    )
+
+    # R free per iteration
+    np.save(
+        "{path}/{r}/outputs/{out}/rfree_it.npy".format(
+            path=path,
+            r=args.file_root,
+            out=output_name,
+        ),
+        rk_utils.assert_numpy(rfree_by_epoch),
     )
 
     # Absolute MSA change per column per iteration
