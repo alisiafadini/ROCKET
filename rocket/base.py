@@ -23,7 +23,7 @@ class MSABiasAFv1(AlphaFold):
         self,
         config,
         preset,
-        params_root="/net/cci-gpu-00/raid1/scratch1/alisia/programs/openfold/openfold_xtal/openfold/resources/params/",
+        params_root="/net/holy-nfsisilon/ifs/rc_labs/hekstra_lab/people/minhuan/projects/AF2_refine/openfold_xtal/openfold/resources/params/",
     ):
         super(MSABiasAFv1, self).__init__(config)
 
@@ -58,18 +58,18 @@ class MSABiasAFv1(AlphaFold):
                 if re.match(skip_str, name) is None:
                     params.requires_grad_(True)
 
-    def _biasMSA(self, feats):
+    def _bias(self, feats):
         feats["msa_feat"][:, :, 25:48] = (
             feats["msa_feat"][:, :, 25:48] + feats["msa_feat_bias"]
         )
         return feats
 
-    def iteration(self, feats, prevs, _recycle=True, biasMSA=True):
-        if biasMSA:
-            feats = self._biasMSA(feats)
+    def iteration(self, feats, prevs, _recycle=True, bias=True):
+        if bias:
+            feats = self._bias(feats)
         return super(MSABiasAFv1, self).iteration(feats, prevs, _recycle)
 
-    def forward(self, batch, num_iters=1, biasMSA=True):
+    def forward(self, batch, num_iters=1, bias=True):
         """
         Args:
             batch:
@@ -100,7 +100,7 @@ class MSABiasAFv1(AlphaFold):
 
                 # Run the next iteration of the model
                 outputs, m_1_prev, z_prev, x_prev = self.iteration(
-                    feats, prevs, _recycle=(num_iters > 1), biasMSA=biasMSA
+                    feats, prevs, _recycle=(num_iters > 1), bias=bias
                 )
 
                 if not is_final_iter:
@@ -133,7 +133,7 @@ class MSABiasAFv2(MSABiasAFv1):
         return feats
     """
 
-    def _biasMSA(self, feats):
+    def _bias(self, feats):
         feats["msa_feat"][:, :, 25:48] = (
             torch.einsum(
                 "ijk,in->njk",
@@ -150,9 +150,35 @@ class MSABiasAFv3(MSABiasAFv1):
     AlphaFold with trainable bias + trainable linear combination in MSA space
     """
 
-    def _biasMSA(self, feats):
+    def _bias(self, feats):
         feats["msa_feat"][:, :, 25:48] = (
             feats["msa_feat"][:, :, 25:48].clone() * feats["msa_feat_weights"]
             + feats["msa_feat_bias"]
         )
         return feats
+
+
+class TemplateBiasAF(MSABiasAFv1):
+    """
+    AlphaFold with trainable bias in template representation
+    """
+    def _bias(self, feats):
+        # TODO: make sure the following operations are valid, Values in feature have to be mapped into -1.0 - 1.0
+        # angle_mask = feats["template_torsion_angles_mask"] == 1
+        # feats["template_torsion_angles_sin_cos"][angle_mask] = (
+        #     feats["template_torsion_angles_sin_cos"][angle_mask].clone() + feats["template_torsion_angles_sin_cos_bias"][angle_mask]
+        # )
+        # feats["template_torsion_angles_sin_cos"][angle_mask] = (
+        #     feats["template_torsion_angles_sin_cos"][angle_mask] / torch.linalg.norm(feats["template_torsion_angles_sin_cos"][angle_mask], dim=-1, keepdim=True)
+        # )
+        feats["template_torsion_angles_sin_cos"]= (
+            feats["template_torsion_angles_sin_cos"].clone() + feats["template_torsion_angles_sin_cos_bias"]
+        )
+        feats["template_all_atom_positions"] = (
+            feats["template_all_atom_positions"].clone() + feats["template_all_atom_positions_bias"]
+        )
+        return feats
+
+
+    
+    
