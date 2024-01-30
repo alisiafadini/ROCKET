@@ -23,7 +23,7 @@ class MSABiasAFv1(AlphaFold):
         self,
         config,
         preset,
-        params_root="/net/holy-nfsisilon/ifs/rc_labs/hekstra_lab/people/minhuan/projects/AF2_refine/openfold_xtal/openfold/resources/params/",
+        params_root="/net/cci-gpu-00/raid1/scratch1/alisia/programs/openfold/openfold_xtal/openfold/resources/params/",
     ):
         super(MSABiasAFv1, self).__init__(config)
 
@@ -162,6 +162,7 @@ class TemplateBiasAF(MSABiasAFv1):
     """
     AlphaFold with trainable bias in template representation
     """
+
     def _bias(self, feats):
         # TODO: make sure the following operations are valid, Values in feature have to be mapped into -1.0 - 1.0
         # angle_mask = feats["template_torsion_angles_mask"] == 1
@@ -171,14 +172,12 @@ class TemplateBiasAF(MSABiasAFv1):
         # feats["template_torsion_angles_sin_cos"][angle_mask] = (
         #     feats["template_torsion_angles_sin_cos"][angle_mask] / torch.linalg.norm(feats["template_torsion_angles_sin_cos"][angle_mask], dim=-1, keepdim=True)
         # )
-        feats["template_torsion_angles_sin_cos"]= (
-            feats["template_torsion_angles_sin_cos"].clone() + feats["template_torsion_angles_sin_cos_bias"]
+        feats["template_torsion_angles_sin_cos"] = (
+            feats["template_torsion_angles_sin_cos"].clone()
+            + feats["template_torsion_angles_sin_cos_bias"]
         )
         feats["template_all_atom_positions"] = (
-            feats["template_all_atom_positions"].clone() + feats["template_all_atom_positions_bias"]
+            feats["template_all_atom_positions"].clone()
+            + feats["template_all_atom_positions_bias"]
         )
         return feats
-
-
-    
-    
