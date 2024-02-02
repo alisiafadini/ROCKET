@@ -1,6 +1,7 @@
 # Top Level API
-from rocket.base import MSABiasAFv1,MSABiasAFv2,MSABiasAFv3
+from rocket.base import MSABiasAFv1,MSABiasAFv2,MSABiasAFv3,TemplateBiasAF
 from rocket.llg.targets import LLGloss
+from rocket.helper import make_processed_dict_from_template
 
 # Submodules
 from rocket import utils

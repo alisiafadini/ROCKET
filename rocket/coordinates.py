@@ -561,7 +561,7 @@ def extract_allatoms(outputs, feats, cra_name_sfc: list):
     aatype = feats[
         "aatype"
     ]  # TODO: tackle the match between UNK and real non-standard aa name from SFC
-    aatype_1d = res_names[utils.assert_numpy(aatype[:, 1], arr_type=int)]
+    aatype_1d = res_names[utils.assert_numpy(aatype[:, 0], arr_type=int)]
     chain_resid = np.array(
         ["A-" + str(i) + "-" for i in range(n_res)]
     )  # TODO: here we assume all residues in same chain A
