@@ -57,15 +57,7 @@ def parse_arguments():
         "--lr_1",
         type=float,
         default=1e-2,
-        help=("Learning rate for additive bias. Default 1e-3"),
-    )
-
-    parser.add_argument(
-        "-lr_2",
-        "--lr_2",
-        type=float,
-        default=1e-2,
-        help=("Learning rate for multiplicative bias. Default 1e-2"),
+        help=("Learning rate for angle bias. Default 1e-3"),
     )
 
     parser.add_argument(
@@ -131,7 +123,7 @@ def main():
     RBR_LBFGS = True
 
     # Load external files
-    path = "/net/cci/alisia/openfold_tests/run_openfold/test_cases"
+    path = "/net/holy-nfsisilon/ifs/rc_labs/hekstra_lab/people/minhuan/projects/AF2_refine/ROCKET/dev/test_cases"
     tng_file = "{p}/{r}/{r}-tng_withrfree.mtz".format(p=path, r=args.file_root)
     input_pdb = "{p}/{r}/{r}-pred-aligned.pdb".format(p=path, r=args.file_root)
     true_pdb = "{p}/{r}/{r}_noalts.pdb".format(p=path, r=args.file_root)
@@ -185,22 +177,22 @@ def main():
         device=device,
     )
 
-    processed_dict["template_all_atom_positions_bias"] = torch.zeros_like(
-        processed_dict["template_all_atom_positions"], requires_grad=True, device=device
-    )
+    # processed_dict["template_all_atom_positions_bias"] = torch.zeros_like(
+    #     processed_dict["template_all_atom_positions"], requires_grad=True, device=device
+    # )
 
     # Optimizer settings and initialization
     lr_1 = args.lr_1
-    lr_2 = args.lr_2
+    # lr_2 = args.lr_2
     version = "temp"
 
     # Run options
-    output_name = "{root}_it{it}_v{v}_lr{a}+{m}_batch{b}_subr{subr}_solv{solv}_scale{scale}_{align}{add}".format(
+    output_name = "{root}_it{it}_v{v}_lr{a}_batch{b}_subr{subr}_solv{solv}_scale{scale}_{align}{add}".format(
         root=args.file_root,
         it=args.iterations,
         v=version,
         a=args.lr_1,
-        m=args.lr_2,
+        # m=args.lr_2,
         b=args.batches,
         subr=args.sub_ratio,
         solv=args.solvent,
@@ -215,7 +207,7 @@ def main():
                 "params": processed_dict["template_torsion_angles_sin_cos_bias"],
                 "lr": lr_1,
             },
-            {"params": processed_dict["template_all_atom_positions_bias"], "lr": lr_2},
+            # {"params": processed_dict["template_all_atom_positions_bias"], "lr": lr_2},
         ]
     )
 
@@ -251,9 +243,9 @@ def main():
         working_batch["template_torsion_angles_sin_cos_bias"] = processed_dict[
             "template_torsion_angles_sin_cos_bias"
         ].clone()
-        working_batch["template_all_atom_positions_bias"] = processed_dict[
-            "template_all_atom_positions_bias"
-        ].clone()
+        # working_batch["template_all_atom_positions_bias"] = processed_dict[
+        #     "template_all_atom_positions_bias"
+        # ].clone()
 
         # AF2 pass
         af2_output = af_bias(working_batch, num_iters=1, bias=True)
