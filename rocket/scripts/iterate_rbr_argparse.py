@@ -1,3 +1,26 @@
+"""
+Command line interface of running refinement using rocket
+
+rk.refine 
+    --path             xxxxx             # Path to the parent folder
+    --file_root        xxxxx             # Dataset folder name in the parent folder
+    --version          1                 # Bias version of implementation, 1, 2 or 3 or 4 (template)
+    --template_pdb     xxxx.pdb          # Name of template pdb file in the file_root
+    --iterations       300               # Number of refinement steps
+    --lr_add           1e-3              # Learning rate of msa_bias
+    --lr_mul           1e-2              # Learning rate of msa_weights
+    --sub_ratio        1.0               # Ratio of reflections for each batch
+    --batches          1                 # Number of batches at each step
+    --rbr_opt          'lbfgs'           # Using 'lbfgs' or 'adam' in the rbr optimization
+    --rbr_lbfgs_lr     150.0             # Learning rate of lbfgs used in RBR
+    --align            'B'               # Kabsch to best (B) or initial (I)
+    --note             xxxx              # Additional notes used in output name
+    --free_flag        'R-free-flags'    # Coloum name for the free flag in mtz file
+    --solvent or --no-solvent            # Turn on the solvent in the llgloss calculation
+    --scale   or --no-scale              # Turn on the SFC update_scale in each step
+    --added_chain                        # Turn on additional chain in the asu
+"""
+
 import copy
 import torch
 import pickle
@@ -13,6 +36,7 @@ from rocket.llg import structurefactors as llg_sf
 from openfold.config import model_config
 import pickle
 
+PRESET = "model_1"
 
 def parse_arguments():
     """Parse commandline arguments"""
@@ -20,6 +44,13 @@ def parse_arguments():
         formatter_class=argparse.RawTextHelpFormatter, description=__doc__
     )
 
+    parser.add_argument(
+        "-p",
+        "--path",
+        default="/net/cci/alisia/openfold_tests/run_openfold/test_cases",
+        help=("Path to the parent folder"),
+    )
+    
     # Required arguments
     parser.add_argument(
         "-root",
@@ -33,7 +64,7 @@ def parse_arguments():
         "--version",
         required=True,
         type=int,
-        help=("Bias version to implement (1, 2, 3)"),
+        help=("Bias version to implement (1, 2, 3, 4)"),
     )
 
     parser.add_argument(
@@ -45,18 +76,24 @@ def parse_arguments():
     )
 
     # Optional arguments
+    parser.add_argument(
+        "-temp",
+        "--template_pdb",
+        default=None,
+        help=("Name of template pdb file in the file_root"),
+    )
 
     parser.add_argument("-c", "--cuda", type=int, default=0, help="Cuda device")
     parser.add_argument(
         "-solv",
         "--solvent",
-        help="Solvent calculation in refinement step. Default False.",
+        help="Turn on solvent calculation in refinement step",
         action=argparse.BooleanOptionalAction,
     )
     parser.add_argument(
         "-s",
         "--scale",
-        help="Update scales at each epoch",
+        help="Turn on SFC scale_update at each epoch",
         action=argparse.BooleanOptionalAction,
     )
 
@@ -90,6 +127,20 @@ def parse_arguments():
         type=int,
         default=1,
         help=("Number of batches. Default 1 (no batching)"),
+    )
+
+    parser.add_argument(
+        "--rbr_opt",
+        type=str,
+        default="lbfgs",
+        help=("Optimization algorithm used in RBR, lbfgs or adam"),
+    )
+
+    parser.add_argument(
+        "--rbr_lbfgs_lr",
+        type=float,
+        default=150.0,
+        help=("Learning rate of lbfgs used in RBR"),
     )
 
     parser.add_argument(
@@ -132,48 +183,69 @@ def main():
     args = parse_arguments()
 
     # General settings
-    preset = "model_1"
     device = "cuda:{}".format(args.cuda)
 
-    # Using LBFGS in RBR or not
-    RBR_LBFGS = True
+    # Using LBFGS or Adam in RBR
+    if args.rbr_opt == "lbfgs":
+        RBR_LBFGS = True
+    elif args.rbr_opt == "adam":
+        RBR_LBFGS = False
+    else:
+        raise ValueError("rbr_opt only supports lbfgs or adam")
 
     # Load external files
-    path = "/net/cci/alisia/openfold_tests/run_openfold/test_cases"
+    path = args.path
     tng_file = "{p}/{r}/{r}-tng_withrfree.mtz".format(p=path, r=args.file_root)
     input_pdb = "{p}/{r}/{r}-pred-aligned.pdb".format(p=path, r=args.file_root)
     true_pdb = "{p}/{r}/{r}_noalts.pdb".format(p=path, r=args.file_root)
 
-    phitrue = np.load(
-        "{p}/{r}/{r}_allchains-phitrue-solvent{s}.npy".format(
-            p=path, r=args.file_root, s=args.solvent
-        )
-    )
-    Etrue = np.load(
-        "{p}/{r}/{r}_allchains-Etrue-solvent{s}.npy".format(
-            p=path, r=args.file_root, s=args.solvent
-        )
-    )
-
+    
     if args.added_chain:
         constant_fp_added = torch.load(
             "{p}/{r}/{r}_added_chain_atoms.pt".format(p=path, r=args.file_root)
         ).to(device=device)
-
+        phitrue = np.load(
+        "{p}/{r}/{r}_allchains-phitrue-solvent{s}.npy".format(
+            p=path, r=args.file_root, s=args.solvent
+        )
+        )
+        Etrue = np.load(
+            "{p}/{r}/{r}_allchains-Etrue-solvent{s}.npy".format(
+                p=path, r=args.file_root, s=args.solvent
+            )
+        )
     else:
         constant_fp_added = None
+        phitrue = np.load(
+        "{p}/{r}/{r}-phitrue-solvent{s}.npy".format(
+            p=path, r=args.file_root, s=args.solvent
+        )
+        )
+        Etrue = np.load(
+            "{p}/{r}/{r}-Etrue-solvent{s}.npy".format(
+                p=path, r=args.file_root, s=args.solvent
+            )
+        )
 
-    with open(
-        "{p}/{r}/{r}_processed_feats.pickle".format(p=path, r=args.file_root), "rb"
-    ) as file:
-        # Load the data from the pickle file
-        processed_features = pickle.load(file)
+    if args.version == 4:
+        device_processed_features = rocket.make_processed_dict_from_template(
+        template_pdb="{p}/{r}/{t}".format(p=path, r=args.file_root, t=args.template_pdb), 
+        config_preset=PRESET,
+        device=device,
+        msa_dict=None,
+        )
+    else:
+        with open(
+            "{p}/{r}/{r}_processed_feats.pickle".format(p=path, r=args.file_root), "rb"
+        ) as file:
+            # Load the data from the pickle file
+            processed_features = pickle.load(file)
 
-    device_processed_features = rk_utils.move_tensors_to_device(
-        processed_features, device=device
-    )
-    # TODO: this still takes up memory in original device?
-    del processed_features
+        device_processed_features = rk_utils.move_tensors_to_device(
+            processed_features, device=device
+        )
+        # TODO: this still takes up memory in original device?
+        del processed_features
 
     # SFC initialization, only have to do it once
     sfc = llg_sf.initial_SFC(
@@ -198,9 +270,10 @@ def main():
         1: rocket.MSABiasAFv1,
         2: rocket.MSABiasAFv2,
         3: rocket.MSABiasAFv3,
+        4: rocket.TemplateBiasAF,
     }
     af_bias = version_to_class[args.version](
-        model_config(preset, train=True), preset
+        model_config(PRESET, train=True), PRESET
     ).to(device)
     af_bias.freeze()  # Free all AF2 parameters to save time
 
@@ -213,7 +286,23 @@ def main():
     lr_a = args.lr_add
     lr_m = args.lr_mul
 
-    if args.version == 3:
+    if args.version == 4:
+        device_processed_features["template_torsion_angles_sin_cos_bias"] = torch.zeros_like(
+        device_processed_features["template_torsion_angles_sin_cos"],
+        requires_grad=True,
+        device=device,
+        )
+        optimizer = torch.optim.Adam(
+            [
+                {
+                    "params": device_processed_features["template_torsion_angles_sin_cos_bias"],
+                    "lr": lr_a,
+                },
+            ]
+        )
+        bias_names = ["template_torsion_angles_sin_cos_bias"]
+    
+    elif args.version == 3:
         # Initiate multiplicative cluster bias
         msa_params_weights = torch.ones(
             (512, num_res, 23), requires_grad=True, device=device
@@ -227,6 +316,8 @@ def main():
                 {"params": device_processed_features["msa_feat_weights"], "lr": lr_m},
             ]
         )
+        bias_names = ["msa_feat_bias", "msa_feat_weights"]
+
     elif args.version == 2:
         msa_params_weights = torch.eye(512, dtype=torch.float32, device=device)
         device_processed_features["msa_feat_weights"] = msa_params_weights
@@ -237,16 +328,18 @@ def main():
                 {"params": device_processed_features["msa_feat_weights"], "lr": lr_m},
             ]
         )
+        bias_names = ["msa_feat_bias", "msa_feat_weights"]
 
-    else:
+    elif args.version == 1:
         optimizer = torch.optim.Adam(
             [
                 {"params": device_processed_features["msa_feat_bias"], "lr": lr_a},
             ]
         )
+        bias_names = ["msa_feat_bias"]
 
     # Run options
-    output_name = "{root}_it{it}_v{v}_lr{a}+{m}_batch{b}_subr{subr}_solv{solv}_scale{scale}_{align}{add}".format(
+    output_name = "{root}_it{it}_v{v}_lr{a}+{m}_batch{b}_subr{subr}_solv{solv}_scale{scale}_rbr{rbr_opt}_{rbr_lbfgs_lr}_ali{align}_{add}".format(
         root=args.file_root,
         it=args.iterations,
         v=args.version,
@@ -256,6 +349,8 @@ def main():
         subr=args.sub_ratio,
         solv=args.solvent,
         scale=args.scale,
+        rbr_opt=args.rbr_opt,
+        rbr_lbfgs_lr=args.rbr_lbfgs_lr,
         align=args.align,
         add=args.note,
     )
@@ -269,9 +364,16 @@ def main():
     rbr_loss_by_epoch = []
     sigmas_by_epoch = []
     llg_losses = []
+    rfree_by_epoch = []
+    rwork_by_epoch = []
     all_pldtts = []
     mean_it_plddts = []
-    absolute_msa_changes = []
+    absolute_feats_changes = []
+
+    if args.version == 4:
+        features_at_it_start = device_processed_features["template_torsion_angles_sin_cos"][...,0].detach().clone()
+    else:
+        features_at_it_start = device_processed_features["msa_feat"][:, :, 25:48, 0].detach().clone()
 
     for iteration in tqdm(range(args.iterations)):
         optimizer.zero_grad()
@@ -292,16 +394,12 @@ def main():
         #    lr_m = 1e-3
 
         # Avoid passing through graph a second time
-        feats_copy = copy.deepcopy(device_processed_features)
-        feats_copy["msa_feat_bias"] = device_processed_features["msa_feat_bias"].clone()
-        feats_copy["msa_feat_weights"] = device_processed_features[
-            "msa_feat_weights"
-        ].clone()
-
-        msa_at_it_start = torch.mean(feats_copy["msa_feat"][:, :, 25:48, 0], dim=(0, 2))
+        working_batch = copy.deepcopy(device_processed_features)
+        for bias in bias_names:
+            working_batch[bias] = device_processed_features[bias].clone()
 
         # AF2 pass
-        af2_output = af_bias(feats_copy, num_iters=1, biasMSA=True)
+        af2_output = af_bias(working_batch, num_iters=1, biasMSA=True)
 
         # Position alignment
         xyz_orth_sfc, plddts = rk_coordinates.extract_allatoms(
@@ -321,9 +419,10 @@ def main():
         cra_calphas_list, calphas_mask = rk_coordinates.select_CA_from_craname(
             sfc.cra_name
         )
-
+        
         # (2) Convert residue names to residue numbers
         residue_numbers = [int(name.split("-")[1]) for name in cra_calphas_list]
+
         # (3) Calculate total MSE loss
         total_mse_loss = rk_coordinates.calculate_mse_loss_per_residue(
             aligned_xyz[calphas_mask], true_pos[calphas_mask], residue_numbers
@@ -360,7 +459,7 @@ def main():
 
         # Rigid body refinement (RBR) step
         optimized_xyz, loss_track_pose = rk_coordinates.rigidbody_refine_quat(
-            aligned_xyz, llgloss, lbfgs=RBR_LBFGS, added_chain=constant_fp_added
+            aligned_xyz, llgloss, lbfgs=RBR_LBFGS, added_chain=constant_fp_added, lbfgs_lr=args.rbr_lbfgs_lr,
         )
         rbr_loss_by_epoch.append(loss_track_pose)
 
@@ -377,6 +476,8 @@ def main():
 
         llg_estimate = loss.item() / (args.sub_ratio * args.batches)
         llg_losses.append(llg_estimate)
+        rwork_by_epoch.append(llgloss.sfc.r_work.item())
+        rfree_by_epoch.append(llgloss.sfc.r_free.item())
 
         llgloss.sfc.atom_pos_orth = optimized_xyz
         # Save postRBR PDB
@@ -401,14 +502,18 @@ def main():
         }
         sigmas_by_epoch.append(sigmas_dict)
 
-        # Save the absolute difference in mean contribution from each residue channel from previous iteration
-        new_mean = torch.mean(feats_copy["msa_feat"][:, :, 25:48, 0], dim=(0, 2))
-        mean_change = torch.abs(new_mean - msa_at_it_start)
-        absolute_msa_changes.append(rk_utils.assert_numpy(mean_change))
-        print("Mean absolute msa change", torch.mean(mean_change).item())
-
         loss.backward()
         optimizer.step()
+
+        # Save the absolute difference in mean contribution from each residue channel from previous iteration
+        if args.version == 4:
+            features_at_step_end = working_batch["template_torsion_angles_sin_cos"][...,0].detach().clone()
+            mean_change = torch.mean(torch.abs(features_at_step_end - features_at_it_start), dim=(0,2,3))
+        else:
+            features_at_step_end = working_batch["msa_feat"][:, :, 25:48, 0].detach().clone()
+            mean_change = torch.mean(torch.abs(features_at_step_end - features_at_it_start), dim=(0,2))
+        absolute_feats_changes.append(rk_utils.assert_numpy(mean_change))
+        print("Mean absolute feats change", torch.mean(mean_change).item())
 
     ####### Save data
 
@@ -442,6 +547,26 @@ def main():
         rk_utils.assert_numpy(mse_losses_by_epoch),
     )
 
+    # R work per iteration
+    np.save(
+        "{path}/{r}/outputs/{out}/rwork_it.npy".format(
+            path=path,
+            r=args.file_root,
+            out=output_name,
+        ),
+        rk_utils.assert_numpy(rwork_by_epoch),
+    )
+
+    # R free per iteration
+    np.save(
+        "{path}/{r}/outputs/{out}/rfree_it.npy".format(
+            path=path,
+            r=args.file_root,
+            out=output_name,
+        ),
+        rk_utils.assert_numpy(rfree_by_epoch),
+    )
+
     # Absolute MSA change per column per iteration
     np.save(
         "{path}/{r}/outputs/{out}/MSA_changes_it.npy".format(
@@ -449,7 +574,7 @@ def main():
             r=args.file_root,
             out=output_name,
         ),
-        rk_utils.assert_numpy(absolute_msa_changes),
+        rk_utils.assert_numpy(absolute_feats_changes),
     )
 
     # Mean plddt per residue (over iterations)

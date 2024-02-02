@@ -14,4 +14,9 @@ setup(name="rocket",
     url="https://github.com/alisiafadini/ROCKET",
     packages=find_packages(),
     include_package_data=True,
+    entry_points={
+        "console_scripts": [
+            "rk.refine=rocket.scripts.iterate_rbr_argparse:main",
+        ]
+    }
 )

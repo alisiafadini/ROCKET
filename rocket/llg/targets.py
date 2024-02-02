@@ -201,13 +201,15 @@ class LLGloss(torch.nn.Module):
 
         if bin_labels is None:
             bin_labels = self.unique_bins
+        
+        working_set = (~self.sfc.free_flag) & (~self.sfc.Outlier)
 
         for i, label in enumerate(bin_labels):
-            index_i = self.bin_labels == label
-            Ecalc_i = Ecalc[index_i]
-            Eob_i = self.Eobs[index_i]
-            Centric_i = self.Centric[index_i]
-            Dobs_i = self.Dobs[index_i]
+            index_i = self.bin_labels[working_set] == label
+            Ecalc_i = Ecalc[working_set][index_i]
+            Eob_i = self.Eobs[working_set][index_i]
+            Centric_i = self.Centric[working_set][index_i]
+            Dobs_i = self.Dobs[working_set][index_i]
             sigmaA_i = self.sigmaAs[i]
             for j in range(num_batch):
                 sub_boolean_mask = np.random.rand(len(Eob_i)) < sub_ratio
