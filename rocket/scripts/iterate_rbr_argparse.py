@@ -19,10 +19,10 @@ rk.refine
     --solvent or --no-solvent            # Turn on the solvent in the llgloss calculation
     --scale   or --no-scale              # Turn on the SFC update_scale in each step
     --added_chain                        # Turn on additional chain in the asu
-    --verbose                            # Print detailed log during refinement
+    --verbose                            # Be verbose during refinement
 """
 
-import copy
+import copy, warnings
 import torch
 import pickle
 import numpy as np
@@ -178,7 +178,7 @@ def parse_arguments():
 
     parser.add_argument(
         "--verbose",
-        help="print log during refinement",
+        help="Be verbose during refinement",
         action="store_true",
     )
 
@@ -206,7 +206,6 @@ def main():
     input_pdb = "{p}/{r}/{r}-pred-aligned.pdb".format(p=path, r=args.file_root)
     true_pdb = "{p}/{r}/{r}_noalts.pdb".format(p=path, r=args.file_root)
 
-    
     if args.added_chain:
         constant_fp_added = torch.load(
             "{p}/{r}/{r}_added_chain_atoms.pt".format(p=path, r=args.file_root)
@@ -362,6 +361,9 @@ def main():
         add=args.note,
     )
 
+    if not args.verbose:
+        warnings.filterwarnings("ignore")
+        
     # Initialize best variables for alignement
     best_loss = float("inf")
     best_pos = reference_pos
