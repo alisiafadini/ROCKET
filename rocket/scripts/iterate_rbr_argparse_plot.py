@@ -233,7 +233,7 @@ def main():
     fig, subfigs = plt.subplots(2, 1, figsize=(30, 14))
 
     # Plot the top heatmap (MSE_loss_matrix)
-    top_map = subfigs[0].imshow(MSE_loss_matrix.T, cmap="viridis", vmax=2.5)
+    top_map = subfigs[0].imshow(MSE_loss_matrix.T, cmap="viridis")
     subfigs[0].set_xlabel("Iteration")
     subfigs[0].set_ylabel("Residue Calpha")
     subfigs[0].set_title("MSE Loss")
