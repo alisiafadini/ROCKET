@@ -666,7 +666,7 @@ def kabsch_align_matrices(tensor1, tensor2):
 
 
 
-def select_confident_atoms(current_pos, target_pos, bfacts=None, b_thresh=500.0):
+def select_confident_atoms(current_pos, target_pos, bfacts=None, b_thresh=400.0):
     if bfacts is None:
         # If bfacts is None, set mask to all True
         reshaped_mask = torch.ones_like(current_pos, dtype=torch.bool)
