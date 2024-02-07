@@ -631,7 +631,6 @@ def extract_bfactors(prot):
 
     return np.array(b_factor_lines)
 
-
 def kabsch_align_matrices(tensor1, tensor2):
     # Center the atoms by subtracting their centroids
     centroid1 = torch.mean(tensor1, dim=0, keepdim=True)
@@ -648,16 +647,26 @@ def kabsch_align_matrices(tensor1, tensor2):
     # Calculate the rotation matrix
     rotation_matrix = torch.matmul(U, Vt)
 
+    # Ensure the determinant is positive
+    if torch.det(rotation_matrix) < 0:
+        Vt[:, -1] *= -1
+        rotation_matrix = torch.matmul(Vt.t(), U.t())
+
+    # Ensure the rotation matrix is not a reflection
+    if torch.det(rotation_matrix) < 0:
+        rotation_matrix[:, 0] *= -1
+
     return centroid1, centroid2, rotation_matrix
 
 
-def select_confident_atoms(current_pos, target_pos, bfacts=None):
+
+def select_confident_atoms(current_pos, target_pos, bfacts=None, b_thresh=500.0):
     if bfacts is None:
         # If bfacts is None, set mask to all True
         reshaped_mask = torch.ones_like(current_pos, dtype=torch.bool)
     else:
         # Boolean mask for confident atoms
-        mask = bfacts < 11.5
+        mask = bfacts < b_thresh
         reshaped_mask = mask.unsqueeze(1).expand_as(current_pos)
 
     # Select confident atoms using the mask
@@ -685,6 +694,8 @@ def align_positions(current_pos, target_pos, bfacts=None):
         current_pos_conf, target_pos_conf = select_confident_atoms(
             current_pos, target_pos, bfacts
         )
+        print("CURRENT CONFIDENT POSITION LENGTH IS", current_pos_conf.shape)
+
 
         centroid1, centroid2, rotation_matrix = kabsch_align_matrices(
             current_pos_conf, target_pos_conf
