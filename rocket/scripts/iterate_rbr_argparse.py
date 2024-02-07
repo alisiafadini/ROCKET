@@ -38,6 +38,8 @@ from openfold.config import model_config
 import pickle
 
 PRESET = "model_1"
+THRESH_B = None
+EXCLUDING_RES = None
 
 def parse_arguments():
     """Parse commandline arguments"""
@@ -425,7 +427,12 @@ def main():
         pseudo_Bs = rk_coordinates.update_bfactors(plddts)
         llgloss.sfc.atom_b_iso = pseudo_Bs.detach()
 
-        aligned_xyz = rk_coordinates.align_positions(xyz_orth_sfc, best_pos, pseudo_Bs)
+        aligned_xyz = rk_coordinates.align_positions(xyz_orth_sfc,
+                                                     best_pos,
+                                                     llgloss.sfc.cra_name,
+                                                     pseudo_Bs,
+                                                     thresh_B=THRESH_B,
+                                                     exclude_res=EXCLUDING_RES)
 
         ##### Residue MSE loss for tracking ######
         # (1) Select CAs

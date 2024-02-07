@@ -693,20 +693,33 @@ def align_tensors(tensor1, centroid1, centroid2, rotation_matrix):
     return aligned_tensor1
 
 
-def align_positions(current_pos, target_pos, bfacts=None):
+def align_positions(current_pos, target_pos, cra_name, pseudo_Bs, thresh_B=None, exclude_res=None):
     # Perform alignment of positions
-    # TO DO : add statement for when bfacts are not provided
     with torch.no_grad():
-        current_pos_conf, target_pos_conf = select_confident_atoms(
-            current_pos, target_pos, bfacts
-        )
-        print("CURRENT CONFIDENT POSITION LENGTH IS", current_pos_conf.shape)
+        # use only backbone atoms
+        backbone_bool = np.array([i.split("-")[-1] in ['N', 'CA', 'C'] for i in cra_name])
+        
+        # exclude some residues, by default 5 residues on both ends
+        resid = [int(i.split('-')[1]) for i in cra_name]
+        if exclude_res is None:
+            minid = min(resid)
+            maxid= max(resid)
+            residue_bool = np.array([(i>minid+4) and (i<(maxid-4)) for i in resid])
+        else:
+            residue_bool = np.array([i not in exclude_res for i in resid])
+        
+        # exclude flexible residues defined by pseudo_Bs
+        if thresh_B is None:
+            pesudoB_bool = np.ones_like(backbone_bool, dtype=bool)
+        else:
+            pesudoB_bool = utils.assert_numpy(pseudo_Bs < thresh_B)
+        working_set = backbone_bool & residue_bool & pesudoB_bool 
 
-
+        current_pos_conf = current_pos[working_set].detach()
+        target_pos_conf = target_pos[working_set].detach()
         centroid1, centroid2, rotation_matrix = kabsch_align_matrices(
             current_pos_conf, target_pos_conf
         )
-
     aligned_pos = align_tensors(current_pos, centroid1, centroid2, rotation_matrix)
     return aligned_pos
 
