@@ -399,7 +399,7 @@ def main():
             working_batch[bias] = device_processed_features[bias].clone()
 
         # AF2 pass
-        af2_output = af_bias(working_batch, num_iters=1, biasMSA=True)
+        af2_output = af_bias(working_batch, num_iters=1, bias=True)
 
         # Position alignment
         xyz_orth_sfc, plddts = rk_coordinates.extract_allatoms(
