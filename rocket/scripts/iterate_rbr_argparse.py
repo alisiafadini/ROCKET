@@ -19,15 +19,16 @@ rk.refine
     --solvent or --no-solvent            # Turn on the solvent in the llgloss calculation
     --scale   or --no-scale              # Turn on the SFC update_scale in each step
     --added_chain                        # Turn on additional chain in the asu
+    --verbose                            # Be verbose during refinement
 """
 
-import copy
+import copy, warnings
 import torch
 import pickle
 import numpy as np
 from tqdm import tqdm
 import rocket
-import os
+import os, time
 import argparse
 from rocket.llg import utils as llg_utils
 from rocket import coordinates as rk_coordinates
@@ -175,6 +176,12 @@ def parse_arguments():
         action=argparse.BooleanOptionalAction,
     )
 
+    parser.add_argument(
+        "--verbose",
+        help="Be verbose during refinement",
+        action="store_true",
+    )
+
     return parser.parse_args()
 
 
@@ -199,7 +206,6 @@ def main():
     input_pdb = "{p}/{r}/{r}-pred-aligned.pdb".format(p=path, r=args.file_root)
     true_pdb = "{p}/{r}/{r}_noalts.pdb".format(p=path, r=args.file_root)
 
-    
     if args.added_chain:
         constant_fp_added = torch.load(
             "{p}/{r}/{r}_added_chain_atoms.pt".format(p=path, r=args.file_root)
@@ -355,6 +361,9 @@ def main():
         add=args.note,
     )
 
+    if not args.verbose:
+        warnings.filterwarnings("ignore")
+        
     # Initialize best variables for alignement
     best_loss = float("inf")
     best_pos = reference_pos
@@ -366,6 +375,8 @@ def main():
     llg_losses = []
     rfree_by_epoch = []
     rwork_by_epoch = []
+    time_by_epoch = []
+    memory_by_epoch = []
     all_pldtts = []
     mean_it_plddts = []
     absolute_feats_changes = []
@@ -374,8 +385,10 @@ def main():
         features_at_it_start = device_processed_features["template_torsion_angles_sin_cos"][...,0].detach().clone()
     else:
         features_at_it_start = device_processed_features["msa_feat"][:, :, 25:48, 0].detach().clone()
-
-    for iteration in tqdm(range(args.iterations)):
+    
+    progress_bar = tqdm(range(args.iterations), desc=f"version {args.version}")
+    for iteration in progress_bar:
+        start_time = time.time()
         optimizer.zero_grad()
 
         if iteration == 0:
@@ -459,7 +472,7 @@ def main():
 
         # Rigid body refinement (RBR) step
         optimized_xyz, loss_track_pose = rk_coordinates.rigidbody_refine_quat(
-            aligned_xyz, llgloss, lbfgs=RBR_LBFGS, added_chain=constant_fp_added, lbfgs_lr=args.rbr_lbfgs_lr,
+            aligned_xyz, llgloss, lbfgs=RBR_LBFGS, added_chain=constant_fp_added, lbfgs_lr=args.rbr_lbfgs_lr, verbose=args.verbose,
         )
         rbr_loss_by_epoch.append(loss_track_pose)
 
@@ -487,9 +500,17 @@ def main():
             )
         )
 
-        # TODO Rwork/Rfree?
-        print("Loss", loss.item())
-        print("LLG Estimate", llg_estimate)
+        progress_bar.set_postfix(
+                    LLG_Estimate=f"{llg_estimate:.2f}", 
+                    r_work=f"{llgloss.sfc.r_work.item():.3f}",
+                    r_free=f"{llgloss.sfc.r_free.item():.3f}",
+                    memory=f"{torch.cuda.max_memory_allocated()/1024**3:.1f}G"
+                )
+
+        # # TODO Rwork/Rfree?
+        # if args.verbose:
+        #     print("Loss", loss.item(), flush=True)
+        #     print("LLG Estimate", llg_estimate, flush=True)
 
         if args.align == "B":
             if loss < best_loss:
@@ -504,6 +525,8 @@ def main():
 
         loss.backward()
         optimizer.step()
+        time_by_epoch.append(time.time()-start_time)
+        memory_by_epoch.append(torch.cuda.max_memory_allocated()/1024**3)
 
         # Save the absolute difference in mean contribution from each residue channel from previous iteration
         if args.version == 4:
@@ -513,7 +536,7 @@ def main():
             features_at_step_end = working_batch["msa_feat"][:, :, 25:48, 0].detach().clone()
             mean_change = torch.mean(torch.abs(features_at_step_end - features_at_it_start), dim=(0,2))
         absolute_feats_changes.append(rk_utils.assert_numpy(mean_change))
-        print("Mean absolute feats change", torch.mean(mean_change).item())
+        # print("Mean absolute feats change", torch.mean(mean_change).item())
 
     ####### Save data
 
@@ -565,6 +588,24 @@ def main():
             out=output_name,
         ),
         rk_utils.assert_numpy(rfree_by_epoch),
+    )
+
+    np.save(
+        "{path}/{r}/outputs/{out}/time_it.npy".format(
+            path=path,
+            r=args.file_root,
+            out=output_name,
+        ),
+        rk_utils.assert_numpy(time_by_epoch),
+    )
+
+    np.save(
+        "{path}/{r}/outputs/{out}/memory_it.npy".format(
+            path=path,
+            r=args.file_root,
+            out=output_name,
+        ),
+        rk_utils.assert_numpy(memory_by_epoch),
     )
 
     # Absolute MSA change per column per iteration
