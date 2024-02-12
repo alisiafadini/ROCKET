@@ -23,7 +23,7 @@ class MSABiasAFv1(AlphaFold):
         self,
         config,
         preset,
-        params_root="/net/holy-nfsisilon/ifs/rc_labs/hekstra_lab/people/minhuan/projects/AF2_refine/openfold_xtal/openfold/resources/params/",
+        params_root="/net/cci-gpu-00/raid1/scratch1/alisia/programs/openfold/openfold_xtal/openfold/resources/params/",
     ):
         super(MSABiasAFv1, self).__init__(config)
 
@@ -64,11 +64,16 @@ class MSABiasAFv1(AlphaFold):
         )
         return feats
 
-    def iteration(self, feats, prevs, _recycle=True, bias=True):
+    def iteration(self, feats, prevs, _recycle=True, bias=True, pair_bias=False):
         if bias:
             feats = self._bias(feats)
-        return super(MSABiasAFv1, self).iteration(feats, prevs, _recycle)
-
+            return super(MSABiasAFv1, self).iteration(feats, prevs, _recycle)
+        elif pair_bias: #TODO currently bias and pair_bias cannot be true at the same time
+            pair_bias_feat = feats["pair_bias_feat"]
+            return super(MSABiasAFv1, self).iteration(feats, prevs, _recycle, pair_bias=pair_bias_feat)
+        else:
+            return super(MSABiasAFv1, self).iteration(feats, prevs, _recycle)  
+        
     def forward(self, batch, num_iters=1, bias=True):
         """
         Args:
