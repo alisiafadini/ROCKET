@@ -436,9 +436,6 @@ def main():
         for bias in bias_names:
             working_batch[bias] = device_processed_features[bias].clone()
 
-        # Avoid passing through graph twice with L2 loss addition
-        best_pos_copy = best_pos.clone()
-        best_Bs_copy = best_Bs.clone()
 
         # AF2 pass
         if args.version == 5:
@@ -446,6 +443,7 @@ def main():
 
         else:
             af2_output = af_bias(working_batch, num_iters=1, bias=True)
+
 
         # Position alignment
         xyz_orth_sfc, plddts = rk_coordinates.extract_allatoms(
@@ -550,11 +548,11 @@ def main():
         #     print("Loss", loss.item(), flush=True)
         #     print("LLG Estimate", llg_estimate, flush=True)
 
-        if args.align == "B":
-            if loss < best_loss:
-                best_loss = loss
-                best_pos = optimized_xyz.clone().detach()
-                best_Bs = llgloss.sfc.atom_b_iso.clone().detach()
+        #if args.align == "B":
+        #    if loss < best_loss:
+        #        best_loss = loss
+        #        best_pos = optimized_xyz.clone().detach()
+        #        best_Bs = llgloss.sfc.atom_b_iso.clone().detach()
 
         # Save sigmaA values for further processing
         sigmas_dict = {
@@ -564,9 +562,22 @@ def main():
 
         #### add an L2 loss to constrain confident atoms ###
         loss_weight = args.L2_weight
-        conf_xyz, conf_best = rk_coordinates.select_confident_atoms(
-            optimized_xyz, best_pos_copy, best_Bs_copy, b_thresh=args.b_threshold
-        )
+
+        if iteration == 0:
+            L2_ref_pos = optimized_xyz.clone().detach()
+            L2_ref_Bs = llgloss.sfc.atom_b_iso.clone().detach()
+            conf_xyz, conf_best = rk_coordinates.select_confident_atoms(
+                optimized_xyz, L2_ref_pos, L2_ref_Bs, b_thresh=args.b_threshold
+                )
+
+        else:
+            # Avoid passing through graph twice with L2 loss addition
+            L2_ref_pos_copy = L2_ref_pos.clone()
+            L2_ref_Bs_copy = L2_ref_Bs.clone()
+            conf_xyz, conf_best = rk_coordinates.select_confident_atoms(
+                optimized_xyz, L2_ref_pos_copy, L2_ref_Bs_copy, b_thresh=args.b_threshold
+            )
+
         print("CONFIDENT ATOMS", conf_xyz.shape)
         L2_loss = torch.sum((conf_xyz - conf_best) ** 2) #/ conf_best.shape[0]   
         corrected_loss = loss + loss_weight * L2_loss
@@ -574,7 +585,6 @@ def main():
         corrected_losses_by_epoch.append(corrected_loss.item())
         L2_losses_by_epoch.append(L2_loss.item())
         print("L2 loss", L2_loss.item())
-        print("corrected loss", corrected_loss.item())
 
         corrected_loss.backward() #loss.backward()
         optimizer.step()
