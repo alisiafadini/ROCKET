@@ -441,7 +441,11 @@ def main():
         best_Bs_copy = best_Bs.clone()
 
         # AF2 pass
-        af2_output = af_bias(working_batch, num_iters=1, bias=True)
+        if args.version == 5:
+            af2_output = af_bias(working_batch, num_iters=1, bias=False, pair_bias=True)
+
+        else:
+            af2_output = af_bias(working_batch, num_iters=1, bias=True)
 
         # Position alignment
         xyz_orth_sfc, plddts = rk_coordinates.extract_allatoms(

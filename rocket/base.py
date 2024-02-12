@@ -74,7 +74,7 @@ class MSABiasAFv1(AlphaFold):
         else:
             return super(MSABiasAFv1, self).iteration(feats, prevs, _recycle)  
         
-    def forward(self, batch, num_iters=1, bias=True):
+    def forward(self, batch, num_iters=1, bias=True, pair_bias=False):
         """
         Args:
             batch:
@@ -105,7 +105,7 @@ class MSABiasAFv1(AlphaFold):
 
                 # Run the next iteration of the model
                 outputs, m_1_prev, z_prev, x_prev = self.iteration(
-                    feats, prevs, _recycle=(num_iters > 1), bias=bias
+                    feats, prevs, _recycle=(num_iters > 1), bias=bias, pair_bias=pair_bias
                 )
 
                 if not is_final_iter:
