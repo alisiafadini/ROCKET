@@ -17,6 +17,7 @@ rk.refine
     --align            'B'               # Kabsch to best (B) or initial (I)
     --note             xxxx              # Additional notes used in output name
     --free_flag        'R-free-flags'    # Coloum name for the free flag in mtz file
+    --testset_value    0                 # testset value in the freeflag column
     --solvent or --no-solvent            # Turn on the solvent in the llgloss calculation
     --scale   or --no-scale              # Turn on the SFC update_scale in each step
     --added_chain                        # Turn on additional chain in the asu
@@ -180,6 +181,13 @@ def parse_arguments():
     )
 
     parser.add_argument(
+        "--testset_value",
+        type=int,
+        default=0,
+        help=("Optional additional identified"),
+    )
+
+    parser.add_argument(
         "-chain",
         "--added_chain",
         help="additional chain in asu",
@@ -265,13 +273,13 @@ def main():
 
     # SFC initialization, only have to do it once
     sfc = llg_sf.initial_SFC(
-        input_pdb, tng_file, "FP", "SIGFP", Freelabel=args.free_flag, device=device
+        input_pdb, tng_file, "FP", "SIGFP", Freelabel=args.free_flag, device=device, testset_value=args.testset_value
     )
     reference_pos = sfc.atom_pos_orth.clone()
 
     # Load true positions
     sfc_true = llg_sf.initial_SFC(
-        true_pdb, tng_file, "FP", "SIGFP", Freelabel=args.free_flag, device=device
+        true_pdb, tng_file, "FP", "SIGFP", Freelabel=args.free_flag, device=device, testset_value=args.testset_value
     )
     true_pos = sfc_true.atom_pos_orth.clone()
     # true_Bs = sfc_true.atom_b_iso.clone()
