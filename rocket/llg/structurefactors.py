@@ -15,6 +15,7 @@ def initial_SFC(
     SigFlabel,
     Freelabel=None,
     device=SFC.utils.try_gpu(),
+    testset_value=0
 ):
     sfcalculator = SFcalculator(
         pdb_file,
@@ -22,7 +23,7 @@ def initial_SFC(
         expcolumns=[Flabel, SigFlabel],
         freeflag=Freelabel,
         set_experiment=True,
-        testset_value=0,
+        testset_value=testset_value,
         device=device,
     )
 
