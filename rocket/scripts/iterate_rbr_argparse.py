@@ -9,6 +9,7 @@ rk.refine
     --iterations       300               # Number of refinement steps
     --lr_add           1e-3              # Learning rate of msa_bias
     --lr_mul           1e-2              # Learning rate of msa_weights
+    --weight_decay     None or float     # Weight decay parameters used in AdamW
     --sub_ratio        1.0               # Ratio of reflections for each batch
     --batches          1                 # Number of batches at each step
     --rbr_opt          'lbfgs'           # Using 'lbfgs' or 'adam' in the rbr optimization
@@ -16,6 +17,7 @@ rk.refine
     --align            'B'               # Kabsch to best (B) or initial (I)
     --note             xxxx              # Additional notes used in output name
     --free_flag        'R-free-flags'    # Coloum name for the free flag in mtz file
+    --testset_value    0                 # testset value in the freeflag column
     --solvent or --no-solvent            # Turn on the solvent in the llgloss calculation
     --scale   or --no-scale              # Turn on the SFC update_scale in each step
     --added_chain                        # Turn on additional chain in the asu
@@ -117,6 +119,13 @@ def parse_arguments():
     )
 
     parser.add_argument(
+        "--weight_decay",
+        type=float,
+        default=None,
+        help=("Weight decay used in adamW. Default None, use adam"),
+    )
+
+    parser.add_argument(
         "-sub_r",
         "--sub_ratio",
         type=float,
@@ -168,6 +177,13 @@ def parse_arguments():
         "--free_flag",
         type=str,
         default="R-free-flags",
+        help=("Optional additional identified"),
+    )
+
+    parser.add_argument(
+        "--testset_value",
+        type=int,
+        default=0,
         help=("Optional additional identified"),
     )
 
@@ -257,13 +273,13 @@ def main():
 
     # SFC initialization, only have to do it once
     sfc = llg_sf.initial_SFC(
-        input_pdb, tng_file, "FP", "SIGFP", Freelabel=args.free_flag, device=device
+        input_pdb, tng_file, "FP", "SIGFP", Freelabel=args.free_flag, device=device, testset_value=args.testset_value
     )
     reference_pos = sfc.atom_pos_orth.clone()
 
     # Load true positions
     sfc_true = llg_sf.initial_SFC(
-        true_pdb, tng_file, "FP", "SIGFP", Freelabel=args.free_flag, device=device
+        true_pdb, tng_file, "FP", "SIGFP", Freelabel=args.free_flag, device=device, testset_value=args.testset_value
     )
     true_pos = sfc_true.atom_pos_orth.clone()
     # true_Bs = sfc_true.atom_b_iso.clone()
@@ -300,14 +316,25 @@ def main():
         requires_grad=True,
         device=device,
         )
-        optimizer = torch.optim.Adam(
-            [
-                {
-                    "params": device_processed_features["template_torsion_angles_sin_cos_bias"],
-                    "lr": lr_a,
-                },
-            ]
-        )
+        if args.weight_decay is None:
+            optimizer = torch.optim.Adam(
+                [
+                    {
+                        "params": device_processed_features["template_torsion_angles_sin_cos_bias"],
+                        "lr": lr_a,
+                    },
+                ]
+            )
+        else:
+            optimizer = torch.optim.AdamW(
+                [
+                    {
+                        "params": device_processed_features["template_torsion_angles_sin_cos_bias"],
+                        "lr": lr_a,
+                    },
+                ],
+                weight_decay=args.weight_decay
+            ) 
         bias_names = ["template_torsion_angles_sin_cos_bias"]
     
     elif args.version == 3:
@@ -318,41 +345,69 @@ def main():
         device_processed_features["msa_feat_weights"] = msa_params_weights
         device_processed_features["msa_feat_weights"].requires_grad_(True)
 
-        optimizer = torch.optim.Adam(
-            [
-                {"params": device_processed_features["msa_feat_bias"], "lr": lr_a},
-                {"params": device_processed_features["msa_feat_weights"], "lr": lr_m},
-            ]
-        )
+        if args.weight_decay is None: 
+            optimizer = torch.optim.Adam(
+                [
+                    {"params": device_processed_features["msa_feat_bias"], "lr": lr_a},
+                    {"params": device_processed_features["msa_feat_weights"], "lr": lr_m},
+                ]
+            )
+        else:
+            optimizer = torch.optim.AdamW(
+                [
+                    {"params": device_processed_features["msa_feat_bias"], "lr": lr_a},
+                    {"params": device_processed_features["msa_feat_weights"], "lr": lr_m},
+                ],
+                weight_decay=args.weight_decay
+            )
         bias_names = ["msa_feat_bias", "msa_feat_weights"]
 
     elif args.version == 2:
         msa_params_weights = torch.eye(512, dtype=torch.float32, device=device)
         device_processed_features["msa_feat_weights"] = msa_params_weights
 
-        optimizer = torch.optim.Adam(
-            [
-                {"params": device_processed_features["msa_feat_bias"], "lr": lr_a},
-                {"params": device_processed_features["msa_feat_weights"], "lr": lr_m},
-            ]
-        )
+        if args.weight_decay is None: 
+            optimizer = torch.optim.Adam(
+                [
+                    {"params": device_processed_features["msa_feat_bias"], "lr": lr_a},
+                    {"params": device_processed_features["msa_feat_weights"], "lr": lr_m},
+                ]
+            )
+        else:
+            optimizer = torch.optim.AdamW(
+                [
+                    {"params": device_processed_features["msa_feat_bias"], "lr": lr_a},
+                    {"params": device_processed_features["msa_feat_weights"], "lr": lr_m},
+                ],
+                weight_decay=args.weight_decay
+            )
         bias_names = ["msa_feat_bias", "msa_feat_weights"]
 
     elif args.version == 1:
-        optimizer = torch.optim.Adam(
-            [
-                {"params": device_processed_features["msa_feat_bias"], "lr": lr_a},
-            ]
-        )
+        if args.weight_decay is None:
+            optimizer = torch.optim.Adam(
+                [
+                    {"params": device_processed_features["msa_feat_bias"], "lr": lr_a},
+                ]
+            )
+        else:
+            optimizer = torch.optim.AdamW(
+                [
+                    {"params": device_processed_features["msa_feat_bias"], "lr": lr_a},
+                ],
+                weight_decay=args.weight_decay
+            )
+
         bias_names = ["msa_feat_bias"]
 
     # Run options
-    output_name = "{root}_it{it}_v{v}_lr{a}+{m}_batch{b}_subr{subr}_solv{solv}_scale{scale}_rbr{rbr_opt}_{rbr_lbfgs_lr}_ali{align}_{add}".format(
+    output_name = "{root}_it{it}_v{v}_lr{a}+{m}_wd{wd}_batch{b}_subr{subr}_solv{solv}_scale{scale}_rbr{rbr_opt}_{rbr_lbfgs_lr}_ali{align}_{add}".format(
         root=args.file_root,
         it=args.iterations,
         v=args.version,
         a=args.lr_add,
         m=args.lr_mul,
+        wd=args.weight_decay,
         b=args.batches,
         subr=args.sub_ratio,
         solv=args.solvent,
