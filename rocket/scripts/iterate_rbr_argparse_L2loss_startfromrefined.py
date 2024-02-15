@@ -392,7 +392,6 @@ def main():
     # Initialize best variables for alignement
     best_loss = float("inf")
     best_pos = reference_pos
-    best_Bs = sfc.atom_b_iso.clone().detach()
 
     # List initialization for saving values
     mse_losses_by_epoch = []
@@ -408,6 +407,8 @@ def main():
     absolute_feats_changes = []
     L2_losses_by_epoch = []
     corrected_losses_by_epoch = []
+    grads_add_by_epoch = []
+    grads_mul_by_epoch = []
     
 
     if args.version == 4:
@@ -548,11 +549,10 @@ def main():
         #     print("Loss", loss.item(), flush=True)
         #     print("LLG Estimate", llg_estimate, flush=True)
 
-        #if args.align == "B":
-        #    if loss < best_loss:
-        #        best_loss = loss
-        #        best_pos = optimized_xyz.clone().detach()
-        #        best_Bs = llgloss.sfc.atom_b_iso.clone().detach()
+        if args.align == "B":
+            if loss < best_loss:
+                best_loss = loss
+                best_pos = optimized_xyz.clone().detach()
 
         # Save sigmaA values for further processing
         sigmas_dict = {
@@ -564,19 +564,22 @@ def main():
         loss_weight = args.L2_weight
 
         if iteration == 0:
+            #L2_ref_pos = xyz_orth_sfc.clone().detach()
             L2_ref_pos = optimized_xyz.clone().detach()
             L2_ref_Bs = llgloss.sfc.atom_b_iso.clone().detach()
             conf_xyz, conf_best = rk_coordinates.select_confident_atoms(
-                optimized_xyz, L2_ref_pos, L2_ref_Bs, b_thresh=args.b_threshold
+                optimized_xyz, L2_ref_pos, bfacts=L2_ref_Bs, b_thresh=args.b_threshold
                 )
+
 
         else:
             # Avoid passing through graph twice with L2 loss addition
             L2_ref_pos_copy = L2_ref_pos.clone()
             L2_ref_Bs_copy = L2_ref_Bs.clone()
             conf_xyz, conf_best = rk_coordinates.select_confident_atoms(
-                optimized_xyz, L2_ref_pos_copy, L2_ref_Bs_copy, b_thresh=args.b_threshold
+                optimized_xyz, L2_ref_pos_copy, bfacts=L2_ref_Bs_copy, b_thresh=args.b_threshold
             )
+
 
         print("CONFIDENT ATOMS", conf_xyz.shape)
         L2_loss = torch.sum((conf_xyz - conf_best) ** 2) #/ conf_best.shape[0]   
@@ -587,6 +590,10 @@ def main():
         print("L2 loss", L2_loss.item())
 
         corrected_loss.backward() #loss.backward()
+        if device_processed_features["msa_feat_bias"].grad != None:
+            grads_add_by_epoch.append(torch.mean(device_processed_features["msa_feat_bias"].grad).item())
+            grads_mul_by_epoch.append(torch.mean(device_processed_features["msa_feat_weights"].grad).item())
+
         optimizer.step()
         time_by_epoch.append(time.time()-start_time)
         memory_by_epoch.append(torch.cuda.max_memory_allocated()/1024**3)
@@ -719,6 +726,26 @@ def main():
             out=output_name,
         ),
         rk_utils.assert_numpy(L2_losses_by_epoch),
+    )
+
+    # Gradients for v3 
+
+    np.save(
+        "{path}/{r}/outputs/{out}/grads_add_it.npy".format(
+            path=path,
+            r=args.file_root,
+            out=output_name,
+        ),
+        rk_utils.assert_numpy(grads_add_by_epoch),
+    )
+
+    np.save(
+        "{path}/{r}/outputs/{out}/grads_mul_it.npy".format(
+            path=path,
+            r=args.file_root,
+            out=output_name,
+        ),
+        rk_utils.assert_numpy(grads_mul_by_epoch),
     )
 
 
