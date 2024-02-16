@@ -317,9 +317,6 @@ def main():
     # true_cras = sfc_true.cra_name
     del sfc_true
 
-    # LLG initialization
-    llgloss = rocket.llg.targets.LLGloss(sfc, tng_file, device)
-
     if args.resol_min is None:
         resol_min = min(sfc.dHKL)
     else:
@@ -330,6 +327,9 @@ def main():
     else:
         resol_max = args.resol_max
 
+    # LLG initialization
+    llgloss = rocket.llg.targets.LLGloss(sfc, tng_file, device, resol_min, resol_max)
+   
     # Model initialization
     version_to_class = {
         1: rocket.MSABiasAFv1,
@@ -592,8 +592,6 @@ def main():
             solvent=args.solvent,
             update_scales=args.scale,
             added_chain=constant_fp_added,
-            resol_min=resol_min,
-            resol_max=resol_max,
         )
 
         llg_estimate = loss.item() / (args.sub_ratio * args.batches)
