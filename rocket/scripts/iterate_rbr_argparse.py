@@ -322,9 +322,13 @@ def main():
 
     if args.resol_min is None:
         resol_min = min(sfc.dHKL)
+    else:
+        resol_min = args.resol_min
     
     if args.resol_max is None:
         resol_max = max(sfc.dHKL)
+    else:
+        resol_max = args.resol_max
 
     # Model initialization
     version_to_class = {
@@ -545,7 +549,7 @@ def main():
         )
         mse_losses_by_epoch.append(total_mse_loss)
         ##############################################
-        
+
         # Calculate (or refine) sigmaA
         # TODO before or after RBR step?
         Ecalc, Fc = llgloss.compute_Ecalc(
