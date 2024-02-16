@@ -172,6 +172,8 @@ class LLGloss(torch.nn.Module):
         solvent=True,
         update_scales=False,
         added_chain=None,
+        resol_min=None,
+        resol_max=None
     ):
         """
         TODO: Use rfree label in the LLG calculation
@@ -189,6 +191,9 @@ class LLGloss(torch.nn.Module):
             sub_ratio: float between 0.0 and 1.0
                 Fraction of mini-batch sampling over all miller indices,
                 e.g. 0.3 meaning each batch sample 30% of miller indices
+
+            resol_min, resol_max: None | float
+                resolution cutoff for the used miller index. Will use resol_min <= dHKL <= resol_max
         """
 
         Ecalc = self.compute_Ecalc(
@@ -202,10 +207,19 @@ class LLGloss(torch.nn.Module):
         if bin_labels is None:
             bin_labels = self.unique_bins
         
-        working_set = (~self.sfc.free_flag) & (~self.sfc.Outlier)
+        if resol_min is None:
+            resol_min = min(self.sfc.dHKL)
+        
+        if resol_max is None:
+            resol_max = max(self.sfc.dHKL)
+        
+        resol_bool = (self.sfc.dHKL >= (resol_min - 1e-4)) & (self.sfc.dHKL <= (resol_max + 1e-4))
+        working_set =  (~self.sfc.free_flag) & (~self.sfc.Outlier) & (resol_bool)
 
         for i, label in enumerate(bin_labels):
             index_i = self.bin_labels[working_set] == label
+            if sum(index_i) == 0:
+                continue
             Ecalc_i = Ecalc[working_set][index_i]
             Eob_i = self.Eobs[working_set][index_i]
             Centric_i = self.Centric[working_set][index_i]

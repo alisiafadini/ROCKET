@@ -200,6 +200,37 @@ def parse_arguments():
         action="store_true",
     )
 
+    parser.add_argument(
+        "-L2_w",
+        "--L2_weight",
+        type=float,
+        default=0.0,
+        help=("Weight for L2 loss"),
+    )
+
+    parser.add_argument(
+        "-b_thresh",
+        "--b_threshold",
+        type=float,
+        default=10.0,
+        help=("B threshold for L2 loss"), 
+    )
+
+    parser.add_argument(
+        "--resol_min",
+        type=float,
+        default=None,
+        help=("min resolution for llg calculation"),
+    )
+
+    parser.add_argument(
+        "--resol_max",
+        type=float,
+        default=None,
+        help=("max resolution for llg calculation"),
+    )
+
+
     return parser.parse_args()
 
 
@@ -288,6 +319,12 @@ def main():
 
     # LLG initialization
     llgloss = rocket.llg.targets.LLGloss(sfc, tng_file, device)
+
+    if args.resol_min is None:
+        resol_min = min(sfc.dHKL)
+    
+    if args.resol_max is None:
+        resol_max = max(sfc.dHKL)
 
     # Model initialization
     version_to_class = {
@@ -401,7 +438,7 @@ def main():
         bias_names = ["msa_feat_bias"]
 
     # Run options
-    output_name = "{root}_it{it}_v{v}_lr{a}+{m}_wd{wd}_batch{b}_subr{subr}_solv{solv}_scale{scale}_rbr{rbr_opt}_{rbr_lbfgs_lr}_ali{align}_{add}".format(
+    output_name = "{root}_it{it}_v{v}_lr{a}+{m}_wd{wd}_batch{b}_subr{subr}_solv{solv}_scale{scale}_resol_{resol_min:.2f}_{resol_max:.2f}_rbr{rbr_opt}_{rbr_lbfgs_lr}_ali{align}_L2{weight}+{thresh}_{add}".format(
         root=args.file_root,
         it=args.iterations,
         v=args.version,
@@ -412,9 +449,13 @@ def main():
         subr=args.sub_ratio,
         solv=args.solvent,
         scale=args.scale,
+        resol_min=resol_min,
+        resol_max=resol_max,
         rbr_opt=args.rbr_opt,
         rbr_lbfgs_lr=args.rbr_lbfgs_lr,
         align=args.align,
+        weight=args.L2_weight,
+        thresh=args.b_threshold,
         add=args.note,
     )
 
@@ -504,7 +545,7 @@ def main():
         )
         mse_losses_by_epoch.append(total_mse_loss)
         ##############################################
-
+        
         # Calculate (or refine) sigmaA
         # TODO before or after RBR step?
         Ecalc, Fc = llgloss.compute_Ecalc(
@@ -547,6 +588,8 @@ def main():
             solvent=args.solvent,
             update_scales=args.scale,
             added_chain=constant_fp_added,
+            resol_min=resol_min,
+            resol_max=resol_max,
         )
 
         llg_estimate = loss.item() / (args.sub_ratio * args.batches)
@@ -568,11 +611,7 @@ def main():
                     r_free=f"{llgloss.sfc.r_free.item():.3f}",
                     memory=f"{torch.cuda.max_memory_allocated()/1024**3:.1f}G"
                 )
-
-        # # TODO Rwork/Rfree?
-        # if args.verbose:
-        #     print("Loss", loss.item(), flush=True)
-        #     print("LLG Estimate", llg_estimate, flush=True)
+        
 
         if args.align == "B":
             if loss < best_loss:
@@ -585,7 +624,29 @@ def main():
         }
         sigmas_by_epoch.append(sigmas_dict)
 
-        loss.backward()
+        #### add an L2 loss to constrain confident atoms ###
+        loss_weight = args.L2_weight
+
+        if iteration == 0:
+            #L2_ref_pos = xyz_orth_sfc.clone().detach()
+            L2_ref_pos = optimized_xyz.clone().detach()
+            L2_ref_Bs = llgloss.sfc.atom_b_iso.clone().detach()
+            conf_xyz, conf_best = rk_coordinates.select_confident_atoms(
+                optimized_xyz, L2_ref_pos, bfacts=L2_ref_Bs, b_thresh=args.b_threshold
+                )
+
+        else:
+            # Avoid passing through graph twice with L2 loss addition
+            L2_ref_pos_copy = L2_ref_pos.clone()
+            L2_ref_Bs_copy = L2_ref_Bs.clone()
+            conf_xyz, conf_best = rk_coordinates.select_confident_atoms(
+                optimized_xyz, L2_ref_pos_copy, bfacts=L2_ref_Bs_copy, b_thresh=args.b_threshold
+            )
+
+        L2_loss = torch.sum((conf_xyz - conf_best) ** 2) #/ conf_best.shape[0]   
+        corrected_loss = loss + loss_weight * L2_loss
+
+        corrected_loss.backward()
         optimizer.step()
         time_by_epoch.append(time.time()-start_time)
         memory_by_epoch.append(torch.cuda.max_memory_allocated()/1024**3)
