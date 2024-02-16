@@ -217,8 +217,8 @@ class LLGloss(torch.nn.Module):
 
         for i, label in enumerate(bin_labels):
             index_i = self.bin_labels[self.working_set] == label
-            if sum(index_i) == 0:
-                continue
+            # if sum(index_i) == 0:
+            #     continue
             Ecalc_i = Ecalc[self.working_set][index_i]
             Eob_i = self.Eobs[self.working_set][index_i]
             Centric_i = self.Centric[self.working_set][index_i]

@@ -317,6 +317,8 @@ def main():
     # true_cras = sfc_true.cra_name
     del sfc_true
 
+    
+    # LLG initialization with resol cut
     if args.resol_min is None:
         resol_min = min(sfc.dHKL)
     else:
@@ -327,8 +329,8 @@ def main():
     else:
         resol_max = args.resol_max
 
-    # LLG initialization
     llgloss = rocket.llg.targets.LLGloss(sfc, tng_file, device, resol_min, resol_max)
+    # llgloss = rocket.llg.targets.LLGloss(sfc, tng_file, device)
    
     # Model initialization
     version_to_class = {
@@ -463,6 +465,7 @@ def main():
         add=args.note,
     )
 
+    
     if not args.verbose:
         warnings.filterwarnings("ignore")
         
@@ -489,6 +492,7 @@ def main():
         features_at_it_start = device_processed_features["msa_feat"][:, :, 25:48, 0].detach().clone()
     
     progress_bar = tqdm(range(args.iterations), desc=f"version {args.version}")
+    loss_weight = args.L2_weight
     for iteration in progress_bar:
         start_time = time.time()
         optimizer.zero_grad()
@@ -627,28 +631,29 @@ def main():
         sigmas_by_epoch.append(sigmas_dict)
 
         #### add an L2 loss to constrain confident atoms ###
-        loss_weight = args.L2_weight
+        if loss_weight > 0.0:
+            if iteration == 0:
+                #L2_ref_pos = xyz_orth_sfc.clone().detach()
+                L2_ref_pos = optimized_xyz.detach().clone()
+                L2_ref_Bs = llgloss.sfc.atom_b_iso.detach().clone()
+                conf_xyz, conf_best = rk_coordinates.select_confident_atoms(
+                    optimized_xyz, L2_ref_pos, bfacts=L2_ref_Bs, b_thresh=args.b_threshold
+                    )
 
-        if iteration == 0:
-            #L2_ref_pos = xyz_orth_sfc.clone().detach()
-            L2_ref_pos = optimized_xyz.detach().clone()
-            L2_ref_Bs = llgloss.sfc.atom_b_iso.detach().clone()
-            conf_xyz, conf_best = rk_coordinates.select_confident_atoms(
-                optimized_xyz, L2_ref_pos, bfacts=L2_ref_Bs, b_thresh=args.b_threshold
+            else:
+                # Avoid passing through graph twice with L2 loss addition
+                # L2_ref_pos_copy = L2_ref_pos.clone()
+                # L2_ref_Bs_copy = L2_ref_Bs.clone()
+                conf_xyz, conf_best = rk_coordinates.select_confident_atoms(
+                    optimized_xyz, L2_ref_pos, bfacts=L2_ref_Bs, b_thresh=args.b_threshold
                 )
 
+            L2_loss = torch.sum((conf_xyz - conf_best) ** 2) #/ conf_best.shape[0]   
+            corrected_loss = loss + loss_weight * L2_loss
+            corrected_loss.backward()
         else:
-            # Avoid passing through graph twice with L2 loss addition
-            # L2_ref_pos_copy = L2_ref_pos.clone()
-            # L2_ref_Bs_copy = L2_ref_Bs.clone()
-            conf_xyz, conf_best = rk_coordinates.select_confident_atoms(
-                optimized_xyz, L2_ref_pos, bfacts=L2_ref_Bs, b_thresh=args.b_threshold
-            )
+            loss.backward()
 
-        L2_loss = torch.sum((conf_xyz - conf_best) ** 2) #/ conf_best.shape[0]   
-        corrected_loss = loss + loss_weight * L2_loss
-
-        corrected_loss.backward()
         optimizer.step()
         time_by_epoch.append(time.time()-start_time)
         memory_by_epoch.append(torch.cuda.max_memory_allocated()/1024**3)
