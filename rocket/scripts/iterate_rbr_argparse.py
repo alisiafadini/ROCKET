@@ -631,18 +631,18 @@ def main():
 
         if iteration == 0:
             #L2_ref_pos = xyz_orth_sfc.clone().detach()
-            L2_ref_pos = optimized_xyz.clone().detach()
-            L2_ref_Bs = llgloss.sfc.atom_b_iso.clone().detach()
+            L2_ref_pos = optimized_xyz.detach().clone()
+            L2_ref_Bs = llgloss.sfc.atom_b_iso.detach().clone()
             conf_xyz, conf_best = rk_coordinates.select_confident_atoms(
                 optimized_xyz, L2_ref_pos, bfacts=L2_ref_Bs, b_thresh=args.b_threshold
                 )
 
         else:
             # Avoid passing through graph twice with L2 loss addition
-            L2_ref_pos_copy = L2_ref_pos.clone()
-            L2_ref_Bs_copy = L2_ref_Bs.clone()
+            # L2_ref_pos_copy = L2_ref_pos.clone()
+            # L2_ref_Bs_copy = L2_ref_Bs.clone()
             conf_xyz, conf_best = rk_coordinates.select_confident_atoms(
-                optimized_xyz, L2_ref_pos_copy, bfacts=L2_ref_Bs_copy, b_thresh=args.b_threshold
+                optimized_xyz, L2_ref_pos, bfacts=L2_ref_Bs, b_thresh=args.b_threshold
             )
 
         L2_loss = torch.sum((conf_xyz - conf_best) ** 2) #/ conf_best.shape[0]   

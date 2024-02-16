@@ -667,27 +667,27 @@ def kabsch_align_matrices(tensor1, tensor2):
 
 
 def select_confident_atoms(current_pos, target_pos, bfacts=None, b_thresh=400.0):
-    # if bfacts is None:
-    #     # If bfacts is None, set mask to all True
-    #     reshaped_mask = torch.ones_like(current_pos, dtype=torch.bool)
-    # else:
-    #     # Boolean mask for confident atoms
-    #     mask = bfacts < b_thresh
-    #     reshaped_mask = mask.unsqueeze(1).expand_as(current_pos)
-
-    # # Select confident atoms using the mask
-    # current_pos_conf = torch.flatten(current_pos)[torch.flatten(reshaped_mask)]
-    # target_pos_conf = torch.flatten(target_pos)[torch.flatten(reshaped_mask)]
-
-    # N = current_pos_conf.numel() // 3
-
-    # return current_pos_conf.view(N, 3), target_pos_conf.view(N, 3)
-    if b_thresh is None:
-        Bfact_bool = np.ones(len(bfacts), dtype=bool)
+    if bfacts is None:
+        # If bfacts is None, set mask to all True
+        reshaped_mask = torch.ones_like(current_pos, dtype=torch.bool)
     else:
-        Bfact_bool = utils.assert_numpy(bfacts < b_thresh)
+        # Boolean mask for confident atoms
+        mask = bfacts < b_thresh
+        reshaped_mask = mask.unsqueeze(1).expand_as(current_pos)
+
+    # Select confident atoms using the mask
+    current_pos_conf = torch.flatten(current_pos)[torch.flatten(reshaped_mask)]
+    target_pos_conf = torch.flatten(target_pos)[torch.flatten(reshaped_mask)]
+
+    N = current_pos_conf.numel() // 3
+
+    return current_pos_conf.view(N, 3), target_pos_conf.view(N, 3)
+    # if b_thresh is None:
+    #     Bfact_bool = np.ones(len(bfacts), dtype=bool)
+    # else:
+    #     Bfact_bool = utils.assert_numpy(bfacts < b_thresh)
     
-    return current_pos[Bfact_bool], target_pos[Bfact_bool]
+    # return current_pos[Bfact_bool], target_pos[Bfact_bool]
 
 
 def align_tensors(tensor1, centroid1, centroid2, rotation_matrix):
