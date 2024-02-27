@@ -9,6 +9,7 @@ rk.refine
     --iterations       300               # Number of refinement steps
     --lr_add           1e-3              # Learning rate of msa_bias
     --lr_mul           1e-2              # Learning rate of msa_weights
+    --weight_decay     None or float     # Weight decay parameters used in AdamW
     --sub_ratio        1.0               # Ratio of reflections for each batch
     --batches          1                 # Number of batches at each step
     --rbr_opt          'lbfgs'           # Using 'lbfgs' or 'adam' in the rbr optimization
@@ -16,6 +17,7 @@ rk.refine
     --align            'B'               # Kabsch to best (B) or initial (I)
     --note             xxxx              # Additional notes used in output name
     --free_flag        'R-free-flags'    # Coloum name for the free flag in mtz file
+    --testset_value    0                 # testset value in the freeflag column
     --solvent or --no-solvent            # Turn on the solvent in the llgloss calculation
     --scale   or --no-scale              # Turn on the SFC update_scale in each step
     --added_chain                        # Turn on additional chain in the asu
@@ -117,6 +119,13 @@ def parse_arguments():
     )
 
     parser.add_argument(
+        "--weight_decay",
+        type=float,
+        default=None,
+        help=("Weight decay used in adamW. Default None, use adam"),
+    )
+
+    parser.add_argument(
         "-sub_r",
         "--sub_ratio",
         type=float,
@@ -172,6 +181,13 @@ def parse_arguments():
     )
 
     parser.add_argument(
+        "--testset_value",
+        type=int,
+        default=0,
+        help=("Optional additional identified"),
+    )
+
+    parser.add_argument(
         "-chain",
         "--added_chain",
         help="additional chain in asu",
@@ -183,6 +199,37 @@ def parse_arguments():
         help="Be verbose during refinement",
         action="store_true",
     )
+
+    parser.add_argument(
+        "-L2_w",
+        "--L2_weight",
+        type=float,
+        default=0.0,
+        help=("Weight for L2 loss"),
+    )
+
+    parser.add_argument(
+        "-b_thresh",
+        "--b_threshold",
+        type=float,
+        default=10.0,
+        help=("B threshold for L2 loss"), 
+    )
+
+    parser.add_argument(
+        "--resol_min",
+        type=float,
+        default=None,
+        help=("min resolution for llg calculation"),
+    )
+
+    parser.add_argument(
+        "--resol_max",
+        type=float,
+        default=None,
+        help=("max resolution for llg calculation"),
+    )
+
 
     return parser.parse_args()
 
@@ -257,22 +304,34 @@ def main():
 
     # SFC initialization, only have to do it once
     sfc = llg_sf.initial_SFC(
-        input_pdb, tng_file, "FP", "SIGFP", Freelabel=args.free_flag, device=device
+        input_pdb, tng_file, "FP", "SIGFP", Freelabel=args.free_flag, device=device, testset_value=args.testset_value
     )
     reference_pos = sfc.atom_pos_orth.clone()
 
     # Load true positions
     sfc_true = llg_sf.initial_SFC(
-        true_pdb, tng_file, "FP", "SIGFP", Freelabel=args.free_flag, device=device
+        true_pdb, tng_file, "FP", "SIGFP", Freelabel=args.free_flag, device=device, testset_value=args.testset_value
     )
     true_pos = sfc_true.atom_pos_orth.clone()
     # true_Bs = sfc_true.atom_b_iso.clone()
     # true_cras = sfc_true.cra_name
     del sfc_true
 
-    # LLG initialization
-    llgloss = rocket.llg.targets.LLGloss(sfc, tng_file, device)
+    
+    # LLG initialization with resol cut
+    if args.resol_min is None:
+        resol_min = min(sfc.dHKL)
+    else:
+        resol_min = args.resol_min
+    
+    if args.resol_max is None:
+        resol_max = max(sfc.dHKL)
+    else:
+        resol_max = args.resol_max
 
+    llgloss = rocket.llg.targets.LLGloss(sfc, tng_file, device, resol_min, resol_max)
+    # llgloss = rocket.llg.targets.LLGloss(sfc, tng_file, device)
+   
     # Model initialization
     version_to_class = {
         1: rocket.MSABiasAFv1,
@@ -300,14 +359,25 @@ def main():
         requires_grad=True,
         device=device,
         )
-        optimizer = torch.optim.Adam(
-            [
-                {
-                    "params": device_processed_features["template_torsion_angles_sin_cos_bias"],
-                    "lr": lr_a,
-                },
-            ]
-        )
+        if args.weight_decay is None:
+            optimizer = torch.optim.Adam(
+                [
+                    {
+                        "params": device_processed_features["template_torsion_angles_sin_cos_bias"],
+                        "lr": lr_a,
+                    },
+                ]
+            )
+        else:
+            optimizer = torch.optim.AdamW(
+                [
+                    {
+                        "params": device_processed_features["template_torsion_angles_sin_cos_bias"],
+                        "lr": lr_a,
+                    },
+                ],
+                weight_decay=args.weight_decay
+            ) 
         bias_names = ["template_torsion_angles_sin_cos_bias"]
     
     elif args.version == 3:
@@ -318,51 +388,84 @@ def main():
         device_processed_features["msa_feat_weights"] = msa_params_weights
         device_processed_features["msa_feat_weights"].requires_grad_(True)
 
-        optimizer = torch.optim.Adam(
-            [
-                {"params": device_processed_features["msa_feat_bias"], "lr": lr_a},
-                {"params": device_processed_features["msa_feat_weights"], "lr": lr_m},
-            ]
-        )
+        if args.weight_decay is None: 
+            optimizer = torch.optim.Adam(
+                [
+                    {"params": device_processed_features["msa_feat_bias"], "lr": lr_a},
+                    {"params": device_processed_features["msa_feat_weights"], "lr": lr_m},
+                ]
+            )
+        else:
+            optimizer = torch.optim.AdamW(
+                [
+                    {"params": device_processed_features["msa_feat_bias"], "lr": lr_a},
+                    {"params": device_processed_features["msa_feat_weights"], "lr": lr_m},
+                ],
+                weight_decay=args.weight_decay
+            )
         bias_names = ["msa_feat_bias", "msa_feat_weights"]
 
     elif args.version == 2:
         msa_params_weights = torch.eye(512, dtype=torch.float32, device=device)
         device_processed_features["msa_feat_weights"] = msa_params_weights
 
-        optimizer = torch.optim.Adam(
-            [
-                {"params": device_processed_features["msa_feat_bias"], "lr": lr_a},
-                {"params": device_processed_features["msa_feat_weights"], "lr": lr_m},
-            ]
-        )
+        if args.weight_decay is None: 
+            optimizer = torch.optim.Adam(
+                [
+                    {"params": device_processed_features["msa_feat_bias"], "lr": lr_a},
+                    {"params": device_processed_features["msa_feat_weights"], "lr": lr_m},
+                ]
+            )
+        else:
+            optimizer = torch.optim.AdamW(
+                [
+                    {"params": device_processed_features["msa_feat_bias"], "lr": lr_a},
+                    {"params": device_processed_features["msa_feat_weights"], "lr": lr_m},
+                ],
+                weight_decay=args.weight_decay
+            )
         bias_names = ["msa_feat_bias", "msa_feat_weights"]
 
     elif args.version == 1:
-        optimizer = torch.optim.Adam(
-            [
-                {"params": device_processed_features["msa_feat_bias"], "lr": lr_a},
-            ]
-        )
+        if args.weight_decay is None:
+            optimizer = torch.optim.Adam(
+                [
+                    {"params": device_processed_features["msa_feat_bias"], "lr": lr_a},
+                ]
+            )
+        else:
+            optimizer = torch.optim.AdamW(
+                [
+                    {"params": device_processed_features["msa_feat_bias"], "lr": lr_a},
+                ],
+                weight_decay=args.weight_decay
+            )
+
         bias_names = ["msa_feat_bias"]
 
     # Run options
-    output_name = "{root}_it{it}_v{v}_lr{a}+{m}_batch{b}_subr{subr}_solv{solv}_scale{scale}_rbr{rbr_opt}_{rbr_lbfgs_lr}_ali{align}_{add}".format(
+    output_name = "{root}_it{it}_v{v}_lr{a}+{m}_wd{wd}_batch{b}_subr{subr}_solv{solv}_scale{scale}_resol_{resol_min:.2f}_{resol_max:.2f}_rbr{rbr_opt}_{rbr_lbfgs_lr}_ali{align}_L2{weight}+{thresh}_{add}".format(
         root=args.file_root,
         it=args.iterations,
         v=args.version,
         a=args.lr_add,
         m=args.lr_mul,
+        wd=args.weight_decay,
         b=args.batches,
         subr=args.sub_ratio,
         solv=args.solvent,
         scale=args.scale,
+        resol_min=resol_min,
+        resol_max=resol_max,
         rbr_opt=args.rbr_opt,
         rbr_lbfgs_lr=args.rbr_lbfgs_lr,
         align=args.align,
+        weight=args.L2_weight,
+        thresh=args.b_threshold,
         add=args.note,
     )
 
+    
     if not args.verbose:
         warnings.filterwarnings("ignore")
         
@@ -389,6 +492,7 @@ def main():
         features_at_it_start = device_processed_features["msa_feat"][:, :, 25:48, 0].detach().clone()
     
     progress_bar = tqdm(range(args.iterations), desc=f"version {args.version}")
+    loss_weight = args.L2_weight
     for iteration in progress_bar:
         start_time = time.time()
         optimizer.zero_grad()
@@ -513,11 +617,7 @@ def main():
                     r_free=f"{llgloss.sfc.r_free.item():.3f}",
                     memory=f"{torch.cuda.max_memory_allocated()/1024**3:.1f}G"
                 )
-
-        # # TODO Rwork/Rfree?
-        # if args.verbose:
-        #     print("Loss", loss.item(), flush=True)
-        #     print("LLG Estimate", llg_estimate, flush=True)
+        
 
         if args.align == "B":
             if loss < best_loss:
@@ -530,7 +630,30 @@ def main():
         }
         sigmas_by_epoch.append(sigmas_dict)
 
-        loss.backward()
+        #### add an L2 loss to constrain confident atoms ###
+        if loss_weight > 0.0:
+            if iteration == 0:
+                #L2_ref_pos = xyz_orth_sfc.clone().detach()
+                L2_ref_pos = optimized_xyz.detach().clone()
+                L2_ref_Bs = llgloss.sfc.atom_b_iso.detach().clone()
+                conf_xyz, conf_best = rk_coordinates.select_confident_atoms(
+                    optimized_xyz, L2_ref_pos, bfacts=L2_ref_Bs, b_thresh=args.b_threshold
+                    )
+
+            else:
+                # Avoid passing through graph twice with L2 loss addition
+                # L2_ref_pos_copy = L2_ref_pos.clone()
+                # L2_ref_Bs_copy = L2_ref_Bs.clone()
+                conf_xyz, conf_best = rk_coordinates.select_confident_atoms(
+                    optimized_xyz, L2_ref_pos, bfacts=L2_ref_Bs, b_thresh=args.b_threshold
+                )
+
+            L2_loss = torch.sum((conf_xyz - conf_best) ** 2) #/ conf_best.shape[0]   
+            corrected_loss = loss + loss_weight * L2_loss
+            corrected_loss.backward()
+        else:
+            loss.backward()
+
         optimizer.step()
         time_by_epoch.append(time.time()-start_time)
         memory_by_epoch.append(torch.cuda.max_memory_allocated()/1024**3)

@@ -682,6 +682,12 @@ def select_confident_atoms(current_pos, target_pos, bfacts=None, b_thresh=400.0)
     N = current_pos_conf.numel() // 3
 
     return current_pos_conf.view(N, 3), target_pos_conf.view(N, 3)
+    # if b_thresh is None:
+    #     Bfact_bool = np.ones(len(bfacts), dtype=bool)
+    # else:
+    #     Bfact_bool = utils.assert_numpy(bfacts < b_thresh)
+    
+    # return current_pos[Bfact_bool], target_pos[Bfact_bool]
 
 
 def align_tensors(tensor1, centroid1, centroid2, rotation_matrix):
