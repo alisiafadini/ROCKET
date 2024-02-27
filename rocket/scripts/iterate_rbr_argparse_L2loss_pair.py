@@ -268,7 +268,7 @@ def main():
         # device_processed_features["msa_feat_bias"] = torch.load("/net/cci/alisia/openfold_tests/run_openfold/test_cases/3hak/outputs/3hak_it50_v5_lr0.2+5.0_batch1_subr1.0_solvTrue_scaleTrue_Ib50_w1/add_bias_final.pt").to(device=device)
 
         pair_params_bias = torch.zeros(
-            (257, 257, 128, 23), requires_grad=True, device=device
+            (103, 103, 128, 23), requires_grad=True, device=device
         )
         device_processed_features["pair_bias_feat"] = pair_params_bias
         optimizer = torch.optim.Adam(
