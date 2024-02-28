@@ -22,6 +22,13 @@ def parse_arguments():
 
     # Required arguments
     parser.add_argument(
+        "-p",
+        "--path",
+        default="/net/cci/alisia/openfold_tests/run_openfold/test_cases",
+        help=("Path to the parent folder"),
+    )
+    
+    parser.add_argument(
         "-root",
         "--file_root",
         required=True,
@@ -162,7 +169,7 @@ def main():
     RBR_LBFGS = True
 
     # Load external files
-    path = "/net/cci/alisia/openfold_tests/run_openfold/test_cases"
+    path = args.path
     tng_file = "{p}/{r}/{r}-tng_withrfree.mtz".format(p=path, r=args.file_root)
     input_pdb = "{p}/{r}/{r}-pred-aligned.pdb".format(p=path, r=args.file_root)
     true_pdb = "{p}/{r}/{r}_noalts.pdb".format(p=path, r=args.file_root)
