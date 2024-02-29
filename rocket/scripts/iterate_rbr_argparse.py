@@ -230,7 +230,20 @@ def parse_arguments():
         help=("max resolution for llg calculation"),
     )
 
+    parser.add_argument(
+        "--bias_start",
+        type=str,
+        default=None,
+        help=("initial bias to start with"),
+    )
 
+    parser.add_argument(
+        "--weights_start",
+        type=str,
+        default=None,
+        help=("initial weights to start with"),
+    )
+    
     return parser.parse_args()
 
 
@@ -381,12 +394,18 @@ def main():
         bias_names = ["template_torsion_angles_sin_cos_bias"]
     
     elif args.version == 3:
-        # Initiate multiplicative cluster bias
-        msa_params_weights = torch.ones(
-            (512, num_res, 23), requires_grad=True, device=device
-        )
-        device_processed_features["msa_feat_weights"] = msa_params_weights
-        device_processed_features["msa_feat_weights"].requires_grad_(True)
+        if args.weights_start is not None:
+            device_processed_features["msa_feat_weights"] = torch.load(args.weights_start).detach().to(device=device)
+        else:
+            device_processed_features["msa_feat_weights"] = torch.ones(
+                (512, num_res, 23), requires_grad=True, device=device
+            )
+
+        if args.bias_start is not None: 
+            device_processed_features["msa_feat_bias"] = torch.load(args.bias_start).detach().to(device=device)
+       
+        device_processed_features["msa_feat_bias"].requires_grad=True
+        device_processed_features["msa_feat_weights"].requires_grad=True
 
         if args.weight_decay is None: 
             optimizer = torch.optim.Adam(
@@ -667,7 +686,26 @@ def main():
             mean_change = torch.mean(torch.abs(features_at_step_end - features_at_it_start), dim=(0,2))
         absolute_feats_changes.append(rk_utils.assert_numpy(mean_change))
         # print("Mean absolute feats change", torch.mean(mean_change).item())
-
+        if (iteration % 5 == 1) or (iteration == args.iterations - 1):
+            # print("Currently at last iteration {}".format(iteration))
+            torch.save(
+                device_processed_features["msa_feat_bias"].detach().cpu().clone(),
+                "{path}/{r}/outputs/{out}/add_bias_{iter}.pt".format(
+                    path=path,
+                    r=args.file_root,
+                    out=output_name,
+                    iter=iteration,
+                ),
+            )
+            torch.save(
+                device_processed_features["msa_feat_weights"].detach().cpu().clone(),
+                "{path}/{r}/outputs/{out}/mul_bias_{iter}.pt".format(
+                    path=path,
+                    r=args.file_root,
+                    out=output_name,
+                    iter=iteration
+                ),
+            )
     ####### Save data
 
     # Average plddt per iteration
