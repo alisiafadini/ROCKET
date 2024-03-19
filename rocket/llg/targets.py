@@ -1,6 +1,7 @@
 """
 LLG targets for xtal data
 """
+
 import time
 import torch
 import numpy as np
@@ -12,7 +13,7 @@ from rocket import utils
 
 class LLGloss(torch.nn.Module):
     """
-    Objecte_oriented interface to calculate LLG loss
+    Object_oriented interface to calculate LLG loss
 
     # Initialization, only have to do it once
     sfc = llg_sf.initial_SFC(...)
@@ -33,7 +34,14 @@ class LLGloss(torch.nn.Module):
 
     """
 
-    def __init__(self, sfc: SFcalculator, tng_file: str, device: torch.device, resol_min=None, resol_max=None) -> None:
+    def __init__(
+        self,
+        sfc: SFcalculator,
+        tng_file: str,
+        device: torch.device,
+        resol_min=None,
+        resol_max=None,
+    ) -> None:
         super().__init__()
         self.sfc = sfc
         self.device = device
@@ -55,14 +63,17 @@ class LLGloss(torch.nn.Module):
 
         if resol_min is None:
             resol_min = min(self.sfc.dHKL)
-        
+
         if resol_max is None:
             resol_max = max(self.sfc.dHKL)
-        
-        resol_bool = (self.sfc.dHKL >= (resol_min - 1e-4)) & (self.sfc.dHKL <= (resol_max + 1e-4))
-        self.working_set =  (~self.sfc.free_flag) & (~self.sfc.Outlier) & (resol_bool)
 
-    def init_sigmaAs(self, Ecalc):
+        resol_bool = (self.sfc.dHKL >= (resol_min - 1e-4)) & (
+            self.sfc.dHKL <= (resol_max + 1e-4)
+        )
+        self.working_set = (~self.sfc.free_flag) & (~self.sfc.Outlier) & (resol_bool)
+
+    def init_sigmaAs(self, Ecalc, requires_grad=True):
+        Ecalc = Ecalc.detach().clone()
         self.sigmaAs = []
         for bin_i in self.unique_bins:
             index_i = self.bin_labels == bin_i
@@ -75,7 +86,7 @@ class LLGloss(torch.nn.Module):
                 .clamp(min=0.001, max=0.999)
                 .sqrt()
                 .to(device=self.device, dtype=torch.float32)
-                .requires_grad_(True)
+                .requires_grad_(requires_grad)
             )
             self.sigmaAs.append(sigmaA_i)
 
@@ -86,9 +97,10 @@ class LLGloss(torch.nn.Module):
         self.sigmaAs = [sigmaA.requires_grad_(True) for sigmaA in self.sigmaAs]
 
     def refine_sigmaA_adam(
-        self, Ecalc, n_steps=25, lr=0.01, sub_ratio=0.3, initialize=True, verbose=False
+        self, Ecalc, n_steps=50, lr=0.01, sub_ratio=0.3, initialize=True, verbose=False
     ):
         def adam_opt_i(i, index_i, n_steps, sub_ratio, lr, verbose):
+
             def adam_stepopt(sub_boolean_mask):
                 loss = -llg_utils.llgTot_calculate(
                     self.sigmaAs[i],
@@ -99,11 +111,13 @@ class LLGloss(torch.nn.Module):
                 adam.zero_grad()
                 loss.backward()
                 adam.step()
-                self.sigmaAs[i] = torch.clamp(self.sigmaAs[i], 0.015, 0.99)
+                self.sigmaAs[i].data = torch.clamp(self.sigmaAs[i].data, 0.015, 0.99)
                 return loss
 
-            Eobs_i = self.Eobs[index_i]
-            Ecalc_i = Ecalc[index_i]
+            Eobs = self.Eobs.detach().clone()
+            Ecalc_cloned = Ecalc.detach().clone()
+            Eobs_i = Eobs[index_i]
+            Ecalc_i = Ecalc_cloned[index_i]
             centric_i = self.Centric[index_i]
             adam = torch.optim.Adam([self.sigmaAs[i]], lr=lr)
             for _ in range(n_steps):
@@ -123,7 +137,7 @@ class LLGloss(torch.nn.Module):
                     )
 
         if initialize:
-            self.init_sigmaAs(Ecalc)
+            self.init_sigmaAs(Ecalc, requires_grad=True)
 
         for i, bin_i in enumerate(self.unique_bins):
             index_i = self.bin_labels == bin_i
