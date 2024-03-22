@@ -539,6 +539,7 @@ def main():
     mse_losses_by_epoch = []
     rbr_loss_by_epoch = []
     sigmas_by_epoch = []
+    true_sigmas_by_epoch = []
     llg_losses = []
     rfree_by_epoch = []
     rwork_by_epoch = []
@@ -634,9 +635,8 @@ def main():
         )
 
         if args.sigmaArefine is True:
-
             llgloss.refine_sigmaA_adam(
-                Ecalc, sub_ratio=0.97, lr=0.005, initialize=True, verbose=True
+                Ecalc, sub_ratio=1.00, lr=0.005, initialize=True, verbose=False
             )
             sigmas = llgloss.sigmaAs
 
@@ -651,10 +651,10 @@ def main():
             )
             llgloss.sigmaAs = sigmas
 
-        # print(
-        #    "######### sigmas after refinement are",
-        #    [sigmaA.item() for sigmaA in llgloss.sigmaAs],
-        # )
+        print(
+            "######### sigmas after refinement are",
+            [sigmaA.item() for sigmaA in llgloss.sigmaAs],
+        )
 
         true_sigmas = llg_utils.sigmaA_from_model(
             Etrue,
@@ -665,7 +665,7 @@ def main():
             llgloss.bin_labels,
         )
 
-        # print("######### True sigmas are", [sigmaA.item() for sigmaA in true_sigmas])
+        print("######### True sigmas are", [sigmaA.item() for sigmaA in true_sigmas])
 
         # Update SFC and save
         llgloss.sfc.atom_pos_orth = aligned_xyz
@@ -724,9 +724,15 @@ def main():
 
         # Save sigmaA values for further processing
         sigmas_dict = {
-            f"sigma_{i + 1}": sigma_value for i, sigma_value in enumerate(sigmas)
+            f"sigma_{i + 1}": sigma_value.item() for i, sigma_value in enumerate(sigmas)
         }
         sigmas_by_epoch.append(sigmas_dict)
+
+        true_sigmas_dict = {
+            f"sigma_{i + 1}": sigma_value.item()
+            for i, sigma_value in enumerate(true_sigmas)
+        }
+        true_sigmas_by_epoch.append(true_sigmas_dict)
 
         #### add an L2 loss to constrain confident atoms ###
         if loss_weight > 0.0:
@@ -898,6 +904,16 @@ def main():
         "wb",
     ) as file:
         pickle.dump(sigmas_by_epoch, file)
+
+    with open(
+        "{path}/{r}/outputs/{out}/true_sigmas_by_epoch.pkl".format(
+            path=path,
+            r=args.file_root,
+            out=output_name,
+        ),
+        "wb",
+    ) as file:
+        pickle.dump(true_sigmas_by_epoch, file)
 
 
 if __name__ == "__main__":
