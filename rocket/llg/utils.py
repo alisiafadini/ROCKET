@@ -10,11 +10,14 @@ import numpy as np
 
 
 def llgIa_firstdev(sigmaA, dobs, Eeff, Ec):
+    '''
+    partial llgIa / partial sigmaA
+    '''
 
     bessel_argument = (2 * dobs * Ec * Eeff * sigmaA) / (1 - dobs**2 * sigmaA**2)
     bessel_ratio = Ak_approx(torch.tensor(1).to(bessel_argument), bessel_argument).squeeze()
 
-    llg = (
+    dLa = (
         2
         * dobs
         * (
@@ -24,14 +27,17 @@ def llgIa_firstdev(sigmaA, dobs, Eeff, Ec):
         / (dobs**2 * sigmaA**2 - 1) ** 2
     )
 
-    return llg
+    return dLa
 
 
 def llgIc_firstdev(sigmaA, dobs, Eeff, Ec):
+    '''
+    partial llgIc / partial sigmaA
+    '''
 
     tanh_argument = (dobs * Ec * Eeff * sigmaA) / (1 - dobs**2 * sigmaA**2)
 
-    llg = (
+    dLc = (
         dobs
         * (
             Ec * Eeff * (dobs**2 * sigmaA**2 + 1) * torch.tanh(tanh_argument)
@@ -40,15 +46,32 @@ def llgIc_firstdev(sigmaA, dobs, Eeff, Ec):
         / (dobs**2 * sigmaA**2 - 1) ** 2
     )
 
-    return llg
+    return dLc
 
+
+def llgItot_firstdev(sigmaA, dobs, Eeff, Ec, centric_tensor):
+    '''
+    partial llgI / partial sigmaA
+    '''
+    llgIp_centric = llgIc_firstdev(
+        sigmaA, dobs[centric_tensor], Eeff[centric_tensor], Ec[centric_tensor]
+    )
+    llgIp_acentric = llgIa_firstdev(
+        sigmaA, dobs[~centric_tensor], Eeff[~centric_tensor], Ec[~centric_tensor]
+    )
+    
+    return llgIp_centric.sum() + llgIp_acentric.sum()
+    
 
 def llgIa_seconddev(sigmaA, dobs, Eeff, Ec):
+    '''
+    partial^2 llgIa / partial sigmaA^2
+    '''
 
     bessel_argument = (2 * dobs * Ec * Eeff * sigmaA) / (1 - dobs**2 * sigmaA**2)
     bessel_ratio = Ak_approx(torch.tensor(1).to(bessel_argument), bessel_argument).squeeze()
 
-    der = (
+    d2La = (
         2
         * dobs
         / (dobs**2 * sigmaA**2 - 1) ** 4
@@ -83,10 +106,13 @@ def llgIa_seconddev(sigmaA, dobs, Eeff, Ec):
         )
     )
 
-    return der
+    return d2La
 
 
 def llgIc_seconddev(sigmaA, dobs, Eeff, Ec):
+    '''
+    partial^2 llgIc / partial sigmaA^2
+    '''
 
     tanh_and_sech_argument = (dobs * Ec * Eeff * sigmaA) / (1 - dobs**2 * sigmaA**2)
 
@@ -101,13 +127,13 @@ def llgIc_seconddev(sigmaA, dobs, Eeff, Ec):
         Ec
         * Eeff
         * (dobs**2 * sigmaA**2 + 1) ** 2
-        * torch.cosh(tanh_and_sech_argument) ** -1
+        * torch.cosh(tanh_and_sech_argument) ** -2
     )
     term_3 = (dobs**4 * sigmaA**4 + 2 * dobs**2 * sigmaA**2 - 3) * torch.tanh(
         tanh_and_sech_argument
     )
 
-    llg = (dobs**2 * sigmaA**2 - 1) ** -4 * (
+    d2Lc = (dobs**2 * sigmaA**2 - 1) ** -4 * (
         dobs**2
         * (
             (dobs**2 * sigmaA**2 - 1) * term_1
@@ -115,14 +141,42 @@ def llgIc_seconddev(sigmaA, dobs, Eeff, Ec):
         )
     )
 
-    return llg
+    return d2Lc
 
 
-def update_sigmaA_analytical(sigmaA, dobs, Eeff, Ec):
+def llgItot_seconddev(sigmaA, dobs, Eeff, Ec, centric_tensor):
+    '''
+    partial^2 llgI / partial sigmaA^2
+    '''
+    
+    llgIpp_centric = llgIc_seconddev(
+        sigmaA, dobs[centric_tensor], Eeff[centric_tensor], Ec[centric_tensor]
+    )
+    llgIpp_acentric = llgIa_seconddev(
+        sigmaA, dobs[~centric_tensor], Eeff[~centric_tensor], Ec[~centric_tensor]
+    )
 
-    # Newton's method? Plus some smooth function for sigmaA?
+    return llgIpp_centric.sum() + llgIpp_acentric.sum()
 
-    return
+
+def llgItot_with_derivatives2sigmaA(sigmaA, dobs, Eeff, Ec, centric_tensor, method="autodiff"):
+    '''
+    sigmaA : torch.Tensor
+
+    method : str, "autodiff" or "analytical"
+        calculate derivatives with autodiff or analytical expression 
+    '''
+    if method == "autodiff":
+        sA = sigmaA.detach().clone().requires_grad_(True)
+        l = llgItot_calculate(sA, dobs, Eeff, Ec, centric_tensor)
+        lp = torch.autograd.grad(l, sA, create_graph=True)[0]
+        lpp = torch.autograd.grad(lp, sA, create_graph=True, allow_unused=True)[0]
+    elif method == "analytical":
+        l = llgItot_calculate(sigmaA, dobs, Eeff, Ec, centric_tensor)
+        lp = llgItot_firstdev(sigmaA, dobs.detach(), Eeff.detach(), Ec.detach(), centric_tensor.detach())
+        lpp = llgItot_seconddev(sigmaA, dobs.detach(), Eeff.detach(), Ec.detach(), centric_tensor.detach())
+    
+    return l.detach().clone(), lp.detach().clone(), lpp.detach().clone()
 
 
 def Ak_approx(nu, z):

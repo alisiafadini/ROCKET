@@ -71,6 +71,7 @@ class LLGloss(torch.nn.Module):
             self.sfc.dHKL <= (resol_max + 1e-4)
         )
         self.working_set = (~self.sfc.free_flag) & (~self.sfc.Outlier) & (resol_bool)
+        self.free_set = (self.sfc.free_flag) & (~self.sfc.Outlier) & (resol_bool)
 
     def init_sigmaAs(self, Ecalc, requires_grad=True):
         Ecalc = Ecalc.detach().clone()
@@ -144,6 +145,43 @@ class LLGloss(torch.nn.Module):
             adam_opt_i(
                 i, index_i, n_steps=n_steps, sub_ratio=sub_ratio, lr=lr, verbose=verbose
             )
+    
+    def refine_sigmaA_newton(self, Ecalc, n_steps=2, initialize=True, method="autodiff", subset="working", smooth_constraint=None):
+        """
+        subset : str, "working" or "free"
+
+        method : str, "autodiff" or "analytical"
+
+        TODO: include smooth_constraint 
+        """
+        if initialize:
+            self.init_sigmaAs(Ecalc, requires_grad=False)
+        
+        if subset == "working":
+            subset_boolean = self.working_set
+        elif subset == "free":
+            subset_boolean = self.free_set
+        
+        for i, label in enumerate(self.unique_bins):
+            index_i = self.bin_labels[subset_boolean] == label
+            Ecalc_i = Ecalc[subset_boolean][index_i]
+            Eob_i = self.Eobs[subset_boolean][index_i]
+            Centric_i = self.Centric[subset_boolean][index_i]
+            Dobs_i = self.Dobs[subset_boolean][index_i]
+            sigmaA_i = self.sigmaAs[i].detach().clone()
+            for _ in range(n_steps):
+                l, lp, lpp = llg_utils.llgItot_with_derivatives2sigmaA(
+                    sigmaA=sigmaA_i,
+                    dobs=Dobs_i,
+                    Eeff=Eob_i,
+                    Ec=Ecalc_i,
+                    centric_tensor=Centric_i,
+                    method=method
+                )
+                ds = lp/lpp
+                sigmaA_i = torch.clamp(sigmaA_i - ds, 0.015, 0.99)
+            self.sigmaAs[i] = sigmaA_i.detach().clone()
+
 
     def compute_Ecalc(
         self,
