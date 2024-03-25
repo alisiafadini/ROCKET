@@ -12,7 +12,7 @@ import numpy as np
 def llgIa_firstdev(sigmaA, dobs, Eeff, Ec):
 
     bessel_argument = (2 * dobs * Ec * Eeff * sigmaA) / (1 - dobs**2 * sigmaA**2)
-    bessel_ratio = Ak_approx(torch.tensor(1), bessel_argument)
+    bessel_ratio = Ak_approx(torch.tensor(1).to(bessel_argument), bessel_argument).squeeze()
 
     llg = (
         2
@@ -46,9 +46,9 @@ def llgIc_firstdev(sigmaA, dobs, Eeff, Ec):
 def llgIa_seconddev(sigmaA, dobs, Eeff, Ec):
 
     bessel_argument = (2 * dobs * Ec * Eeff * sigmaA) / (1 - dobs**2 * sigmaA**2)
-    bessel_ratio = Ak_approx(torch.tensor(1), bessel_argument)
+    bessel_ratio = Ak_approx(torch.tensor(1).to(bessel_argument), bessel_argument).squeeze()
 
-    llg = (
+    der = (
         2
         * dobs
         / (dobs**2 * sigmaA**2 - 1) ** 4
@@ -58,7 +58,7 @@ def llgIa_seconddev(sigmaA, dobs, Eeff, Ec):
                 Ec**2
                 * (
                     3 * dobs**4 * sigmaA**4
-                    + 2 * (dobs**2 + Eeff * sigmaA**2 + Eeff) ** 2
+                    + 2 * (dobs**2 * Eeff * sigmaA**2 + Eeff) ** 2
                     - 2 * dobs**2 * sigmaA**2
                     - 1
                 )
@@ -71,17 +71,19 @@ def llgIa_seconddev(sigmaA, dobs, Eeff, Ec):
             * (
                 bessel_ratio * (-2 * dobs * Ec * Eeff * (dobs**2 * sigmaA**2 + 1) ** 2)
                 - (
-                    dobs**6 * sigmaA**6
-                    + 3 * dobs**4 * sigmaA**4
-                    - 5 * dobs**2 * sigmaA**2
-                    + 1
+                    (
+                        dobs**6 * sigmaA**6
+                        + 3 * dobs**4 * sigmaA**4
+                        - 5 * dobs**2 * sigmaA**2
+                        + 1
+                    )
+                    / sigmaA
                 )
-                / sigmaA
             )
         )
     )
 
-    return llg
+    return der
 
 
 def llgIc_seconddev(sigmaA, dobs, Eeff, Ec):
@@ -156,7 +158,7 @@ def ub_Ak(nu, z):
     nu = nu.reshape(1, -1)
     z = z.reshape(-1, 1)
 
-    ub = torch.zeros(z.shape[0], nu.shape[1])
+    ub = torch.zeros(z.shape[0], nu.shape[1]).to(z)
     ub[:, nu.reshape(-1) >= 0.5] = torch.min(
         B(0, nu[nu >= 0.5], z), B_tilde(2, nu[nu >= 0.5], z)
     )
