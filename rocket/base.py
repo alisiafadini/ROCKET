@@ -1,6 +1,7 @@
 """
 Include modified subclasses of AlphaFold
 """
+
 import re
 from openfold.model.model import AlphaFold
 
@@ -23,7 +24,7 @@ class MSABiasAFv1(AlphaFold):
         self,
         config,
         preset,
-        params_root="/net/holy-nfsisilon/ifs/rc_labs/hekstra_lab/people/minhuan/projects/AF2_refine/openfold_xtal/openfold/resources/params/",
+        params_root="/net/cci-gpu-00/raid1/scratch1/alisia/programs/openfold/openfold_xtal/openfold/resources/params/",
     ):
         super(MSABiasAFv1, self).__init__(config)
 

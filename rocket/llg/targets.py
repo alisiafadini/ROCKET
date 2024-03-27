@@ -60,6 +60,8 @@ class LLGloss(torch.nn.Module):
         self.register_buffer("bin_labels", data_dict["BIN_LABELS"])
         self.bin_labels: torch.Tensor
         self.unique_bins = torch.unique(self.bin_labels)
+        self.register_buffer("bin_dHKL", data_dict["BIN_dHKLS"])
+        self.bin_dHKL: torch.Tensor
 
         if resol_min is None:
             resol_min = min(self.sfc.dHKL)
@@ -73,13 +75,19 @@ class LLGloss(torch.nn.Module):
         self.working_set = (~self.sfc.free_flag) & (~self.sfc.Outlier) & (resol_bool)
         self.free_set = (self.sfc.free_flag) & (~self.sfc.Outlier) & (resol_bool)
 
-    def init_sigmaAs(self, Ecalc, requires_grad=True):
+    def init_sigmaAs(self, Ecalc, subset="working", requires_grad=True):
+
+        if subset == "working":
+            subset_boolean = self.working_set
+        elif subset == "free":
+            subset_boolean = self.free_set
+
         Ecalc = Ecalc.detach().clone()
         self.sigmaAs = []
         for bin_i in self.unique_bins:
-            index_i = self.bin_labels == bin_i
-            Eobs_i = self.Eobs[index_i]
-            Ecalc_i = Ecalc[index_i]
+            index_i = self.bin_labels[subset_boolean] == bin_i
+            Eobs_i = self.Eobs[subset_boolean][index_i]
+            Ecalc_i = Ecalc[subset_boolean][index_i]
 
             # Initialize from correlation coefficient
             sigmaA_i = (
@@ -89,6 +97,16 @@ class LLGloss(torch.nn.Module):
                 .to(device=self.device, dtype=torch.float32)
                 .requires_grad_(requires_grad)
             )
+            self.sigmaAs.append(sigmaA_i)
+
+    def init_sigmaAs_nodata(self, frac=1.0, rms=0.7, requires_grad=True):
+        self.sigmaAs = []
+        for bin_i in self.unique_bins:
+            index_i = self.bin_labels == bin_i
+            s = self.bin_dHKL[index_i][0]
+            sigmaA_i = torch.sqrt(torch.tensor(frac)) * torch.exp(
+                -2 / 3 * torch.pi**2 * torch.tensor(rms) ** 2 * s**-2
+            ).to(device=self.device, dtype=torch.float32).requires_grad_(requires_grad)
             self.sigmaAs.append(sigmaA_i)
 
     def freeze_sigmaA(self):
@@ -145,23 +163,36 @@ class LLGloss(torch.nn.Module):
             adam_opt_i(
                 i, index_i, n_steps=n_steps, sub_ratio=sub_ratio, lr=lr, verbose=verbose
             )
-    
-    def refine_sigmaA_newton(self, Ecalc, n_steps=2, initialize=True, method="autodiff", subset="working", smooth_constraint=None):
+
+    def refine_sigmaA_newton(
+        self,
+        Ecalc,
+        n_steps=2,
+        initialize=True,
+        method="autodiff",
+        subset="working",
+        smooth_constraint=None,
+    ):
         """
         subset : str, "working" or "free"
 
         method : str, "autodiff" or "analytical"
 
-        TODO: include smooth_constraint 
+        TODO: include smooth_constraint
         """
         if initialize:
-            self.init_sigmaAs(Ecalc, requires_grad=False)
-        
+            # self.init_sigmaAs(Ecalc, subset=subset, requires_grad=False)
+            self.init_sigmaAs_nodata()
+            print(
+                "### sigmas initialized are",
+                [sigmaA.item() for sigmaA in self.sigmaAs],
+            )
+
         if subset == "working":
             subset_boolean = self.working_set
         elif subset == "free":
             subset_boolean = self.free_set
-        
+
         for i, label in enumerate(self.unique_bins):
             index_i = self.bin_labels[subset_boolean] == label
             Ecalc_i = Ecalc[subset_boolean][index_i]
@@ -176,12 +207,11 @@ class LLGloss(torch.nn.Module):
                     Eeff=Eob_i,
                     Ec=Ecalc_i,
                     centric_tensor=Centric_i,
-                    method=method
+                    method=method,
                 )
-                ds = lp/lpp
+                ds = lp / lpp
                 sigmaA_i = torch.clamp(sigmaA_i - ds, 0.015, 0.99)
             self.sigmaAs[i] = sigmaA_i.detach().clone()
-
 
     def compute_Ecalc(
         self,
@@ -289,3 +319,49 @@ class LLGloss(torch.nn.Module):
                 llg = llg + llg_ij
 
         return llg
+
+
+"""
+    def refine_sigmaA_newton(
+        self,
+        Ecalc,
+        n_steps=2,
+        initialize=True,
+        method="autodiff",
+        subset="working",
+        smooth_constraint=None,
+    ):
+
+        if initialize:
+            self.init_sigmaAs(Ecalc, subset=subset, requires_grad=False)
+            print(
+                "### sigmas initialized are",
+                [sigmaA.item() for sigmaA in self.sigmaAs],
+            )
+
+        if subset == "working":
+            subset_boolean = self.working_set
+        elif subset == "free":
+            subset_boolean = self.free_set
+
+        for i, label in enumerate(self.unique_bins):
+            index_i = self.bin_labels[subset_boolean] == label
+            Ecalc_i = Ecalc[subset_boolean][index_i]
+            Eob_i = self.Eobs[subset_boolean][index_i]
+            Centric_i = self.Centric[subset_boolean][index_i]
+            Dobs_i = self.Dobs[subset_boolean][index_i]
+            sigmaA_i = self.sigmaAs[i].detach().clone()
+            for _ in range(n_steps):
+                l, lp, lpp = llg_utils.llgItot_with_derivatives2sigmaA(
+                    sigmaA=sigmaA_i,
+                    dobs=Dobs_i,
+                    Eeff=Eob_i,
+                    Ec=Ecalc_i,
+                    centric_tensor=Centric_i,
+                    method=method,
+                )
+                ds = lp / lpp
+                sigmaA_i = torch.clamp(sigmaA_i - ds, 0.015, 0.99)
+            self.sigmaAs[i] = sigmaA_i.detach().clone()
+
+"""

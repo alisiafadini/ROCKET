@@ -635,8 +635,14 @@ def main():
         )
 
         if args.sigmaArefine is True:
-            llgloss.refine_sigmaA_adam(
-                Ecalc, sub_ratio=1.00, lr=0.005, initialize=True, verbose=False
+            # llgloss.refine_sigmaA_adam(
+            #    Ecalc, sub_ratio=1.00, lr=0.005, initialize=True, verbose=False
+            # )
+
+            llgloss.refine_sigmaA_newton(
+                Ecalc,
+                n_steps=10,
+                subset="free",
             )
             sigmas = llgloss.sigmaAs
 

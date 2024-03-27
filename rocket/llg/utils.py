@@ -10,12 +10,14 @@ import numpy as np
 
 
 def llgIa_firstdev(sigmaA, dobs, Eeff, Ec):
-    '''
+    """
     partial llgIa / partial sigmaA
-    '''
+    """
 
     bessel_argument = (2 * dobs * Ec * Eeff * sigmaA) / (1 - dobs**2 * sigmaA**2)
-    bessel_ratio = Ak_approx(torch.tensor(1).to(bessel_argument), bessel_argument).squeeze()
+    bessel_ratio = Ak_approx(
+        torch.tensor(1).to(bessel_argument), bessel_argument
+    ).squeeze()
 
     dLa = (
         2
@@ -31,9 +33,9 @@ def llgIa_firstdev(sigmaA, dobs, Eeff, Ec):
 
 
 def llgIc_firstdev(sigmaA, dobs, Eeff, Ec):
-    '''
+    """
     partial llgIc / partial sigmaA
-    '''
+    """
 
     tanh_argument = (dobs * Ec * Eeff * sigmaA) / (1 - dobs**2 * sigmaA**2)
 
@@ -50,26 +52,28 @@ def llgIc_firstdev(sigmaA, dobs, Eeff, Ec):
 
 
 def llgItot_firstdev(sigmaA, dobs, Eeff, Ec, centric_tensor):
-    '''
+    """
     partial llgI / partial sigmaA
-    '''
+    """
     llgIp_centric = llgIc_firstdev(
         sigmaA, dobs[centric_tensor], Eeff[centric_tensor], Ec[centric_tensor]
     )
     llgIp_acentric = llgIa_firstdev(
         sigmaA, dobs[~centric_tensor], Eeff[~centric_tensor], Ec[~centric_tensor]
     )
-    
+
     return llgIp_centric.sum() + llgIp_acentric.sum()
-    
+
 
 def llgIa_seconddev(sigmaA, dobs, Eeff, Ec):
-    '''
+    """
     partial^2 llgIa / partial sigmaA^2
-    '''
+    """
 
     bessel_argument = (2 * dobs * Ec * Eeff * sigmaA) / (1 - dobs**2 * sigmaA**2)
-    bessel_ratio = Ak_approx(torch.tensor(1).to(bessel_argument), bessel_argument).squeeze()
+    bessel_ratio = Ak_approx(
+        torch.tensor(1).to(bessel_argument), bessel_argument
+    ).squeeze()
 
     d2La = (
         2
@@ -110,9 +114,9 @@ def llgIa_seconddev(sigmaA, dobs, Eeff, Ec):
 
 
 def llgIc_seconddev(sigmaA, dobs, Eeff, Ec):
-    '''
+    """
     partial^2 llgIc / partial sigmaA^2
-    '''
+    """
 
     tanh_and_sech_argument = (dobs * Ec * Eeff * sigmaA) / (1 - dobs**2 * sigmaA**2)
 
@@ -145,10 +149,10 @@ def llgIc_seconddev(sigmaA, dobs, Eeff, Ec):
 
 
 def llgItot_seconddev(sigmaA, dobs, Eeff, Ec, centric_tensor):
-    '''
+    """
     partial^2 llgI / partial sigmaA^2
-    '''
-    
+    """
+
     llgIpp_centric = llgIc_seconddev(
         sigmaA, dobs[centric_tensor], Eeff[centric_tensor], Ec[centric_tensor]
     )
@@ -159,13 +163,30 @@ def llgItot_seconddev(sigmaA, dobs, Eeff, Ec, centric_tensor):
     return llgIpp_centric.sum() + llgIpp_acentric.sum()
 
 
-def llgItot_with_derivatives2sigmaA(sigmaA, dobs, Eeff, Ec, centric_tensor, method="autodiff"):
-    '''
+def calculate_smoothness(tensor):
+
+    # Calculate loss for internal values
+    internal_loss = ((tensor[1:-1] - (tensor[:-2] + tensor[2:]) / 2) ** 2).mean()
+
+    # Extrapolate at the edges
+    edge_loss_start = (tensor[0] - 2 * tensor[1] + tensor[2]) ** 2
+    edge_loss_end = (tensor[-1] - 2 * tensor[-2] + tensor[-3]) ** 2
+
+    # Total loss
+    loss = internal_loss + edge_loss_start + edge_loss_end
+
+    return loss
+
+
+def llgItot_with_derivatives2sigmaA(
+    sigmaA, dobs, Eeff, Ec, centric_tensor, method="autodiff"
+):
+    """
     sigmaA : torch.Tensor
 
     method : str, "autodiff" or "analytical"
-        calculate derivatives with autodiff or analytical expression 
-    '''
+        calculate derivatives with autodiff or analytical expression
+    """
     if method == "autodiff":
         sA = sigmaA.detach().clone().requires_grad_(True)
         l = llgItot_calculate(sA, dobs, Eeff, Ec, centric_tensor)
@@ -173,9 +194,64 @@ def llgItot_with_derivatives2sigmaA(sigmaA, dobs, Eeff, Ec, centric_tensor, meth
         lpp = torch.autograd.grad(lp, sA, create_graph=True, allow_unused=True)[0]
     elif method == "analytical":
         l = llgItot_calculate(sigmaA, dobs, Eeff, Ec, centric_tensor)
-        lp = llgItot_firstdev(sigmaA, dobs.detach(), Eeff.detach(), Ec.detach(), centric_tensor.detach())
-        lpp = llgItot_seconddev(sigmaA, dobs.detach(), Eeff.detach(), Ec.detach(), centric_tensor.detach())
-    
+        lp = llgItot_firstdev(
+            sigmaA, dobs.detach(), Eeff.detach(), Ec.detach(), centric_tensor.detach()
+        )
+        lpp = llgItot_seconddev(
+            sigmaA, dobs.detach(), Eeff.detach(), Ec.detach(), centric_tensor.detach()
+        )
+
+    return l.detach().clone(), lp.detach().clone(), lpp.detach().clone()
+
+
+def llgItot_with_derivatives2sigmaA_withsmooth(
+    sigmaA,
+    dobs,
+    Eeff,
+    Ec,
+    centric_tensor,
+    unique_bins,
+    bin_labels,
+    method="autodiff",
+    smooth_constraint=False,
+):
+    """
+    sigmaA : torch.Tensor
+
+    method : str, "autodiff" or "analytical"
+        calculate derivatives with autodiff or analytical expression
+    """
+    if method == "autodiff":
+
+        for i, label in enumerate(unique_bins):
+            index_i = bin_labels == label
+            Ecalc_i = Ec[index_i]
+            Eob_i = Eeff[index_i]
+            Centric_i = centric_tensor[index_i]
+            Dobs_i = dobs[index_i]
+            sigmaA_i = sigmaA[i].detach().clone()
+
+        sA = sigmaA.detach().clone().requires_grad_(True)
+        l = llgItot_calculate(sA, dobs, Eeff, Ec, centric_tensor)
+        if smooth_constraint:
+            print("sA shape", sA)
+            print("adding smooth constraint")
+            print("LLG before is ", l)
+            l = l - 200 * calculate_smoothness(sA)
+            print("smoothness is ", sA)
+            print("LLG after is ", l)
+        lp = torch.autograd.grad(l, sA, create_graph=True)[0]
+        lpp = torch.autograd.grad(lp, sA, create_graph=True, allow_unused=True)[0]
+
+    elif method == "analytical":
+        l = llgItot_calculate(sigmaA, dobs, Eeff, Ec, centric_tensor)
+        lp = llgItot_firstdev(
+            sigmaA, dobs.detach(), Eeff.detach(), Ec.detach(), centric_tensor.detach()
+        )
+        lpp = llgItot_seconddev(
+            sigmaA, dobs.detach(), Eeff.detach(), Ec.detach(), centric_tensor.detach()
+        )
+
     return l.detach().clone(), lp.detach().clone(), lpp.detach().clone()
 
 
@@ -380,6 +456,28 @@ def compute_sigmaA_true(Eobs, phiobs, Ecalc, phicalc, bin_labels):
     return Sigma_trues
 
 
+def find_bin_dHKL(dHKLs, bin_labels):
+
+    unique_bins = bin_labels.unique()
+
+    bin_dHKLs = []
+
+    for bin_label in unique_bins:
+        # Find indices corresponding to the current bin
+        bin_indices = torch.where(bin_labels == bin_label)[0]
+        # Extract distances for the current bin
+        bin_distances = dHKLs[bin_indices]
+        # Find the largest and lowest distances
+        max_distance = torch.max(bin_distances)
+        min_distance = torch.min(bin_distances)
+        # Calculate the halfway distance
+        halfway_distance = (max_distance + min_distance) / 2.0
+        # Add the halfway distance for each row in the current bin
+        bin_dHKLs.extend([halfway_distance.item()] * len(bin_indices))
+
+    return torch.tensor(bin_dHKLs)
+
+
 def load_tng_data(tng_file, device=utils.try_gpu()):
     tng = utils.load_mtz(tng_file).dropna()
 
@@ -389,6 +487,8 @@ def load_tng_data(tng_file, device=utils.try_gpu()):
     dobs = torch.tensor(tng["DOBS"].values, device=device)
     feff = torch.tensor(tng["FEFF"].values, device=device)
     bin_labels = torch.tensor(tng["BIN"].values, device=device)
+    dHKLs = torch.tensor(tng["dHKL"].values, device=device)
+    bin_dHKLs = find_bin_dHKL(dHKLs, bin_labels).to(device=device)
 
     sigmaN = structurefactors.calculate_Sigma_atoms(feff, eps, bin_labels)
     Edata = structurefactors.normalize_Fs(feff, eps, sigmaN, bin_labels)
@@ -400,6 +500,7 @@ def load_tng_data(tng_file, device=utils.try_gpu()):
         "DOBS": dobs,
         "FEFF": feff,
         "BIN_LABELS": bin_labels,
+        "BIN_dHKLS": bin_dHKLs,
     }
 
     return data_dict
