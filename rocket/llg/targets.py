@@ -9,6 +9,7 @@ from SFC_Torch import SFcalculator
 from rocket.llg import utils as llg_utils
 from rocket.llg import structurefactors as llg_sf
 from rocket import utils
+from functools import partial
 
 
 class LLGloss(torch.nn.Module):
@@ -171,7 +172,8 @@ class LLGloss(torch.nn.Module):
         initialize=True,
         method="autodiff",
         subset="working",
-        smooth_constraint=None,
+        edge_weights=0.25,
+        smooth_overall_weight=200.0
     ):
         """
         subset : str, "working" or "free"
@@ -193,25 +195,45 @@ class LLGloss(torch.nn.Module):
         elif subset == "free":
             subset_boolean = self.free_set
 
-        for i, label in enumerate(self.unique_bins):
-            index_i = self.bin_labels[subset_boolean] == label
-            Ecalc_i = Ecalc[subset_boolean][index_i]
-            Eob_i = self.Eobs[subset_boolean][index_i]
-            Centric_i = self.Centric[subset_boolean][index_i]
-            Dobs_i = self.Dobs[subset_boolean][index_i]
-            sigmaA_i = self.sigmaAs[i].detach().clone()
-            for _ in range(n_steps):
+        for _ in range(n_steps):
+            lps = []
+            lpps = []
+            for i, label in enumerate(self.unique_bins):
+                # TODO: tacke the corner case where no freeset in a bin
+                index_i = self.bin_labels[subset_boolean] == label
+                Ecalc_i = Ecalc[subset_boolean][index_i]
+                Eob_i = self.Eobs[subset_boolean][index_i]
+                Centric_i = self.Centric[subset_boolean][index_i]
+                Dobs_i = self.Dobs[subset_boolean][index_i]
+                sigmaA_i = self.sigmaAs[i].detach().clone()
                 l, lp, lpp = llg_utils.llgItot_with_derivatives2sigmaA(
-                    sigmaA=sigmaA_i,
-                    dobs=Dobs_i,
-                    Eeff=Eob_i,
-                    Ec=Ecalc_i,
-                    centric_tensor=Centric_i,
-                    method=method,
-                )
-                ds = lp / lpp
-                sigmaA_i = torch.clamp(sigmaA_i - ds, 0.015, 0.99)
-            self.sigmaAs[i] = sigmaA_i.detach().clone()
+                                sigmaA=sigmaA_i,
+                                dobs=Dobs_i,
+                                Eeff=Eob_i,
+                                Ec=Ecalc_i,
+                                centric_tensor=Centric_i,
+                                method=method,
+                            )
+                lps.append(lp)
+                lpps.append(lpp)
+            dL1 = torch.stack(lps).detach()
+            H1 = torch.diag(torch.stack(lpps).detach())
+            
+            # Smooth terms
+            sigmaAs_tensor = torch.stack(self.sigmaAs).detach().clone().requires_grad_(True)
+            smooth_calculator = partial(llg_utils.interpolate_smooth, edge_weights=edge_weights, total_weight=smooth_overall_weight)
+            Ls = smooth_calculator(sigmaAs_tensor)
+            dL2 = torch.autograd.grad(Ls, sigmaAs_tensor, create_graph=True)[0]
+            H2 =  torch.autograd.functional.hessian(smooth_calculator, sigmaAs_tensor)
+            
+            # Combine the two terms
+            dL_total = dL1 + dL2.detach()
+            Htotal = H1 + H2.detach()
+            ds_tensor = torch.matmul(torch.linalg.inv(Htotal), dL_total)
+
+            # Update
+            sigmaAs_new = torch.clamp(sigmaAs_tensor - ds_tensor, 0.015, 0.99)
+            self.sigmaAs = [s.detach() for s in sigmaAs_new]
 
     def compute_Ecalc(
         self,

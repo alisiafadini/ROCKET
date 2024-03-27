@@ -163,19 +163,19 @@ def llgItot_seconddev(sigmaA, dobs, Eeff, Ec, centric_tensor):
     return llgIpp_centric.sum() + llgIpp_acentric.sum()
 
 
-def calculate_smoothness(tensor):
+def interpolate_smooth(sigmaAs_tensor, edge_weights=0.25, total_weight=200.0):
 
     # Calculate loss for internal values
-    internal_loss = ((tensor[1:-1] - (tensor[:-2] + tensor[2:]) / 2) ** 2).mean()
+    internal_loss = ((sigmaAs_tensor[1:-1] - (sigmaAs_tensor[:-2] + sigmaAs_tensor[2:]) / 2) ** 2).mean()
 
     # Extrapolate at the edges
-    edge_loss_start = (tensor[0] - 2 * tensor[1] + tensor[2]) ** 2
-    edge_loss_end = (tensor[-1] - 2 * tensor[-2] + tensor[-3]) ** 2
+    edge_loss_start = (sigmaAs_tensor[0] - 2 * sigmaAs_tensor[1] + sigmaAs_tensor[2]) ** 2
+    edge_loss_end = (sigmaAs_tensor[-1] - 2 * sigmaAs_tensor[-2] + sigmaAs_tensor[-3]) ** 2
 
     # Total loss
-    loss = internal_loss + edge_loss_start + edge_loss_end
+    loss = internal_loss + edge_weights*edge_loss_start + edge_weights*edge_loss_end
 
-    return loss
+    return total_weight * loss
 
 
 def llgItot_with_derivatives2sigmaA(
