@@ -92,7 +92,7 @@ class LLGloss(torch.nn.Module):
 
             # Initialize from correlation coefficient
             sigmaA_i = (
-                torch.corrcoef(torch.stack([Eobs_i, Ecalc_i], dim=0))[1][0]
+                torch.corrcoef(torch.stack([Eobs_i**2, Ecalc_i**2], dim=0))[1][0]
                 .clamp(min=0.001, max=0.999)
                 .sqrt()
                 .to(device=self.device, dtype=torch.float32)
@@ -171,9 +171,9 @@ class LLGloss(torch.nn.Module):
         n_steps=2,
         initialize=True,
         method="autodiff",
-        subset="working",
+        subset="test",
         edge_weights=0.25,
-        smooth_overall_weight=200.0
+        smooth_overall_weight=200.0,
     ):
         """
         subset : str, "working" or "free"
@@ -183,56 +183,63 @@ class LLGloss(torch.nn.Module):
         TODO: include smooth_constraint
         """
         if initialize:
-            # self.init_sigmaAs(Ecalc, subset=subset, requires_grad=False)
-            self.init_sigmaAs_nodata()
-            print(
-                "### sigmas initialized are",
-                [sigmaA.item() for sigmaA in self.sigmaAs],
-            )
+            self.init_sigmaAs(Ecalc, subset="working", requires_grad=False)
+            # self.init_sigmaAs_nodata()
 
         if subset == "working":
             subset_boolean = self.working_set
-        elif subset == "free":
+        elif subset == "test":
             subset_boolean = self.free_set
 
-        for _ in range(n_steps):
+        for n in range(n_steps):
             lps = []
             lpps = []
+            ls = []
             for i, label in enumerate(self.unique_bins):
-                # TODO: tacke the corner case where no freeset in a bin
+                # for i in range(0, len(self.unique_bins) - 1, 2):
+                # TODO: tackle the corner case where no freeset in a bin
                 index_i = self.bin_labels[subset_boolean] == label
+
                 Ecalc_i = Ecalc[subset_boolean][index_i]
                 Eob_i = self.Eobs[subset_boolean][index_i]
+
                 Centric_i = self.Centric[subset_boolean][index_i]
                 Dobs_i = self.Dobs[subset_boolean][index_i]
-                sigmaA_i = self.sigmaAs[i].detach().clone()
+                sigmaA_i = self.sigmaAs[int(i)].detach().clone()
                 l, lp, lpp = llg_utils.llgItot_with_derivatives2sigmaA(
-                                sigmaA=sigmaA_i,
-                                dobs=Dobs_i,
-                                Eeff=Eob_i,
-                                Ec=Ecalc_i,
-                                centric_tensor=Centric_i,
-                                method=method,
-                            )
+                    sigmaA=sigmaA_i,
+                    dobs=Dobs_i,
+                    Eeff=Eob_i,
+                    Ec=Ecalc_i,
+                    centric_tensor=Centric_i,
+                    method=method,
+                )
+                ls.append(l)
                 lps.append(lp)
                 lpps.append(lpp)
+
             dL1 = torch.stack(lps).detach()
             H1 = torch.diag(torch.stack(lpps).detach())
-            
+
             # Smooth terms
-            sigmaAs_tensor = torch.stack(self.sigmaAs).detach().clone().requires_grad_(True)
-            smooth_calculator = partial(llg_utils.interpolate_smooth, edge_weights=edge_weights, total_weight=smooth_overall_weight)
+            sigmaAs_tensor = (
+                torch.stack(self.sigmaAs).detach().clone().requires_grad_(True)
+            )
+            smooth_calculator = partial(
+                llg_utils.interpolate_smooth,
+                edge_weights=edge_weights,
+                total_weight=smooth_overall_weight,
+            )
             Ls = smooth_calculator(sigmaAs_tensor)
             dL2 = torch.autograd.grad(Ls, sigmaAs_tensor, create_graph=True)[0]
-            H2 =  torch.autograd.functional.hessian(smooth_calculator, sigmaAs_tensor)
-            
-            # Combine the two terms
-            dL_total = dL1 + dL2.detach()
-            Htotal = H1 + H2.detach()
-            ds_tensor = torch.matmul(torch.linalg.inv(Htotal), dL_total)
+            H2 = torch.autograd.functional.hessian(smooth_calculator, sigmaAs_tensor)
 
-            # Update
-            sigmaAs_new = torch.clamp(sigmaAs_tensor - ds_tensor, 0.015, 0.99)
+            # Combine the two terms
+            dL_total = dL1 - dL2.detach()
+            Htotal = H1 - H2.detach()
+
+            sigmaAs_updated = llg_utils.newton_step(sigmaAs_tensor, dL_total, Htotal)
+            sigmaAs_new = torch.clamp(sigmaAs_updated, 0.015, 0.99)
             self.sigmaAs = [s.detach() for s in sigmaAs_new]
 
     def compute_Ecalc(
@@ -322,12 +329,13 @@ class LLGloss(torch.nn.Module):
         for i, label in enumerate(bin_labels):
             index_i = self.bin_labels[self.working_set] == label
             # if sum(index_i) == 0:
-            #     continue
+            #    continue
             Ecalc_i = Ecalc[self.working_set][index_i]
             Eob_i = self.Eobs[self.working_set][index_i]
             Centric_i = self.Centric[self.working_set][index_i]
             Dobs_i = self.Dobs[self.working_set][index_i]
-            sigmaA_i = self.sigmaAs[i]
+
+            sigmaA_i = self.sigmaAs[int(i)]
             for j in range(num_batch):
                 sub_boolean_mask = np.random.rand(len(Eob_i)) < sub_ratio
                 llg_ij = llg_utils.llgItot_calculate(

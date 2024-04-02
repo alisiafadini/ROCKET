@@ -9,6 +9,24 @@ from tqdm import tqdm
 import numpy as np
 
 
+def newton_step(tensor_pre_update, gradient, Hessian):
+    # updated_tensor = torch.clamp(
+    #    tensor_pre_update - derivatives_tensor,
+    #    0.015,
+    #    0.99,
+    # )
+    gamma = 1.0
+    derivatives_tensor = torch.matmul(torch.linalg.inv(Hessian), gradient)
+    updated_tensor = tensor_pre_update - gamma * derivatives_tensor
+
+    # ds_tensor = torch.matmul(torch.linalg.inv(Htotal), dL_total)
+    # sigmaAs_new = sigmaAs_tensor - ds_tensor
+    #             sigmaAs_new = llg_utils.newton_step(
+    #            sigmaAs_tensor, dL_total, torch.linalg.inv(Htotal)
+    #        )
+    return updated_tensor
+
+
 def llgIa_firstdev(sigmaA, dobs, Eeff, Ec):
     """
     partial llgIa / partial sigmaA
@@ -166,16 +184,31 @@ def llgItot_seconddev(sigmaA, dobs, Eeff, Ec, centric_tensor):
 def interpolate_smooth(sigmaAs_tensor, edge_weights=0.25, total_weight=200.0):
 
     # Calculate loss for internal values
-    internal_loss = ((sigmaAs_tensor[1:-1] - (sigmaAs_tensor[:-2] + sigmaAs_tensor[2:]) / 2) ** 2).mean()
+    internal_loss = (
+        (sigmaAs_tensor[1:-1] - (sigmaAs_tensor[:-2] + sigmaAs_tensor[2:]) / 2) ** 2
+    ).sum()
 
     # Extrapolate at the edges
-    edge_loss_start = (sigmaAs_tensor[0] - 2 * sigmaAs_tensor[1] + sigmaAs_tensor[2]) ** 2
-    edge_loss_end = (sigmaAs_tensor[-1] - 2 * sigmaAs_tensor[-2] + sigmaAs_tensor[-3]) ** 2
+    edge_loss_start = (
+        sigmaAs_tensor[0] - 2 * sigmaAs_tensor[1] + sigmaAs_tensor[2]
+    ) ** 2
+    edge_loss_end = (
+        sigmaAs_tensor[-1] - 2 * sigmaAs_tensor[-2] + sigmaAs_tensor[-3]
+    ) ** 2
+
+    # print(
+    #    "Smoothing loss internal this round",
+    #    (sigmaAs_tensor[1:-1] - (sigmaAs_tensor[:-2] + sigmaAs_tensor[2:]) / 2) ** 2,
+    # )
+    # print("start", edge_loss_start)
+    # print("end", edge_loss_end)
 
     # Total loss
-    loss = internal_loss + edge_weights*edge_loss_start + edge_weights*edge_loss_end
+    total_loss = (
+        internal_loss + edge_weights * edge_loss_start + edge_weights * edge_loss_end
+    ) / float(sigmaAs_tensor.shape[0])
 
-    return total_weight * loss
+    return total_weight * total_loss
 
 
 def llgItot_with_derivatives2sigmaA(
@@ -192,57 +225,6 @@ def llgItot_with_derivatives2sigmaA(
         l = llgItot_calculate(sA, dobs, Eeff, Ec, centric_tensor)
         lp = torch.autograd.grad(l, sA, create_graph=True)[0]
         lpp = torch.autograd.grad(lp, sA, create_graph=True, allow_unused=True)[0]
-    elif method == "analytical":
-        l = llgItot_calculate(sigmaA, dobs, Eeff, Ec, centric_tensor)
-        lp = llgItot_firstdev(
-            sigmaA, dobs.detach(), Eeff.detach(), Ec.detach(), centric_tensor.detach()
-        )
-        lpp = llgItot_seconddev(
-            sigmaA, dobs.detach(), Eeff.detach(), Ec.detach(), centric_tensor.detach()
-        )
-
-    return l.detach().clone(), lp.detach().clone(), lpp.detach().clone()
-
-
-def llgItot_with_derivatives2sigmaA_withsmooth(
-    sigmaA,
-    dobs,
-    Eeff,
-    Ec,
-    centric_tensor,
-    unique_bins,
-    bin_labels,
-    method="autodiff",
-    smooth_constraint=False,
-):
-    """
-    sigmaA : torch.Tensor
-
-    method : str, "autodiff" or "analytical"
-        calculate derivatives with autodiff or analytical expression
-    """
-    if method == "autodiff":
-
-        for i, label in enumerate(unique_bins):
-            index_i = bin_labels == label
-            Ecalc_i = Ec[index_i]
-            Eob_i = Eeff[index_i]
-            Centric_i = centric_tensor[index_i]
-            Dobs_i = dobs[index_i]
-            sigmaA_i = sigmaA[i].detach().clone()
-
-        sA = sigmaA.detach().clone().requires_grad_(True)
-        l = llgItot_calculate(sA, dobs, Eeff, Ec, centric_tensor)
-        if smooth_constraint:
-            print("sA shape", sA)
-            print("adding smooth constraint")
-            print("LLG before is ", l)
-            l = l - 200 * calculate_smoothness(sA)
-            print("smoothness is ", sA)
-            print("LLG after is ", l)
-        lp = torch.autograd.grad(l, sA, create_graph=True)[0]
-        lpp = torch.autograd.grad(lp, sA, create_graph=True, allow_unused=True)[0]
-
     elif method == "analytical":
         l = llgItot_calculate(sigmaA, dobs, Eeff, Ec, centric_tensor)
         lp = llgItot_firstdev(
