@@ -697,7 +697,8 @@ def main():
             aligned_xyz,
             llgloss,
             lbfgs=RBR_LBFGS,
-            added_chain=constant_fp_added,
+            added_chain_HKL=constant_fp_added_HKL,
+            added_chain_asu=constant_fp_added_asu,
             lbfgs_lr=args.rbr_lbfgs_lr,
             verbose=args.verbose,
         )
