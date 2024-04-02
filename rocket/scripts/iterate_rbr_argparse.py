@@ -277,9 +277,13 @@ def main():
     true_pdb = "{p}/{r}/{r}_noalts.pdb".format(p=path, r=args.file_root)
 
     if args.added_chain:
-        constant_fp_added = torch.load(
-            "{p}/{r}/{r}_added_chain_atoms.pt".format(p=path, r=args.file_root)
+        constant_fp_added_HKL = torch.load(
+            "{p}/{r}/{r}_added_chain_atoms_HKL.pt".format(p=path, r=args.file_root)
         ).to(device=device)
+        constant_fp_added_asu = torch.load(
+            "{p}/{r}/{r}_added_chain_atoms_asu.pt".format(p=path, r=args.file_root)
+        ).to(device=device)
+
         phitrue = np.load(
             "{p}/{r}/{r}_allchains-phitrue-solvent{s}.npy".format(
                 p=path, r=args.file_root, s=args.solvent
@@ -291,7 +295,8 @@ def main():
             )
         )
     else:
-        constant_fp_added = None
+        constant_fp_added_HKL = None
+        constant_fp_added_asu = None
         phitrue = np.load(
             "{p}/{r}/{r}-phitrue-solvent{s}.npy".format(
                 p=path, r=args.file_root, s=args.solvent
@@ -334,6 +339,8 @@ def main():
         Freelabel=args.free_flag,
         device=device,
         testset_value=args.testset_value,
+        added_chain_HKL=constant_fp_added_HKL,
+        added_chain_asu=constant_fp_added_asu,
     )
     reference_pos = sfc.atom_pos_orth.clone()
 
@@ -631,7 +638,8 @@ def main():
             aligned_xyz,
             return_Fc=True,
             update_scales=True,
-            added_chain=constant_fp_added,
+            added_chain_HKL=constant_fp_added_HKL,
+            added_chain_asu=constant_fp_added_asu,
         )
 
         if args.sigmaArefine is True:
@@ -641,10 +649,16 @@ def main():
 
             llgloss.refine_sigmaA_newton(
                 Ecalc,
-                n_steps=10,
-                subset="free",
+                n_steps=2,
+                subset="working",
+                smooth_overall_weight=0.0
             )
             sigmas = llgloss.sigmaAs
+
+            print(
+                "######### sigmas after refinement are",
+                [sigmaA.item() for sigmaA in llgloss.sigmaAs],
+            )
 
         else:
             sigmas = llg_utils.sigmaA_from_model(
@@ -657,10 +671,7 @@ def main():
             )
             llgloss.sigmaAs = sigmas
 
-        print(
-            "######### sigmas after refinement are",
-            [sigmaA.item() for sigmaA in llgloss.sigmaAs],
-        )
+        
 
         true_sigmas = llg_utils.sigmaA_from_model(
             Etrue,
@@ -700,7 +711,8 @@ def main():
             sub_ratio=args.sub_ratio,
             solvent=args.solvent,
             update_scales=args.scale,
-            added_chain=constant_fp_added,
+            added_chain_HKL=constant_fp_added_HKL,
+            added_chain_asu=constant_fp_added_asu,
         )
 
         llg_estimate = loss.item() / (args.sub_ratio * args.batches)

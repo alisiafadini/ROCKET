@@ -248,12 +248,14 @@ class LLGloss(torch.nn.Module):
         solvent=True,
         return_Fc=False,
         update_scales=False,
-        added_chain=None,
+        added_chain_HKL=None,
+        added_chain_asu=None
     ) -> torch.Tensor:
         self.sfc.calc_fprotein(atoms_position_tensor=xyz_orth)
 
-        if added_chain is not None:
-            self.sfc.Fprotein_HKL = self.sfc.Fprotein_HKL + added_chain
+        if added_chain_HKL is not None:
+            self.sfc.Fprotein_HKL = self.sfc.Fprotein_HKL + added_chain_HKL
+            self.sfc.Fprotein_asu = self.sfc.Fprotein_asu + added_chain_asu
 
         if solvent:
             self.sfc.calc_fsolvent()
@@ -294,7 +296,8 @@ class LLGloss(torch.nn.Module):
         sub_ratio=1.0,
         solvent=True,
         update_scales=False,
-        added_chain=None,
+        added_chain_HKL=None,
+        added_chain_asu=None
     ):
         """
         TODO: Use rfree label in the LLG calculation
@@ -319,7 +322,8 @@ class LLGloss(torch.nn.Module):
             xyz_ort,
             solvent=solvent,
             update_scales=update_scales,
-            added_chain=added_chain,
+            added_chain_HKL=added_chain_HKL,
+            added_chain_asu=added_chain_asu
         )
         llg = 0.0
 
