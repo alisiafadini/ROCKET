@@ -15,7 +15,8 @@ def initial_SFC(
     SigFlabel,
     Freelabel=None,
     device=SFC.utils.try_gpu(),
-    testset_value=0
+    testset_value=0,
+    n_bins=10
 ):
     sfcalculator = SFcalculator(
         pdb_file,
@@ -25,20 +26,14 @@ def initial_SFC(
         set_experiment=True,
         testset_value=testset_value,
         device=device,
+        n_bins=n_bins
     )
 
     sfcalculator.inspect_data(verbose=False)
     sfcalculator.calc_fprotein()
     sfcalculator.calc_fsolvent()
     # sfcalculator.Fmask_HKL = torch.zeros_like(sfcalculator.Fprotein_HKL)
-    sfcalculator.get_scales_lbfgs(
-        ls_steps=5,
-        r_steps=5,
-        ls_lr=0.001,
-        r_lr=0.001,
-        initialize=True,
-        verbose=False,
-    )
+    sfcalculator.get_scales_adam()
     sfcalculator.calc_ftotal()
 
     return sfcalculator
