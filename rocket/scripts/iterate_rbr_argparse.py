@@ -534,7 +534,7 @@ def main():
         thresh=args.b_threshold,
         add=args.note,
     )
-
+    print(output_name, flush=True)
     if not args.verbose:
         warnings.filterwarnings("ignore")
 
@@ -656,8 +656,8 @@ def main():
             sigmas = llgloss.sigmaAs
 
             print(
-                "######### sigmas after refinement are",
-                [sigmaA.item() for sigmaA in llgloss.sigmaAs],
+                f"#########  {iteration} sigmas after refinement are",
+                [sigmaA.item() for sigmaA in llgloss.sigmaAs], flush=True
             )
 
         else:
@@ -682,7 +682,7 @@ def main():
             llgloss.bin_labels,
         )
 
-        print("######### True sigmas are", [sigmaA.item() for sigmaA in true_sigmas])
+        print(f"######### {iteration} True sigmas are", [sigmaA.item() for sigmaA in true_sigmas], flush=True)
 
         # Update SFC and save
         llgloss.sfc.atom_pos_orth = aligned_xyz

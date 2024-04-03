@@ -79,9 +79,9 @@ class LLGloss(torch.nn.Module):
     def init_sigmaAs(self, Ecalc, subset="working", requires_grad=True):
 
         if subset == "working":
-            subset_boolean = self.working_set
+            subset_boolean = (~self.sfc.free_flag) & (~self.sfc.Outlier)
         elif subset == "free":
-            subset_boolean = self.free_set
+            subset_boolean = (self.sfc.free_flag) & (~self.sfc.Outlier)
 
         Ecalc = Ecalc.detach().clone()
         self.sigmaAs = []
@@ -187,9 +187,9 @@ class LLGloss(torch.nn.Module):
             # self.init_sigmaAs_nodata()
 
         if subset == "working":
-            subset_boolean = self.working_set
+            subset_boolean = (~self.sfc.free_flag) & (~self.sfc.Outlier)
         elif subset == "test":
-            subset_boolean = self.free_set
+            subset_boolean = (self.sfc.free_flag) & (~self.sfc.Outlier)
 
         for n in range(n_steps):
             lps = []
