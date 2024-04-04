@@ -359,6 +359,19 @@ def main():
     # true_cras = sfc_true.cra_name
     del sfc_true
 
+    sfc_rbr = llg_sf.initial_SFC(
+        input_pdb,
+        tng_file,
+        "FP",
+        "SIGFP",
+        Freelabel=args.free_flag,
+        device=device,
+        solvent=False,
+        testset_value=args.testset_value,
+        added_chain_HKL=constant_fp_added_HKL,
+        added_chain_asu=constant_fp_added_asu,
+    )
+
     # LLG initialization with resol cut
     if args.resol_min is None:
         resol_min = min(sfc.dHKL)
@@ -371,6 +384,7 @@ def main():
         resol_max = args.resol_max
 
     llgloss = rocket.llg.targets.LLGloss(sfc, tng_file, device, resol_min, resol_max)
+    llgloss_rbr = rocket.llg.targets.LLGloss(sfc_rbr, tng_file, device, resol_min, resol_max)
     # llgloss = rocket.llg.targets.LLGloss(sfc, tng_file, device)
 
     # Model initialization
@@ -642,6 +656,15 @@ def main():
             added_chain_asu=constant_fp_added_asu,
         )
 
+        Ecalc_rbr, Fc_rbr = llgloss_rbr.compute_Ecalc(
+            aligned_xyz,
+            return_Fc=True,
+            solvent=False,
+            update_scales=True,
+            added_chain_HKL=constant_fp_added_HKL,
+            added_chain_asu=constant_fp_added_asu,
+        )
+
         if args.sigmaArefine is True:
             # llgloss.refine_sigmaA_adam(
             #    Ecalc, sub_ratio=1.00, lr=0.005, initialize=True, verbose=False
@@ -653,12 +676,18 @@ def main():
                 subset="working",
                 smooth_overall_weight=0.0
             )
+            llgloss_rbr.refine_sigmaA_newton(
+                Ecalc_rbr,
+                n_steps=2,
+                subset="working",
+                smooth_overall_weight=0.0
+            )
             sigmas = llgloss.sigmaAs
 
-            print(
-                f"#########  {iteration} sigmas after refinement are",
-                [sigmaA.item() for sigmaA in llgloss.sigmaAs], flush=True
-            )
+            # print(
+            #     f"#########  {iteration} sigmas after refinement are",
+            #     [sigmaA.item() for sigmaA in llgloss.sigmaAs], flush=True
+            # )
 
         else:
             sigmas = llg_utils.sigmaA_from_model(
@@ -671,6 +700,16 @@ def main():
             )
             llgloss.sigmaAs = sigmas
 
+            sigmas_rbr = llg_utils.sigmaA_from_model(
+                Etrue,
+                phitrue,
+                Ecalc_rbr,
+                Fc_rbr,
+                llgloss.sfc.dHKL,
+                llgloss.bin_labels,
+            )
+            llgloss_rbr.sigmaAs = sigmas_rbr
+
         
 
         true_sigmas = llg_utils.sigmaA_from_model(
@@ -682,7 +721,7 @@ def main():
             llgloss.bin_labels,
         )
 
-        print(f"######### {iteration} True sigmas are", [sigmaA.item() for sigmaA in true_sigmas], flush=True)
+        # print(f"######### {iteration} True sigmas are", [sigmaA.item() for sigmaA in true_sigmas], flush=True)
 
         # Update SFC and save
         llgloss.sfc.atom_pos_orth = aligned_xyz
@@ -695,7 +734,7 @@ def main():
         # Rigid body refinement (RBR) step
         optimized_xyz, loss_track_pose = rk_coordinates.rigidbody_refine_quat(
             aligned_xyz,
-            llgloss,
+            llgloss_rbr,
             lbfgs=RBR_LBFGS,
             added_chain_HKL=constant_fp_added_HKL,
             added_chain_asu=constant_fp_added_asu,

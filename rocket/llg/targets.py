@@ -256,7 +256,7 @@ class LLGloss(torch.nn.Module):
         if added_chain_HKL is not None:
             self.sfc.Fprotein_HKL = self.sfc.Fprotein_HKL + added_chain_HKL
             self.sfc.Fprotein_asu = self.sfc.Fprotein_asu + added_chain_asu
-
+        
         if solvent:
             self.sfc.calc_fsolvent()
             if update_scales:
