@@ -542,6 +542,11 @@ def main():
     best_loss = float("inf")
     best_pos = reference_pos
 
+    # Initialize best Rfree weights and bias for Phase 1
+    best_rfree = float("inf")
+    best_msa_bias = None
+    best_feat_weights = None
+
     # List initialization for saving values
     mse_losses_by_epoch = []
     rbr_loss_by_epoch = []
@@ -648,17 +653,15 @@ def main():
             # )
 
             llgloss.refine_sigmaA_newton(
-                Ecalc,
-                n_steps=2,
-                subset="working",
-                smooth_overall_weight=0.0
+                Ecalc, n_steps=5, subset="working", smooth_overall_weight=0.0
             )
             sigmas = llgloss.sigmaAs
 
-            print(
-                f"#########  {iteration} sigmas after refinement are",
-                [sigmaA.item() for sigmaA in llgloss.sigmaAs], flush=True
-            )
+            # print(
+            #    f"#########  {iteration} sigmas after refinement are",
+            #    [sigmaA.item() for sigmaA in llgloss.sigmaAs],
+            #    flush=True,
+            # )
 
         else:
             sigmas = llg_utils.sigmaA_from_model(
@@ -671,8 +674,6 @@ def main():
             )
             llgloss.sigmaAs = sigmas
 
-        
-
         true_sigmas = llg_utils.sigmaA_from_model(
             Etrue,
             phitrue,
@@ -682,7 +683,11 @@ def main():
             llgloss.bin_labels,
         )
 
-        print(f"######### {iteration} True sigmas are", [sigmaA.item() for sigmaA in true_sigmas], flush=True)
+        # print(
+        #    f"######### {iteration} True sigmas are",
+        #    [sigmaA.item() for sigmaA in true_sigmas],
+        #    flush=True,
+        # )
 
         # Update SFC and save
         llgloss.sfc.atom_pos_orth = aligned_xyz
@@ -720,6 +725,16 @@ def main():
         llg_losses.append(llg_estimate)
         rwork_by_epoch.append(llgloss.sfc.r_work.item())
         rfree_by_epoch.append(llgloss.sfc.r_free.item())
+
+        # Check if current Rfree is the best so far
+        if rfree_by_epoch[-1] < best_rfree:
+            best_rfree = rfree_by_epoch[-1]
+            best_msa_bias = (
+                device_processed_features["msa_feat_bias"].detach().cpu().clone()
+            )
+            best_feat_weights = (
+                device_processed_features["msa_feat_weights"].detach().cpu().clone()
+            )
 
         llgloss.sfc.atom_pos_orth = optimized_xyz
         # Save postRBR PDB
@@ -823,6 +838,7 @@ def main():
                     path=path, r=args.file_root, out=output_name, iter=iteration
                 ),
             )
+
     ####### Save data
 
     # Average plddt per iteration
@@ -933,6 +949,21 @@ def main():
         "wb",
     ) as file:
         pickle.dump(true_sigmas_by_epoch, file)
+
+    # Save the best msa_bias and feat_weights
+    torch.save(
+        best_msa_bias,
+        "{path}/{r}/outputs/{out}/best_msa_bias.pt".format(
+            path=path, r=args.file_root, out=output_name
+        ),
+    )
+
+    torch.save(
+        best_feat_weights,
+        "{path}/{r}/outputs/{out}/best_feat_weights.pt".format(
+            path=path, r=args.file_root, out=output_name
+        ),
+    )
 
 
 if __name__ == "__main__":
