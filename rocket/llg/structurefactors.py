@@ -17,6 +17,7 @@ def initial_SFC(
     device=SFC.utils.try_gpu(),
     testset_value=0,
     n_bins=10,
+    solvent=True,
     added_chain_HKL=None,
     added_chain_asu=None,
 ):
@@ -32,15 +33,17 @@ def initial_SFC(
     )
     sfcalculator.inspect_data(verbose=False)
     sfcalculator.calc_fprotein()
+    
     if added_chain_HKL is not None:
         sfcalculator.Fprotein_HKL = sfcalculator.Fprotein_HKL + added_chain_HKL
         sfcalculator.Fprotein_asu = sfcalculator.Fprotein_asu + added_chain_asu
         sfcalculator.solventpct = 1 - (1 - sfcalculator.solventpct)*2
-    sfcalculator.calc_fsolvent()
-    # sfcalculator.Fmask_HKL = torch.zeros_like(sfcalculator.Fprotein_HKL)
+    
+    if solvent:
+        sfcalculator.calc_fsolvent()
+    else:
+        sfcalculator.Fmask_HKL = torch.zeros_like(sfcalculator.Fprotein_HKL)
     sfcalculator.get_scales_adam()
-    sfcalculator.calc_ftotal()
-
     return sfcalculator
 
 
