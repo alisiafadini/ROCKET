@@ -38,6 +38,11 @@ from rocket import utils as rk_utils
 from rocket.llg import structurefactors as llg_sf
 from openfold.config import model_config
 import pickle
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Union
+from pydantic import BaseModel
+
 
 PRESET = "model_1"
 THRESH_B = None
@@ -67,7 +72,7 @@ def parse_arguments():
 
     parser.add_argument(
         "-v",
-        "--version",
+        "--bias_version",
         required=True,
         type=int,
         help=("Bias version to implement (1, 2, 3, 4)"),
@@ -89,30 +94,33 @@ def parse_arguments():
         help=("Name of template pdb file in the file_root"),
     )
 
-    parser.add_argument("-c", "--cuda", type=int, default=0, help="Cuda device")
+    parser.add_argument("-c", "--cuda_device", type=int, default=0, help="Cuda device")
     parser.add_argument(
         "-solv",
         "--solvent",
         help="Turn on solvent calculation in refinement step",
         action=argparse.BooleanOptionalAction,
+        default=False,
     )
     parser.add_argument(
         "-s",
-        "--scale",
+        "--sfc_scale",
         help="Turn on SFC scale_update at each epoch",
         action=argparse.BooleanOptionalAction,
+        default=False,
     )
 
     parser.add_argument(
         "-sigmaA",
-        "--sigmaArefine",
+        "--refine_sigmaA",
         help="Turn on sigmaA refinement at each epoch",
         action=argparse.BooleanOptionalAction,
+        default=False,
     )
 
     parser.add_argument(
         "-lr_a",
-        "--lr_add",
+        "--additive_learning_rate",
         type=float,
         default=1e-3,
         help=("Learning rate for additive bias. Default 1e-3"),
@@ -120,7 +128,7 @@ def parse_arguments():
 
     parser.add_argument(
         "-lr_m",
-        "--lr_mul",
+        "--multiplicative_learning_rate",
         type=float,
         default=1e-2,
         help=("Learning rate for multiplicative bias. Default 1e-2"),
@@ -135,7 +143,7 @@ def parse_arguments():
 
     parser.add_argument(
         "-sub_r",
-        "--sub_ratio",
+        "--batch_sub_ratio",
         type=float,
         default=1.0,
         help=("Ratio of reflections for each batch. Default 1.0 (no batching)"),
@@ -143,21 +151,21 @@ def parse_arguments():
 
     parser.add_argument(
         "-b",
-        "--batches",
+        "--number_of_batches",
         type=int,
         default=1,
         help=("Number of batches. Default 1 (no batching)"),
     )
 
     parser.add_argument(
-        "--rbr_opt",
+        "--rbr_opt_algorithm",
         type=str,
         default="lbfgs",
         help=("Optimization algorithm used in RBR, lbfgs or adam"),
     )
 
     parser.add_argument(
-        "--rbr_lbfgs_lr",
+        "--rbr_lbfgs_learning_rate",
         type=float,
         default=150.0,
         help=("Learning rate of lbfgs used in RBR"),
@@ -165,7 +173,7 @@ def parse_arguments():
 
     parser.add_argument(
         "-a",
-        "--align",
+        "--alignment_mode",
         type=str,
         default="B",
         choices=["B", "I"],
@@ -197,9 +205,10 @@ def parse_arguments():
 
     parser.add_argument(
         "-chain",
-        "--added_chain",
+        "--additional_chain",
         help="additional chain in asu",
         action=argparse.BooleanOptionalAction,
+        default=False,
     )
 
     parser.add_argument(
@@ -210,7 +219,7 @@ def parse_arguments():
 
     parser.add_argument(
         "-L2_w",
-        "--L2_weight",
+        "--l2_weight",
         type=float,
         default=0.0,
         help=("Weight for L2 loss"),
@@ -225,28 +234,28 @@ def parse_arguments():
     )
 
     parser.add_argument(
-        "--resol_min",
+        "--min_resolution",
         type=float,
         default=None,
         help=("min resolution for llg calculation"),
     )
 
     parser.add_argument(
-        "--resol_max",
+        "--max_resolution",
         type=float,
         default=None,
         help=("max resolution for llg calculation"),
     )
 
     parser.add_argument(
-        "--bias_start",
+        "--starting_bias",
         type=str,
         default=None,
         help=("initial bias to start with"),
     )
 
     parser.add_argument(
-        "--weights_start",
+        "--starting_weights",
         type=str,
         default=None,
         help=("initial weights to start with"),
@@ -255,43 +264,76 @@ def parse_arguments():
     return parser.parse_args()
 
 
-def main():
+class RocketRefinmentConfig(BaseModel):
+    path: Path
+    file_root: Path
+    bias_version: int
+    iterations: int
+    template_pdb: Union[Path, None]
+    cuda_device: int
+    solvent: bool
+    sfc_scale: bool
+    refine_sigmaA: bool
+    additive_learning_rate: float
+    multiplicative_learning_rate: float
+    weight_decay: Union[float, None]  # TODO: should default be 0.0?
+    batch_sub_ratio: float
+    number_of_batches: int
+    rbr_opt_algorithm: str
+    rbr_lbfgs_learning_rate: float
+    alignment_mode: str
+    note: str
+    free_flag: str
+    testset_value: int
+    additional_chain: bool
+    verbose: bool
+    l2_weight: float
+    b_threshold: float
+    min_resolution: Union[float, None]
+    max_resolution: Union[float, None]
+    starting_bias: Union[Path, None]
+    starting_weights: Union[Path, None]
+
+
+def run_refinement(*, config: RocketRefinmentConfig):
     # Parse commandline arguments
-    args = parse_arguments()
 
     # General settings
-    device = "cuda:{}".format(args.cuda)
+    device = "cuda:{}".format(config.cuda_device)
 
     # Using LBFGS or Adam in RBR
-    if args.rbr_opt == "lbfgs":
+    if config.rbr_opt_algorithm == "lbfgs":
         RBR_LBFGS = True
-    elif args.rbr_opt == "adam":
+    elif config.rbr_opt_algorithm == "adam":
         RBR_LBFGS = False
     else:
         raise ValueError("rbr_opt only supports lbfgs or adam")
 
     # Load external files
-    path = args.path
-    tng_file = "{p}/{r}/{r}-tng_withrfree.mtz".format(p=path, r=args.file_root)
-    input_pdb = "{p}/{r}/{r}-pred-aligned.pdb".format(p=path, r=args.file_root)
-    true_pdb = "{p}/{r}/{r}_noalts.pdb".format(p=path, r=args.file_root)
+    path = config.path  # no!
+    # TODO rewrite others paths
+    # working_path = config.path / config.file_root
+    # tng_file = working_path / f"{config.file_root}-tng_withrfree.mtz"
+    tng_file = "{p}/{r}/{r}-tng_withrfree.mtz".format(p=config.path, r=config.file_root)
+    input_pdb = "{p}/{r}/{r}-pred-aligned.pdb".format(p=config.path, r=config.file_root)
+    true_pdb = "{p}/{r}/{r}_noalts.pdb".format(p=config.path, r=config.file_root)
 
-    if args.added_chain:
+    if config.additional_chain:
         constant_fp_added_HKL = torch.load(
-            "{p}/{r}/{r}_added_chain_atoms_HKL.pt".format(p=path, r=args.file_root)
+            "{p}/{r}/{r}_added_chain_atoms_HKL.pt".format(p=path, r=config.file_root)
         ).to(device=device)
         constant_fp_added_asu = torch.load(
-            "{p}/{r}/{r}_added_chain_atoms_asu.pt".format(p=path, r=args.file_root)
+            "{p}/{r}/{r}_added_chain_atoms_asu.pt".format(p=path, r=config.file_root)
         ).to(device=device)
 
         phitrue = np.load(
             "{p}/{r}/{r}_allchains-phitrue-solvent{s}.npy".format(
-                p=path, r=args.file_root, s=args.solvent
+                p=path, r=config.file_root, s=config.solvent
             )
         )
         Etrue = np.load(
             "{p}/{r}/{r}_allchains-Etrue-solvent{s}.npy".format(
-                p=path, r=args.file_root, s=args.solvent
+                p=path, r=config.file_root, s=config.solvent
             )
         )
     else:
@@ -299,19 +341,19 @@ def main():
         constant_fp_added_asu = None
         phitrue = np.load(
             "{p}/{r}/{r}-phitrue-solvent{s}.npy".format(
-                p=path, r=args.file_root, s=args.solvent
+                p=path, r=config.file_root, s=config.solvent
             )
         )
         Etrue = np.load(
             "{p}/{r}/{r}-Etrue-solvent{s}.npy".format(
-                p=path, r=args.file_root, s=args.solvent
+                p=path, r=config.file_root, s=config.solvent
             )
         )
 
-    if args.version == 4:
+    if config.bias_version == 4:
         device_processed_features = rocket.make_processed_dict_from_template(
             template_pdb="{p}/{r}/{t}".format(
-                p=path, r=args.file_root, t=args.template_pdb
+                p=path, r=config.file_root, t=config.template_pdb
             ),
             config_preset=PRESET,
             device=device,
@@ -319,7 +361,8 @@ def main():
         )
     else:
         with open(
-            "{p}/{r}/{r}_processed_feats.pickle".format(p=path, r=args.file_root), "rb"
+            "{p}/{r}/{r}_processed_feats.pickle".format(p=path, r=config.file_root),
+            "rb",
         ) as file:
             # Load the data from the pickle file
             processed_features = pickle.load(file)
@@ -336,9 +379,9 @@ def main():
         tng_file,
         "FP",
         "SIGFP",
-        Freelabel=args.free_flag,
+        Freelabel=config.free_flag,
         device=device,
-        testset_value=args.testset_value,
+        testset_value=config.testset_value,
         added_chain_HKL=constant_fp_added_HKL,
         added_chain_asu=constant_fp_added_asu,
     )
@@ -350,9 +393,9 @@ def main():
         tng_file,
         "FP",
         "SIGFP",
-        Freelabel=args.free_flag,
+        Freelabel=config.free_flag,
         device=device,
-        testset_value=args.testset_value,
+        testset_value=config.testset_value,
     )
     true_pos = sfc_true.atom_pos_orth.clone()
     # true_Bs = sfc_true.atom_b_iso.clone()
@@ -364,24 +407,25 @@ def main():
         tng_file,
         "FP",
         "SIGFP",
-        Freelabel=args.free_flag,
+        Freelabel=config.free_flag,
         device=device,
         solvent=False,
-        testset_value=args.testset_value,
+        testset_value=config.testset_value,
         added_chain_HKL=constant_fp_added_HKL,
         added_chain_asu=constant_fp_added_asu,
     )
 
     # LLG initialization with resol cut
-    if args.resol_min is None:
+    # TODO dont duplicate variable names
+    if config.min_resolution is None:
         resol_min = min(sfc.dHKL)
     else:
-        resol_min = args.resol_min
+        resol_min = config.min_resolution
 
-    if args.resol_max is None:
+    if config.max_resolution is None:
         resol_max = max(sfc.dHKL)
     else:
-        resol_max = args.resol_max
+        resol_max = config.max_resolution
 
     llgloss = rocket.llg.targets.LLGloss(sfc, tng_file, device, resol_min, resol_max)
     llgloss_rbr = rocket.llg.targets.LLGloss(
@@ -396,7 +440,7 @@ def main():
         3: rocket.MSABiasAFv3,
         4: rocket.TemplateBiasAF,
     }
-    af_bias = version_to_class[args.version](
+    af_bias = version_to_class[config.bias_version](
         model_config(PRESET, train=True), PRESET
     ).to(device)
     af_bias.freeze()  # Free all AF2 parameters to save time
@@ -407,10 +451,10 @@ def main():
     device_processed_features["msa_feat_bias"] = msa_params_bias
 
     # Optimizer settings and initialization
-    lr_a = args.lr_add
-    lr_m = args.lr_mul
+    lr_a = config.additive_learning_rate
+    lr_m = config.multiplicative_learning_rate
 
-    if args.version == 4:
+    if config.bias_version == 4:
         device_processed_features["template_torsion_angles_sin_cos_bias"] = (
             torch.zeros_like(
                 device_processed_features["template_torsion_angles_sin_cos"],
@@ -418,7 +462,7 @@ def main():
                 device=device,
             )
         )
-        if args.weight_decay is None:
+        if config.weight_decay is None:
             optimizer = torch.optim.Adam(
                 [
                     {
@@ -439,29 +483,29 @@ def main():
                         "lr": lr_a,
                     },
                 ],
-                weight_decay=args.weight_decay,
+                weight_decay=config.weight_decay,
             )
         bias_names = ["template_torsion_angles_sin_cos_bias"]
 
-    elif args.version == 3:
-        if args.weights_start is not None:
+    elif config.bias_version == 3:
+        if config.starting_weights is not None:
             device_processed_features["msa_feat_weights"] = (
-                torch.load(args.weights_start).detach().to(device=device)
+                torch.load(config.starting_weights).detach().to(device=device)
             )
         else:
             device_processed_features["msa_feat_weights"] = torch.ones(
                 (512, num_res, 23), requires_grad=True, device=device
             )
 
-        if args.bias_start is not None:
+        if config.starting_bias is not None:
             device_processed_features["msa_feat_bias"] = (
-                torch.load(args.bias_start).detach().to(device=device)
+                torch.load(config.starting_bias).detach().to(device=device)
             )
 
         device_processed_features["msa_feat_bias"].requires_grad = True
         device_processed_features["msa_feat_weights"].requires_grad = True
 
-        if args.weight_decay is None:
+        if config.weight_decay is None:
             optimizer = torch.optim.Adam(
                 [
                     {"params": device_processed_features["msa_feat_bias"], "lr": lr_a},
@@ -480,15 +524,15 @@ def main():
                         "lr": lr_m,
                     },
                 ],
-                weight_decay=args.weight_decay,
+                weight_decay=config.weight_decay,
             )
         bias_names = ["msa_feat_bias", "msa_feat_weights"]
 
-    elif args.version == 2:
+    elif config.bias_version == 2:
         msa_params_weights = torch.eye(512, dtype=torch.float32, device=device)
         device_processed_features["msa_feat_weights"] = msa_params_weights
 
-        if args.weight_decay is None:
+        if config.weight_decay is None:
             optimizer = torch.optim.Adam(
                 [
                     {"params": device_processed_features["msa_feat_bias"], "lr": lr_a},
@@ -507,12 +551,12 @@ def main():
                         "lr": lr_m,
                     },
                 ],
-                weight_decay=args.weight_decay,
+                weight_decay=config.weight_decay,
             )
         bias_names = ["msa_feat_bias", "msa_feat_weights"]
 
-    elif args.version == 1:
-        if args.weight_decay is None:
+    elif config.bias_version == 1:
+        if config.weight_decay is None:
             optimizer = torch.optim.Adam(
                 [
                     {"params": device_processed_features["msa_feat_bias"], "lr": lr_a},
@@ -523,35 +567,35 @@ def main():
                 [
                     {"params": device_processed_features["msa_feat_bias"], "lr": lr_a},
                 ],
-                weight_decay=args.weight_decay,
+                weight_decay=config.weight_decay,
             )
 
         bias_names = ["msa_feat_bias"]
 
     # Run options
     output_name = "{root}_it{it}_v{v}_lr{a}+{m}_wd{wd}_batch{b}_subr{subr}_solv{solv}_scale{scale}_sigmaA{sigma}_resol_{resol_min:.2f}_{resol_max:.2f}_rbr{rbr_opt}_{rbr_lbfgs_lr}_ali{align}_L2{weight}+{thresh}_{add}".format(
-        root=args.file_root,
-        it=args.iterations,
-        v=args.version,
-        a=args.lr_add,
-        m=args.lr_mul,
-        wd=args.weight_decay,
-        b=args.batches,
-        subr=args.sub_ratio,
-        solv=args.solvent,
-        scale=args.scale,
-        sigma=args.sigmaArefine,
+        root=config.file_root,
+        it=config.iterations,
+        v=config.bias_version,
+        a=config.additive_learning_rate,
+        m=config.multiplicative_learning_rate,
+        wd=config.weight_decay,
+        b=config.number_of_batches,
+        subr=config.batch_sub_ratio,
+        solv=config.solvent,
+        scale=config.sfc_scale,
+        sigma=config.refine_sigmaA,
         resol_min=resol_min,
         resol_max=resol_max,
-        rbr_opt=args.rbr_opt,
-        rbr_lbfgs_lr=args.rbr_lbfgs_lr,
-        align=args.align,
-        weight=args.L2_weight,
-        thresh=args.b_threshold,
-        add=args.note,
+        rbr_opt=config.rbr_opt_algorithm,
+        rbr_lbfgs_lr=config.rbr_lbfgs_learning_rate,
+        align=config.alignment_mode,
+        weight=config.l2_weight,
+        thresh=config.b_threshold,
+        add=config.note,
     )
     print(output_name, flush=True)
-    if not args.verbose:
+    if not config.bias_version:
         warnings.filterwarnings("ignore")
 
     # Initialize best variables for alignement
@@ -577,7 +621,7 @@ def main():
     mean_it_plddts = []
     absolute_feats_changes = []
 
-    if args.version == 4:
+    if config.bias_version == 4:
         features_at_it_start = (
             device_processed_features["template_torsion_angles_sin_cos"][..., 0]
             .detach()
@@ -588,15 +632,15 @@ def main():
             device_processed_features["msa_feat"][:, :, 25:48, 0].detach().clone()
         )
 
-    progress_bar = tqdm(range(args.iterations), desc=f"version {args.version}")
-    loss_weight = args.L2_weight
+    progress_bar = tqdm(range(config.iterations), desc=f"version {config.bias_version}")
+    loss_weight = config.l2_weight
     for iteration in progress_bar:
         start_time = time.time()
         optimizer.zero_grad()
 
         if iteration == 0:
             directory_path = "{path}/{r}/outputs/{out}".format(
-                path=path, r=args.file_root, out=output_name
+                path=path, r=config.file_root, out=output_name
             )
             try:
                 os.makedirs(directory_path, exist_ok=True)
@@ -672,7 +716,7 @@ def main():
             added_chain_asu=constant_fp_added_asu,
         )
 
-        if args.sigmaArefine is True:
+        if config.refine_sigmaA is True:
             # llgloss.refine_sigmaA_adam(
             #    Ecalc, sub_ratio=1.00, lr=0.005, initialize=True, verbose=False
             # )
@@ -727,7 +771,7 @@ def main():
         llgloss.sfc.atom_pos_orth = aligned_xyz
         llgloss.sfc.savePDB(
             "{path}/{r}/outputs/{out}/{it}_preRBR.pdb".format(
-                path=path, r=args.file_root, out=output_name, it=iteration
+                path=path, r=config.file_root, out=output_name, it=iteration
             )
         )
 
@@ -738,8 +782,8 @@ def main():
             lbfgs=RBR_LBFGS,
             added_chain_HKL=constant_fp_added_HKL,
             added_chain_asu=constant_fp_added_asu,
-            lbfgs_lr=args.rbr_lbfgs_lr,
-            verbose=args.verbose,
+            lbfgs_lr=config.rbr_lbfgs_learning_rate,
+            verbose=config.verbose,
         )
         rbr_loss_by_epoch.append(loss_track_pose)
 
@@ -747,15 +791,15 @@ def main():
         loss = -llgloss(
             optimized_xyz,
             bin_labels=None,
-            num_batch=args.batches,
-            sub_ratio=args.sub_ratio,
-            solvent=args.solvent,
-            update_scales=args.scale,
+            num_batch=config.number_of_batches,
+            sub_ratio=config.batch_sub_ratio,
+            solvent=config.solvent,
+            update_scales=config.sfc_scale,
             added_chain_HKL=constant_fp_added_HKL,
             added_chain_asu=constant_fp_added_asu,
         )
 
-        llg_estimate = loss.item() / (args.sub_ratio * args.batches)
+        llg_estimate = loss.item() / (config.batch_sub_ratio * config.number_of_batches)
         llg_losses.append(llg_estimate)
         rwork_by_epoch.append(llgloss.sfc.r_work.item())
         rfree_by_epoch.append(llgloss.sfc.r_free.item())
@@ -774,7 +818,7 @@ def main():
         # Save postRBR PDB
         llgloss.sfc.savePDB(
             "{path}/{r}/outputs/{out}/{it}_postRBR.pdb".format(
-                path=path, r=args.file_root, out=output_name, it=iteration
+                path=path, r=config.file_root, out=output_name, it=iteration
             )
         )
 
@@ -785,7 +829,7 @@ def main():
             memory=f"{torch.cuda.max_memory_allocated()/1024**3:.1f}G",
         )
 
-        if args.align == "B":
+        if config.alignment_mode == "B":
             if loss < best_loss:
                 best_loss = loss
                 best_pos = optimized_xyz.clone()
@@ -812,7 +856,7 @@ def main():
                     optimized_xyz,
                     L2_ref_pos,
                     bfacts=L2_ref_Bs,
-                    b_thresh=args.b_threshold,
+                    b_thresh=config.b_threshold,
                 )
 
             else:
@@ -823,7 +867,7 @@ def main():
                     optimized_xyz,
                     L2_ref_pos,
                     bfacts=L2_ref_Bs,
-                    b_thresh=args.b_threshold,
+                    b_thresh=config.b_threshold,
                 )
 
             L2_loss = torch.sum((conf_xyz - conf_best) ** 2)  # / conf_best.shape[0]
@@ -837,7 +881,7 @@ def main():
         memory_by_epoch.append(torch.cuda.max_memory_allocated() / 1024**3)
 
         # Save the absolute difference in mean contribution from each residue channel from previous iteration
-        if args.version == 4:
+        if config.bias_version == 4:
             features_at_step_end = (
                 working_batch["template_torsion_angles_sin_cos"][..., 0]
                 .detach()
@@ -855,13 +899,13 @@ def main():
             )
         absolute_feats_changes.append(rk_utils.assert_numpy(mean_change))
         # print("Mean absolute feats change", torch.mean(mean_change).item())
-        if (iteration % 5 == 1) or (iteration == args.iterations - 1):
+        if (iteration % 5 == 1) or (iteration == config.iterations - 1):
             # print("Currently at last iteration {}".format(iteration))
             torch.save(
                 device_processed_features["msa_feat_bias"].detach().cpu().clone(),
                 "{path}/{r}/outputs/{out}/add_bias_{iter}.pt".format(
                     path=path,
-                    r=args.file_root,
+                    r=config.file_root,
                     out=output_name,
                     iter=iteration,
                 ),
@@ -869,7 +913,7 @@ def main():
             torch.save(
                 device_processed_features["msa_feat_weights"].detach().cpu().clone(),
                 "{path}/{r}/outputs/{out}/mul_bias_{iter}.pt".format(
-                    path=path, r=args.file_root, out=output_name, iter=iteration
+                    path=path, r=config.file_root, out=output_name, iter=iteration
                 ),
             )
 
@@ -879,7 +923,7 @@ def main():
     np.save(
         "{path}/{r}/outputs/{out}/mean_it_plddt.npy".format(
             path=path,
-            r=args.file_root,
+            r=config.file_root,
             out=output_name,
         ),
         np.array(mean_it_plddts),
@@ -889,7 +933,7 @@ def main():
     np.save(
         "{path}/{r}/outputs/{out}/LLG_it.npy".format(
             path=path,
-            r=args.file_root,
+            r=config.file_root,
             out=output_name,
         ),
         rk_utils.assert_numpy(llg_losses),
@@ -899,7 +943,7 @@ def main():
     np.save(
         "{path}/{r}/outputs/{out}/MSE_loss_it.npy".format(
             path=path,
-            r=args.file_root,
+            r=config.file_root,
             out=output_name,
         ),
         rk_utils.assert_numpy(mse_losses_by_epoch),
@@ -909,7 +953,7 @@ def main():
     np.save(
         "{path}/{r}/outputs/{out}/rwork_it.npy".format(
             path=path,
-            r=args.file_root,
+            r=config.file_root,
             out=output_name,
         ),
         rk_utils.assert_numpy(rwork_by_epoch),
@@ -919,7 +963,7 @@ def main():
     np.save(
         "{path}/{r}/outputs/{out}/rfree_it.npy".format(
             path=path,
-            r=args.file_root,
+            r=config.file_root,
             out=output_name,
         ),
         rk_utils.assert_numpy(rfree_by_epoch),
@@ -928,7 +972,7 @@ def main():
     np.save(
         "{path}/{r}/outputs/{out}/time_it.npy".format(
             path=path,
-            r=args.file_root,
+            r=config.file_root,
             out=output_name,
         ),
         rk_utils.assert_numpy(time_by_epoch),
@@ -937,7 +981,7 @@ def main():
     np.save(
         "{path}/{r}/outputs/{out}/memory_it.npy".format(
             path=path,
-            r=args.file_root,
+            r=config.file_root,
             out=output_name,
         ),
         rk_utils.assert_numpy(memory_by_epoch),
@@ -947,7 +991,7 @@ def main():
     np.save(
         "{path}/{r}/outputs/{out}/MSA_changes_it.npy".format(
             path=path,
-            r=args.file_root,
+            r=config.file_root,
             out=output_name,
         ),
         rk_utils.assert_numpy(absolute_feats_changes),
@@ -957,7 +1001,7 @@ def main():
     np.save(
         "{path}/{r}/outputs/{out}/mean_plddt_res.npy".format(
             path=path,
-            r=args.file_root,
+            r=config.file_root,
             out=output_name,
         ),
         np.mean(np.array(all_pldtts), axis=0),
@@ -967,7 +1011,7 @@ def main():
     with open(
         "{path}/{r}/outputs/{out}/sigmas_by_epoch.pkl".format(
             path=path,
-            r=args.file_root,
+            r=config.file_root,
             out=output_name,
         ),
         "wb",
@@ -977,7 +1021,7 @@ def main():
     with open(
         "{path}/{r}/outputs/{out}/true_sigmas_by_epoch.pkl".format(
             path=path,
-            r=args.file_root,
+            r=config.file_root,
             out=output_name,
         ),
         "wb",
@@ -988,16 +1032,23 @@ def main():
     torch.save(
         best_msa_bias,
         "{path}/{r}/outputs/{out}/best_msa_bias.pt".format(
-            path=path, r=args.file_root, out=output_name
+            path=path, r=config.file_root, out=output_name
         ),
     )
 
     torch.save(
         best_feat_weights,
         "{path}/{r}/outputs/{out}/best_feat_weights.pt".format(
-            path=path, r=args.file_root, out=output_name
+            path=path, r=config.file_root, out=output_name
         ),
     )
+
+
+def main():
+    args = parse_arguments()
+    args_dict: dict[str, Any] = vars(args)
+    config = RocketRefinmentConfig(**args_dict)
+    run_refinement(config=config)
 
 
 if __name__ == "__main__":

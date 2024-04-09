@@ -91,16 +91,17 @@ def read_root_flag_from_file(file_path):
 path = "/net/cci/alisia/openfold_tests/run_openfold/test_cases"
 root_name = "3hak"
 device_number = 0  # for CUDA
-flag_name = "FreeR_flag"
+flag_name = "R-free-flags"
 testset_value = 0
+res_min = 1.80
+res_max = 16.30
 
 # Iterate over the file and run the refinement for each pair
 # for root_name, free_flag in read_root_flag_from_file(root_flag_file_path):
 #    run_refinement(root_name, device_number, free_flag, testset_value, output_name, path)
 
-
-output_name = "{r}_it50_v3_lr0.5+1.0_wdNone_batch1_subr1.0_solvTrue_scaleTrue_sigmaATrue_resol_1.80_16.13_rbrlbfgs_150.0_aliB_L21e-11+10.0_Phase1".format(
-    r=root_name
+output_name = "{r}_it50_v3_lr0.5+1.0_wdNone_batch1_subr1.0_solvTrue_scaleTrue_sigmaATrue_resol_{max}_{min}_rbrlbfgs_150.0_aliB_L21e-11+10.0_Phase1".format(
+    r=root_name, max=res_max, min=res_min
 )
 
 bias_start_path = "{path}/{r}/outputs/{out}/best_feat_weights.pt".format(
