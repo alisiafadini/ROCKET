@@ -595,7 +595,7 @@ def run_refinement(*, config: RocketRefinmentConfig):
         add=config.note,
     )
     print(output_name, flush=True)
-    if not config.bias_version:
+    if not config.verbose:
         warnings.filterwarnings("ignore")
 
     # Initialize best variables for alignement
