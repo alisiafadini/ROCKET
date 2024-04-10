@@ -8,6 +8,7 @@ from tqdm import tqdm
 import rocket
 import os
 import time
+import yaml
 from rocket.llg import utils as llg_utils
 from rocket import coordinates as rk_coordinates
 from rocket import utils as rk_utils
@@ -52,6 +53,18 @@ class RocketRefinmentConfig(BaseModel):
     max_resolution: Union[float, None]
     starting_bias: Union[Path, None]
     starting_weights: Union[Path, None]
+
+    # TODO the Path types are ugly
+    # intercept them upload load/save and cast to string as appropriate
+    def to_yaml_file(self, file_path: Path) -> None:
+        with open(file_path, "w") as file:
+            yaml.dump(self.dict(), file)
+
+    @classmethod
+    def from_yaml_file(self, file_path: Path):
+        with open(file_path, "r") as file:
+            payload = yaml.safe_load(file)
+        return RocketRefinmentConfig.model_validate(payload)
 
 
 def run_refinement(*, config: RocketRefinmentConfig) -> uuid.UUID:
@@ -691,5 +704,7 @@ def run_refinement(*, config: RocketRefinmentConfig) -> uuid.UUID:
         best_feat_weights,
         f"{output_directory_path!s}/best_feat_weights.pt",
     )
+
+    config.to_yaml_file(f"{output_directory_path!s}/config.yaml")
 
     return refinement_run_uuid
