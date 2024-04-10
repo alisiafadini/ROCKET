@@ -1,3 +1,4 @@
+import uuid
 import copy
 import warnings
 import torch
@@ -53,7 +54,7 @@ class RocketRefinmentConfig(BaseModel):
     starting_weights: Union[Path, None]
 
 
-def run_refinement(*, config: RocketRefinmentConfig):
+def run_refinement(*, config: RocketRefinmentConfig) -> None:
     # Parse commandline arguments
 
     # General settings
@@ -330,29 +331,9 @@ def run_refinement(*, config: RocketRefinmentConfig):
 
         bias_names = ["msa_feat_bias"]
 
-    # Run options
-    output_name = "{root}_it{it}_v{v}_lr{a}+{m}_wd{wd}_batch{b}_subr{subr}_solv{solv}_scale{scale}_sigmaA{sigma}_resol_{resol_min:.2f}_{resol_max:.2f}_rbr{rbr_opt}_{rbr_lbfgs_lr}_ali{align}_L2{weight}+{thresh}_{add}".format(
-        root=config.file_root,
-        it=config.iterations,
-        v=config.bias_version,
-        a=config.additive_learning_rate,
-        m=config.multiplicative_learning_rate,
-        wd=config.weight_decay,
-        b=config.number_of_batches,
-        subr=config.batch_sub_ratio,
-        solv=config.solvent,
-        scale=config.sfc_scale,
-        sigma=config.refine_sigmaA,
-        resol_min=resol_min,
-        resol_max=resol_max,
-        rbr_opt=config.rbr_opt_algorithm,
-        rbr_lbfgs_lr=config.rbr_lbfgs_learning_rate,
-        align=config.alignment_mode,
-        weight=config.l2_weight,
-        thresh=config.b_threshold,
-        add=config.note,
-    )
-    print(output_name, flush=True)
+    refinement_run_uuid = uuid.uuid4()
+
+    print(refinement_run_uuid, flush=True)
     if not config.verbose:
         warnings.filterwarnings("ignore")
 
@@ -398,7 +379,7 @@ def run_refinement(*, config: RocketRefinmentConfig):
 
         if iteration == 0:
             directory_path = "{path}/{r}/outputs/{out}".format(
-                path=path, r=config.file_root, out=output_name
+                path=path, r=config.file_root, out=refinement_run_uuid
             )
             try:
                 os.makedirs(directory_path, exist_ok=True)
@@ -529,7 +510,7 @@ def run_refinement(*, config: RocketRefinmentConfig):
         llgloss.sfc.atom_pos_orth = aligned_xyz
         llgloss.sfc.savePDB(
             "{path}/{r}/outputs/{out}/{it}_preRBR.pdb".format(
-                path=path, r=config.file_root, out=output_name, it=iteration
+                path=path, r=config.file_root, out=refinement_run_uuid, it=iteration
             )
         )
 
@@ -576,7 +557,7 @@ def run_refinement(*, config: RocketRefinmentConfig):
         # Save postRBR PDB
         llgloss.sfc.savePDB(
             "{path}/{r}/outputs/{out}/{it}_postRBR.pdb".format(
-                path=path, r=config.file_root, out=output_name, it=iteration
+                path=path, r=config.file_root, out=refinement_run_uuid, it=iteration
             )
         )
 
@@ -664,14 +645,17 @@ def run_refinement(*, config: RocketRefinmentConfig):
                 "{path}/{r}/outputs/{out}/add_bias_{iter}.pt".format(
                     path=path,
                     r=config.file_root,
-                    out=output_name,
+                    out=refinement_run_uuid,
                     iter=iteration,
                 ),
             )
             torch.save(
                 device_processed_features["msa_feat_weights"].detach().cpu().clone(),
                 "{path}/{r}/outputs/{out}/mul_bias_{iter}.pt".format(
-                    path=path, r=config.file_root, out=output_name, iter=iteration
+                    path=path,
+                    r=config.file_root,
+                    out=refinement_run_uuid,
+                    iter=iteration,
                 ),
             )
 
@@ -682,7 +666,7 @@ def run_refinement(*, config: RocketRefinmentConfig):
         "{path}/{r}/outputs/{out}/mean_it_plddt.npy".format(
             path=path,
             r=config.file_root,
-            out=output_name,
+            out=refinement_run_uuid,
         ),
         np.array(mean_it_plddts),
     )
@@ -692,7 +676,7 @@ def run_refinement(*, config: RocketRefinmentConfig):
         "{path}/{r}/outputs/{out}/LLG_it.npy".format(
             path=path,
             r=config.file_root,
-            out=output_name,
+            out=refinement_run_uuid,
         ),
         rk_utils.assert_numpy(llg_losses),
     )
@@ -702,7 +686,7 @@ def run_refinement(*, config: RocketRefinmentConfig):
         "{path}/{r}/outputs/{out}/MSE_loss_it.npy".format(
             path=path,
             r=config.file_root,
-            out=output_name,
+            out=refinement_run_uuid,
         ),
         rk_utils.assert_numpy(mse_losses_by_epoch),
     )
@@ -712,7 +696,7 @@ def run_refinement(*, config: RocketRefinmentConfig):
         "{path}/{r}/outputs/{out}/rwork_it.npy".format(
             path=path,
             r=config.file_root,
-            out=output_name,
+            out=refinement_run_uuid,
         ),
         rk_utils.assert_numpy(rwork_by_epoch),
     )
@@ -722,7 +706,7 @@ def run_refinement(*, config: RocketRefinmentConfig):
         "{path}/{r}/outputs/{out}/rfree_it.npy".format(
             path=path,
             r=config.file_root,
-            out=output_name,
+            out=refinement_run_uuid,
         ),
         rk_utils.assert_numpy(rfree_by_epoch),
     )
@@ -731,7 +715,7 @@ def run_refinement(*, config: RocketRefinmentConfig):
         "{path}/{r}/outputs/{out}/time_it.npy".format(
             path=path,
             r=config.file_root,
-            out=output_name,
+            out=refinement_run_uuid,
         ),
         rk_utils.assert_numpy(time_by_epoch),
     )
@@ -740,7 +724,7 @@ def run_refinement(*, config: RocketRefinmentConfig):
         "{path}/{r}/outputs/{out}/memory_it.npy".format(
             path=path,
             r=config.file_root,
-            out=output_name,
+            out=refinement_run_uuid,
         ),
         rk_utils.assert_numpy(memory_by_epoch),
     )
@@ -750,7 +734,7 @@ def run_refinement(*, config: RocketRefinmentConfig):
         "{path}/{r}/outputs/{out}/MSA_changes_it.npy".format(
             path=path,
             r=config.file_root,
-            out=output_name,
+            out=refinement_run_uuid,
         ),
         rk_utils.assert_numpy(absolute_feats_changes),
     )
@@ -760,7 +744,7 @@ def run_refinement(*, config: RocketRefinmentConfig):
         "{path}/{r}/outputs/{out}/mean_plddt_res.npy".format(
             path=path,
             r=config.file_root,
-            out=output_name,
+            out=refinement_run_uuid,
         ),
         np.mean(np.array(all_pldtts), axis=0),
     )
@@ -770,7 +754,7 @@ def run_refinement(*, config: RocketRefinmentConfig):
         "{path}/{r}/outputs/{out}/sigmas_by_epoch.pkl".format(
             path=path,
             r=config.file_root,
-            out=output_name,
+            out=refinement_run_uuid,
         ),
         "wb",
     ) as file:
@@ -780,7 +764,7 @@ def run_refinement(*, config: RocketRefinmentConfig):
         "{path}/{r}/outputs/{out}/true_sigmas_by_epoch.pkl".format(
             path=path,
             r=config.file_root,
-            out=output_name,
+            out=refinement_run_uuid,
         ),
         "wb",
     ) as file:
@@ -790,13 +774,13 @@ def run_refinement(*, config: RocketRefinmentConfig):
     torch.save(
         best_msa_bias,
         "{path}/{r}/outputs/{out}/best_msa_bias.pt".format(
-            path=path, r=config.file_root, out=output_name
+            path=path, r=config.file_root, out=refinement_run_uuid
         ),
     )
 
     torch.save(
         best_feat_weights,
         "{path}/{r}/outputs/{out}/best_feat_weights.pt".format(
-            path=path, r=config.file_root, out=output_name
+            path=path, r=config.file_root, out=refinement_run_uuid
         ),
     )
