@@ -54,10 +54,8 @@ class RocketRefinmentConfig(BaseModel):
     starting_weights: Union[Path, None]
 
 
-def run_refinement(*, config: RocketRefinmentConfig) -> None:
-    # Parse commandline arguments
+def run_refinement(*, config: RocketRefinmentConfig) -> uuid.UUID:
 
-    # General settings
     device = "cuda:{}".format(config.cuda_device)
 
     # Using LBFGS or Adam in RBR
@@ -333,6 +331,10 @@ def run_refinement(*, config: RocketRefinmentConfig) -> None:
 
     refinement_run_uuid = uuid.uuid4()
 
+    output_directory_path = Path(
+        f"{path}/{config.file_root}/outputs/{refinement_run_uuid}"
+    )
+
     print(refinement_run_uuid, flush=True)
     if not config.verbose:
         warnings.filterwarnings("ignore")
@@ -378,19 +380,12 @@ def run_refinement(*, config: RocketRefinmentConfig) -> None:
         optimizer.zero_grad()
 
         if iteration == 0:
-            directory_path = "{path}/{r}/outputs/{out}".format(
-                path=path, r=config.file_root, out=refinement_run_uuid
-            )
             try:
-                os.makedirs(directory_path, exist_ok=True)
+                os.makedirs(output_directory_path, exist_ok=True)
             except FileExistsError:
                 print(
-                    f"Warning: Directory '{directory_path}' already exists. Overwriting..."
+                    f"Warning: Directory '{output_directory_path}' already exists. Overwriting..."
                 )
-
-        # if iteration == 250:
-        #    lr_a = 1e-4
-        #    lr_m = 1e-3
 
         # Avoid passing through graph a second time
         working_batch = copy.deepcopy(device_processed_features)
@@ -456,9 +451,6 @@ def run_refinement(*, config: RocketRefinmentConfig) -> None:
         )
 
         if config.refine_sigmaA is True:
-            # llgloss.refine_sigmaA_adam(
-            #    Ecalc, sub_ratio=1.00, lr=0.005, initialize=True, verbose=False
-            # )
 
             llgloss.refine_sigmaA_newton(
                 Ecalc, n_steps=5, subset="working", smooth_overall_weight=0.0
@@ -467,12 +459,6 @@ def run_refinement(*, config: RocketRefinmentConfig) -> None:
                 Ecalc_rbr, n_steps=2, subset="working", smooth_overall_weight=0.0
             )
             sigmas = llgloss.sigmaAs
-
-            # print(
-            #    f"#########  {iteration} sigmas after refinement are",
-            #    [sigmaA.item() for sigmaA in llgloss.sigmaAs],
-            #    flush=True,
-            # )
 
         else:
             sigmas = llg_utils.sigmaA_from_model(
@@ -504,15 +490,9 @@ def run_refinement(*, config: RocketRefinmentConfig) -> None:
             llgloss.bin_labels,
         )
 
-        # print(f"######### {iteration} True sigmas are", [sigmaA.item() for sigmaA in true_sigmas], flush=True)
-
         # Update SFC and save
         llgloss.sfc.atom_pos_orth = aligned_xyz
-        llgloss.sfc.savePDB(
-            "{path}/{r}/outputs/{out}/{it}_preRBR.pdb".format(
-                path=path, r=config.file_root, out=refinement_run_uuid, it=iteration
-            )
-        )
+        llgloss.sfc.savePDB(f"{output_directory_path!s}/{iteration}_preRBR.pdb")
 
         # Rigid body refinement (RBR) step
         optimized_xyz, loss_track_pose = rk_coordinates.rigidbody_refine_quat(
@@ -555,11 +535,7 @@ def run_refinement(*, config: RocketRefinmentConfig) -> None:
 
         llgloss.sfc.atom_pos_orth = optimized_xyz
         # Save postRBR PDB
-        llgloss.sfc.savePDB(
-            "{path}/{r}/outputs/{out}/{it}_postRBR.pdb".format(
-                path=path, r=config.file_root, out=refinement_run_uuid, it=iteration
-            )
-        )
+        llgloss.sfc.savePDB(f"{output_directory_path!s}/{iteration}_postRBR.pdb")
 
         progress_bar.set_postfix(
             LLG_Estimate=f"{llg_estimate:.2f}",
@@ -637,135 +613,70 @@ def run_refinement(*, config: RocketRefinmentConfig) -> None:
                 torch.abs(features_at_step_end - features_at_it_start), dim=(0, 2)
             )
         absolute_feats_changes.append(rk_utils.assert_numpy(mean_change))
-        # print("Mean absolute feats change", torch.mean(mean_change).item())
-        if (iteration % 5 == 1) or (iteration == config.iterations - 1):
-            # print("Currently at last iteration {}".format(iteration))
-            torch.save(
-                device_processed_features["msa_feat_bias"].detach().cpu().clone(),
-                "{path}/{r}/outputs/{out}/add_bias_{iter}.pt".format(
-                    path=path,
-                    r=config.file_root,
-                    out=refinement_run_uuid,
-                    iter=iteration,
-                ),
-            )
-            torch.save(
-                device_processed_features["msa_feat_weights"].detach().cpu().clone(),
-                "{path}/{r}/outputs/{out}/mul_bias_{iter}.pt".format(
-                    path=path,
-                    r=config.file_root,
-                    out=refinement_run_uuid,
-                    iter=iteration,
-                ),
-            )
 
     ####### Save data
 
     # Average plddt per iteration
     np.save(
-        "{path}/{r}/outputs/{out}/mean_it_plddt.npy".format(
-            path=path,
-            r=config.file_root,
-            out=refinement_run_uuid,
-        ),
+        f"{output_directory_path!s}/mean_it_plddt.npy",
         np.array(mean_it_plddts),
     )
 
     # LLG per iteration
     np.save(
-        "{path}/{r}/outputs/{out}/LLG_it.npy".format(
-            path=path,
-            r=config.file_root,
-            out=refinement_run_uuid,
-        ),
+        f"{output_directory_path!s}/LLG_it.npy",
         rk_utils.assert_numpy(llg_losses),
     )
 
     # MSE loss per iteration
     np.save(
-        "{path}/{r}/outputs/{out}/MSE_loss_it.npy".format(
-            path=path,
-            r=config.file_root,
-            out=refinement_run_uuid,
-        ),
+        f"{output_directory_path!s}/MSE_loss_it.npy",
         rk_utils.assert_numpy(mse_losses_by_epoch),
     )
 
     # R work per iteration
     np.save(
-        "{path}/{r}/outputs/{out}/rwork_it.npy".format(
-            path=path,
-            r=config.file_root,
-            out=refinement_run_uuid,
-        ),
+        f"{output_directory_path!s}/rwork_it.npy",
         rk_utils.assert_numpy(rwork_by_epoch),
     )
 
     # R free per iteration
     np.save(
-        "{path}/{r}/outputs/{out}/rfree_it.npy".format(
-            path=path,
-            r=config.file_root,
-            out=refinement_run_uuid,
-        ),
+        f"{output_directory_path!s}/rfree_it.npy",
         rk_utils.assert_numpy(rfree_by_epoch),
     )
 
     np.save(
-        "{path}/{r}/outputs/{out}/time_it.npy".format(
-            path=path,
-            r=config.file_root,
-            out=refinement_run_uuid,
-        ),
+        f"{output_directory_path!s}/time_it.npy",
         rk_utils.assert_numpy(time_by_epoch),
     )
 
     np.save(
-        "{path}/{r}/outputs/{out}/memory_it.npy".format(
-            path=path,
-            r=config.file_root,
-            out=refinement_run_uuid,
-        ),
+        f"{output_directory_path!s}/memory_it.npy",
         rk_utils.assert_numpy(memory_by_epoch),
     )
 
     # Absolute MSA change per column per iteration
     np.save(
-        "{path}/{r}/outputs/{out}/MSA_changes_it.npy".format(
-            path=path,
-            r=config.file_root,
-            out=refinement_run_uuid,
-        ),
+        f"{output_directory_path!s}/MSA_changes_it.npy",
         rk_utils.assert_numpy(absolute_feats_changes),
     )
 
     # Mean plddt per residue (over iterations)
     np.save(
-        "{path}/{r}/outputs/{out}/mean_plddt_res.npy".format(
-            path=path,
-            r=config.file_root,
-            out=refinement_run_uuid,
-        ),
+        f"{output_directory_path!s}/mean_plddt_res.npy",
         np.mean(np.array(all_pldtts), axis=0),
     )
 
     # Iteration sigmaA dictionary
     with open(
-        "{path}/{r}/outputs/{out}/sigmas_by_epoch.pkl".format(
-            path=path,
-            r=config.file_root,
-            out=refinement_run_uuid,
-        ),
+        f"{output_directory_path!s}/sigmas_by_epoch.pkl",
         "wb",
     ) as file:
         pickle.dump(sigmas_by_epoch, file)
 
     with open(
-        "{path}/{r}/outputs/{out}/true_sigmas_by_epoch.pkl".format(
-            path=path,
-            r=config.file_root,
-            out=refinement_run_uuid,
-        ),
+        f"{output_directory_path!s}/true_sigmas_by_epoch.pkl",
         "wb",
     ) as file:
         pickle.dump(true_sigmas_by_epoch, file)
@@ -773,14 +684,12 @@ def run_refinement(*, config: RocketRefinmentConfig) -> None:
     # Save the best msa_bias and feat_weights
     torch.save(
         best_msa_bias,
-        "{path}/{r}/outputs/{out}/best_msa_bias.pt".format(
-            path=path, r=config.file_root, out=refinement_run_uuid
-        ),
+        f"{output_directory_path!s}/best_msa_bias.pt",
     )
 
     torch.save(
         best_feat_weights,
-        "{path}/{r}/outputs/{out}/best_feat_weights.pt".format(
-            path=path, r=config.file_root, out=refinement_run_uuid
-        ),
+        f"{output_directory_path!s}/best_feat_weights.pt",
     )
+
+    return refinement_run_uuid
