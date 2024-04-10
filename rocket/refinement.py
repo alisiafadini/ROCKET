@@ -348,7 +348,7 @@ def run_refinement(*, config: RocketRefinmentConfig) -> uuid.UUID:
         f"{path}/{config.file_root}/outputs/{refinement_run_uuid}"
     )
 
-    print(refinement_run_uuid, flush=True)
+    print(f"refinment run ID: {refinement_run_uuid!s}", flush=True)
     if not config.verbose:
         warnings.filterwarnings("ignore")
 
