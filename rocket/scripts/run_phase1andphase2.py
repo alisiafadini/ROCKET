@@ -1,59 +1,52 @@
-import uuid
-from pathlib import Path
+import argparse
 from rocket.refinement import RocketRefinmentConfig, run_refinement
 
-WORKING_DIRECTORY = Path("/net/cci/alisia/openfold_tests/run_openfold/test_cases")
-ALL_DATASETS = ["6lzm"]
+# WORKING_DIRECTORY = Path("/net/cci/alisia/openfold_tests/run_openfold/test_cases")
+# ALL_DATASETS = ["6lzm"]
 
-# ALL_DATASETS = [
-#     "7aoj",
-#     "7dms",
-#     "7dnt",
-#     "7dtr",
-#     "7e3z",
-#     "7ecd",
-#     "7edc",
-#     "7ejg",
-#     "7eyj",
-#     "7fiu",
-#     "7kzh",
-#     "7msl",
-#     "7o51",
-#     "7pgk",
-#     "7pt5",
-#     "7qdv",
-#     "7raw",
-#     "7rm7",
-#     "7rpy",
-#     "7rr3",
-#     "7s3l",
-#     "7sez",
-#     "7t26",
-#     "7t7y",
-#     "7t85",
-#     "7tbs",
-#     "7tfq",
-#     "7trw",
-#     "7u2r",
-#     "7unn",
-#     "7v6p",
-#     "7v9h",
-#     "7vnx",
-#     "7x4e",
-# ]
+def parse_arguments():
+    """Parse commandline arguments"""
+    parser = argparse.ArgumentParser(
+        formatter_class=argparse.RawTextHelpFormatter, description=__doc__
+    )
+
+    parser.add_argument(
+        "-p",
+        "--path",
+        default="./benchmark_data/",
+        help=("Path to the parent folder"),
+    )
+
+    # Required arguments
+    parser.add_argument(
+        "-sys",
+        "--systems",
+        nargs='+',
+        help=("PDB codes or filename roots for the dataset"),
+    )
+
+    parser.add_argument(
+        "--note",
+        default="",
+        help=("note"),
+    )
+    
+    return parser.parse_args()
 
 
 def generate_phase1_config(
     *,
-    file_root: Path,
+    working_path: str,
+    file_root: str,
     cuda_device: int = 0,
     free_flag: str = "R-free-flags",
-    testset_value: int = 0,
+    testset_value: int = 1,
+    note: str = ""
 ) -> RocketRefinmentConfig:
 
     phase1_config = RocketRefinmentConfig(
         file_root=file_root,
-        path=WORKING_DIRECTORY,
+        path=working_path,
         batch_sub_ratio=1.0,
         number_of_batches=1,
         rbr_opt_algorithm="lbfgs",
@@ -68,13 +61,13 @@ def generate_phase1_config(
         solvent=True,
         sfc_scale=True,
         refine_sigmaA=True,
-        additive_learning_rate=0.5,
+        additive_learning_rate=0.05,
         multiplicative_learning_rate=1.0,
         free_flag=free_flag,
         testset_value=testset_value,
         l2_weight=1e-11,
         b_threshold=10.0,
-        note="phase 1",
+        note="phase1"+note,
     )
 
     return phase1_config
@@ -82,17 +75,19 @@ def generate_phase1_config(
 
 def generate_phase2_config(
     *,
-    phase1_uuid: uuid.UUID,
-    file_root: Path,
+    phase1_uuid: str,
+    working_path: str,
+    file_root: str,
     cuda_device: int = 0,
     free_flag: str = "R-free-flags",
-    testset_value: int = 0,
+    testset_value: int = 1,
+    note : str = "",
 ) -> RocketRefinmentConfig:
 
-    output_directory_path = f"{WORKING_DIRECTORY}/{file_root}/outputs/{phase1_uuid}"
+    output_directory_path = f"{working_path}/{file_root}/outputs/{phase1_uuid}"
 
-    starting_bias_path = Path(f"{output_directory_path}/best_msa_bias.pt")
-    starting_weights_path = Path(f"{output_directory_path}/best_feat_weights.pt")
+    starting_bias_path = f"{output_directory_path}/phase1{note}/best_msa_bias.pt"
+    starting_weights_path = f"{output_directory_path}/phase1{note}/best_feat_weights.pt"
 
     for p in [starting_bias_path, starting_weights_path]:
         if not p.exists():
@@ -100,7 +95,7 @@ def generate_phase2_config(
 
     phase2_config = RocketRefinmentConfig(
         file_root=file_root,
-        path=WORKING_DIRECTORY,
+        path=working_path,
         batch_sub_ratio=1.0,
         number_of_batches=1,
         rbr_opt_algorithm="lbfgs",
@@ -122,7 +117,8 @@ def generate_phase2_config(
         testset_value=testset_value,
         l2_weight=1e-11,
         b_threshold=10.0,
-        note="phase 2",
+        note="phase2"+note,
+        uuid_hex=phase1_uuid,
         starting_bias=starting_bias_path,
         starting_weights=starting_weights_path,
     )
@@ -130,19 +126,20 @@ def generate_phase2_config(
     return phase2_config
 
 
-def run_both_phases_single_dataset(*, file_root) -> None:
+def run_both_phases_single_dataset(*, working_path, file_root, note) -> None:
 
-    phase1_config = generate_phase1_config(file_root=file_root)
+    phase1_config = generate_phase1_config(working_path=working_path, file_root=file_root, note=note)
     phase1_uuid = run_refinement(config=phase1_config)
 
-    phase2_config = generate_phase2_config(phase1_uuid=phase1_uuid, file_root=file_root)
+    phase2_config = generate_phase2_config(phase1_uuid=phase1_uuid, working_path=working_path, file_root=file_root, note=note)
     phase2_uuid = run_refinement(config=phase2_config)
 
 
 def run_both_phases_all_datasets() -> None:
-    for file_root in ALL_DATASETS:
-        run_both_phases_single_dataset(file_root=file_root)
-
+    args = parse_arguments()
+    datasets = args.systems
+    for file_root in datasets:
+        run_both_phases_single_dataset(working_path=args.path, file_root=file_root, note=args.note)
 
 if __name__ == "__main__":
     run_both_phases_all_datasets()

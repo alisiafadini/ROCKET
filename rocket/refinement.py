@@ -14,7 +14,6 @@ from rocket import coordinates as rk_coordinates
 from rocket import utils as rk_utils
 from rocket.llg import structurefactors as llg_sf
 from openfold.config import model_config
-from pathlib import Path
 from typing import Union
 from pydantic import BaseModel
 
@@ -25,49 +24,50 @@ EXCLUDING_RES = None
 
 
 class RocketRefinmentConfig(BaseModel):
-    path: Path
-    file_root: Path
+    path: str
+    file_root: str
     bias_version: int
     iterations: int
-    template_pdb: Union[Path, None]
-    cuda_device: int
+    template_pdb: Union[str, None] = None
+    cuda_device: int = 0
     solvent: bool
     sfc_scale: bool
     refine_sigmaA: bool
     additive_learning_rate: float
     multiplicative_learning_rate: float
-    weight_decay: Union[float, None]  # TODO: should default be 0.0?
+    weight_decay: Union[float, None] = 0.00001  # TODO: should default be 0.0?
     batch_sub_ratio: float
     number_of_batches: int
     rbr_opt_algorithm: str
     rbr_lbfgs_learning_rate: float
     alignment_mode: str
-    note: str
+    note: str = ""
     free_flag: str
     testset_value: int
     additional_chain: bool
     verbose: bool
     l2_weight: float
     b_threshold: float
-    min_resolution: Union[float, None]
-    max_resolution: Union[float, None]
-    starting_bias: Union[Path, None]
-    starting_weights: Union[Path, None]
+    min_resolution: Union[float, None] = None
+    max_resolution: Union[float, None] = None
+    starting_bias: Union[str, None] = None
+    starting_weights: Union[str, None] = None
+    uuid_hex : Union[str, None] = None
 
     # TODO the Path types are ugly
     # intercept them upload load/save and cast to string as appropriate
-    def to_yaml_file(self, file_path: Path) -> None:
+    def to_yaml_file(self, file_path: str) -> None:
         with open(file_path, "w") as file:
             yaml.dump(self.dict(), file)
 
     @classmethod
-    def from_yaml_file(self, file_path: Path):
+    def from_yaml_file(self, file_path: str):
         with open(file_path, "r") as file:
             payload = yaml.safe_load(file)
         return RocketRefinmentConfig.model_validate(payload)
 
 
-def run_refinement(*, config: RocketRefinmentConfig) -> uuid.UUID:
+def run_refinement(*, config: RocketRefinmentConfig) -> str:
 
     device = "cuda:{}".format(config.cuda_device)
 
@@ -355,13 +355,14 @@ def run_refinement(*, config: RocketRefinmentConfig) -> uuid.UUID:
 
         bias_names = ["msa_feat_bias"]
 
-    refinement_run_uuid = uuid.uuid4()
+    if config.uuid_hex is None:
+        refinement_run_uuid = uuid.uuid4().hex
+    else:
+        refinement_run_uuid = config.uuid_hex
 
-    output_directory_path = Path(
-        f"{path}/{config.file_root}/outputs/{refinement_run_uuid}"
-    )
+    output_directory_path = f"{path}/{config.file_root}/outputs/{refinement_run_uuid}/{config.note}"
 
-    print(f"refinment run ID: {refinement_run_uuid!s}", flush=True)
+    print(f"System: {config.file_root}, refinment run ID: {refinement_run_uuid!s}, Note: {config.note}", flush=True)
     if not config.verbose:
         warnings.filterwarnings("ignore")
 
@@ -399,7 +400,7 @@ def run_refinement(*, config: RocketRefinmentConfig) -> uuid.UUID:
             device_processed_features["msa_feat"][:, :, 25:48, 0].detach().clone()
         )
 
-    progress_bar = tqdm(range(config.iterations), desc=f"version {config.bias_version}, uuid: {refinement_run_uuid}")
+    progress_bar = tqdm(range(config.iterations), desc=f"version {config.bias_version}, uuid: {refinement_run_uuid[:6]}")
     loss_weight = config.l2_weight
     for iteration in progress_bar:
         start_time = time.time()
