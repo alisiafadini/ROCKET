@@ -88,6 +88,11 @@ def run_refinement(*, config: RocketRefinmentConfig) -> uuid.UUID:
     input_pdb = "{p}/{r}/{r}-pred-aligned.pdb".format(p=config.path, r=config.file_root)
     true_pdb = "{p}/{r}/{r}_noalts.pdb".format(p=config.path, r=config.file_root)
 
+    if os.path.exists(true_pdb):
+        REFPDB = True
+    else: 
+        REFPDB = False
+
     if config.additional_chain:
         constant_fp_added_HKL = torch.load(
             "{p}/{r}/{r}_added_chain_atoms_HKL.pt".format(p=path, r=config.file_root)
@@ -96,29 +101,36 @@ def run_refinement(*, config: RocketRefinmentConfig) -> uuid.UUID:
             "{p}/{r}/{r}_added_chain_atoms_asu.pt".format(p=path, r=config.file_root)
         ).to(device=device)
 
-        phitrue = np.load(
-            "{p}/{r}/{r}_allchains-phitrue-solvent{s}.npy".format(
-                p=path, r=config.file_root, s=config.solvent
-            )
+        phitrue_path = "{p}/{r}/{r}_allchains-phitrue-solvent{s}.npy".format(
+            p=path, r=config.file_root, s=config.solvent
         )
-        Etrue = np.load(
-            "{p}/{r}/{r}_allchains-Etrue-solvent{s}.npy".format(
-                p=path, r=config.file_root, s=config.solvent
-            )
+        Etrue_path = "{p}/{r}/{r}_allchains-Etrue-solvent{s}.npy".format(
+            p=path, r=config.file_root, s=config.solvent
         )
+
+        if os.path.exists(phitrue_path) and os.path.exists(Etrue_path):
+            SIGMA_TRUE = True
+            phitrue = np.load(phitrue_path)
+            Etrue = np.load(Etrue_path)
+        else:
+            SIGMA_TRUE = False
     else:
         constant_fp_added_HKL = None
         constant_fp_added_asu = None
-        phitrue = np.load(
-            "{p}/{r}/{r}-phitrue-solvent{s}.npy".format(
-                p=path, r=config.file_root, s=config.solvent
-            )
+        
+        phitrue_path = "{p}/{r}/{r}-phitrue-solvent{s}.npy".format(
+            p=path, r=config.file_root, s=config.solvent
         )
-        Etrue = np.load(
-            "{p}/{r}/{r}-Etrue-solvent{s}.npy".format(
-                p=path, r=config.file_root, s=config.solvent
-            )
+        Etrue_path = "{p}/{r}/{r}-Etrue-solvent{s}.npy".format(
+            p=path, r=config.file_root, s=config.solvent
         )
+
+        if os.path.exists(phitrue_path) and os.path.exists(Etrue_path):
+            SIGMA_TRUE = True
+            phitrue = np.load(phitrue_path)
+            Etrue = np.load(Etrue_path)
+        else:
+            SIGMA_TRUE = False 
 
     if config.bias_version == 4:
         device_processed_features = rocket.make_processed_dict_from_template(
@@ -157,20 +169,21 @@ def run_refinement(*, config: RocketRefinmentConfig) -> uuid.UUID:
     )
     reference_pos = sfc.atom_pos_orth.clone()
 
-    # Load true positions
-    sfc_true = llg_sf.initial_SFC(
-        true_pdb,
-        tng_file,
-        "FP",
-        "SIGFP",
-        Freelabel=config.free_flag,
-        device=device,
-        testset_value=config.testset_value,
-    )
-    true_pos = sfc_true.atom_pos_orth.clone()
-    # true_Bs = sfc_true.atom_b_iso.clone()
-    # true_cras = sfc_true.cra_name
-    del sfc_true
+    if REFPDB:
+        # Load true positions
+        sfc_true = llg_sf.initial_SFC(
+            true_pdb,
+            tng_file,
+            "FP",
+            "SIGFP",
+            Freelabel=config.free_flag,
+            device=device,
+            testset_value=config.testset_value,
+        )
+        true_pos = sfc_true.atom_pos_orth.clone()
+        # true_Bs = sfc_true.atom_b_iso.clone()
+        # true_cras = sfc_true.cra_name
+        del sfc_true
 
     sfc_rbr = llg_sf.initial_SFC(
         input_pdb,
@@ -386,7 +399,7 @@ def run_refinement(*, config: RocketRefinmentConfig) -> uuid.UUID:
             device_processed_features["msa_feat"][:, :, 25:48, 0].detach().clone()
         )
 
-    progress_bar = tqdm(range(config.iterations), desc=f"version {config.bias_version}")
+    progress_bar = tqdm(range(config.iterations), desc=f"version {config.bias_version}, uuid: {refinement_run_uuid}")
     loss_weight = config.l2_weight
     for iteration in progress_bar:
         start_time = time.time()
@@ -438,10 +451,11 @@ def run_refinement(*, config: RocketRefinmentConfig) -> uuid.UUID:
         residue_numbers = [int(name.split("-")[1]) for name in cra_calphas_list]
 
         # (3) Calculate total MSE loss
-        total_mse_loss = rk_coordinates.calculate_mse_loss_per_residue(
-            aligned_xyz[calphas_mask], true_pos[calphas_mask], residue_numbers
-        )
-        mse_losses_by_epoch.append(total_mse_loss)
+        if REFPDB:
+            total_mse_loss = rk_coordinates.calculate_mse_loss_per_residue(
+                aligned_xyz[calphas_mask], true_pos[calphas_mask], residue_numbers
+            )
+            mse_losses_by_epoch.append(total_mse_loss)
         ##############################################
 
         # Calculate (or refine) sigmaA
@@ -474,7 +488,34 @@ def run_refinement(*, config: RocketRefinmentConfig) -> uuid.UUID:
             sigmas = llgloss.sigmaAs
 
         else:
-            sigmas = llg_utils.sigmaA_from_model(
+
+            if SIGMA_TRUE:
+                sigmas = llg_utils.sigmaA_from_model(
+                    Etrue,
+                    phitrue,
+                    Ecalc,
+                    Fc,
+                    llgloss.sfc.dHKL,
+                    llgloss.bin_labels,
+                )
+                llgloss.sigmaAs = sigmas
+
+                # sigmas_rbr = llg_utils.sigmaA_from_model(
+                #     Etrue,
+                #     phitrue,
+                #     Ecalc_rbr,
+                #     Fc_rbr,
+                #     llgloss.sfc.dHKL,
+                #     llgloss.bin_labels,
+                # )
+                # llgloss_rbr.sigmaAs = sigmas_rbr
+            
+            else:
+                raise ValueError("No Etrue or phitrue provided! Can't get the true sigmaA!")
+
+
+        if SIGMA_TRUE:
+            true_sigmas = llg_utils.sigmaA_from_model(
                 Etrue,
                 phitrue,
                 Ecalc,
@@ -482,26 +523,6 @@ def run_refinement(*, config: RocketRefinmentConfig) -> uuid.UUID:
                 llgloss.sfc.dHKL,
                 llgloss.bin_labels,
             )
-            llgloss.sigmaAs = sigmas
-
-            sigmas_rbr = llg_utils.sigmaA_from_model(
-                Etrue,
-                phitrue,
-                Ecalc_rbr,
-                Fc_rbr,
-                llgloss.sfc.dHKL,
-                llgloss.bin_labels,
-            )
-            llgloss_rbr.sigmaAs = sigmas_rbr
-
-        true_sigmas = llg_utils.sigmaA_from_model(
-            Etrue,
-            phitrue,
-            Ecalc,
-            Fc,
-            llgloss.sfc.dHKL,
-            llgloss.bin_labels,
-        )
 
         # Update SFC and save
         llgloss.sfc.atom_pos_orth = aligned_xyz
@@ -568,11 +589,12 @@ def run_refinement(*, config: RocketRefinmentConfig) -> uuid.UUID:
         }
         sigmas_by_epoch.append(sigmas_dict)
 
-        true_sigmas_dict = {
-            f"sigma_{i + 1}": sigma_value.item()
-            for i, sigma_value in enumerate(true_sigmas)
-        }
-        true_sigmas_by_epoch.append(true_sigmas_dict)
+        if SIGMA_TRUE:
+            true_sigmas_dict = {
+                f"sigma_{i + 1}": sigma_value.item()
+                for i, sigma_value in enumerate(true_sigmas)
+            }
+            true_sigmas_by_epoch.append(true_sigmas_dict)
 
         #### add an L2 loss to constrain confident atoms ###
         if loss_weight > 0.0:
@@ -642,10 +664,11 @@ def run_refinement(*, config: RocketRefinmentConfig) -> uuid.UUID:
     )
 
     # MSE loss per iteration
-    np.save(
-        f"{output_directory_path!s}/MSE_loss_it.npy",
-        rk_utils.assert_numpy(mse_losses_by_epoch),
-    )
+    if REFPDB:
+        np.save(
+            f"{output_directory_path!s}/MSE_loss_it.npy",
+            rk_utils.assert_numpy(mse_losses_by_epoch),
+        )
 
     # R work per iteration
     np.save(
@@ -688,11 +711,12 @@ def run_refinement(*, config: RocketRefinmentConfig) -> uuid.UUID:
     ) as file:
         pickle.dump(sigmas_by_epoch, file)
 
-    with open(
-        f"{output_directory_path!s}/true_sigmas_by_epoch.pkl",
-        "wb",
-    ) as file:
-        pickle.dump(true_sigmas_by_epoch, file)
+    if SIGMA_TRUE:
+        with open(
+            f"{output_directory_path!s}/true_sigmas_by_epoch.pkl",
+            "wb",
+        ) as file:
+            pickle.dump(true_sigmas_by_epoch, file)
 
     # Save the best msa_bias and feat_weights
     torch.save(
