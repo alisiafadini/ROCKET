@@ -1,4 +1,4 @@
-import argparse
+import argparse, os
 from rocket.refinement import RocketRefinmentConfig, run_refinement
 
 # WORKING_DIRECTORY = Path("/net/cci/alisia/openfold_tests/run_openfold/test_cases")
@@ -47,7 +47,7 @@ def generate_phase1_config(
     phase1_config = RocketRefinmentConfig(
         file_root=file_root,
         path=working_path,
-        batch_sub_ratio=1.0,
+        batch_sub_ratio=0.7,
         number_of_batches=1,
         rbr_opt_algorithm="lbfgs",
         rbr_lbfgs_learning_rate=150.0,
@@ -67,6 +67,7 @@ def generate_phase1_config(
         testset_value=testset_value,
         l2_weight=1e-11,
         b_threshold=10.0,
+        min_resolution=3.0,
         note="phase1"+note,
     )
 
@@ -90,7 +91,7 @@ def generate_phase2_config(
     starting_weights_path = f"{output_directory_path}/phase1{note}/best_feat_weights.pt"
 
     for p in [starting_bias_path, starting_weights_path]:
-        if not p.exists():
+        if not os.path.exists(p):
             raise IOError(f"no: {p}")
 
     phase2_config = RocketRefinmentConfig(
@@ -115,7 +116,7 @@ def generate_phase2_config(
         weight_decay=0.0001,
         free_flag=free_flag,
         testset_value=testset_value,
-        l2_weight=1e-11,
+        l2_weight=0.0,
         b_threshold=10.0,
         note="phase2"+note,
         uuid_hex=phase1_uuid,
