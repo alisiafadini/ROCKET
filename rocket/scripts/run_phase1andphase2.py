@@ -30,6 +30,12 @@ def parse_arguments():
         default="",
         help=("note"),
     )
+
+    parser.add_argument(
+        "--additional_chain", 
+        action="store_true",
+        help=("Additional Chain in ASU")
+    )
     
     return parser.parse_args()
 
@@ -41,6 +47,7 @@ def generate_phase1_config(
     cuda_device: int = 0,
     free_flag: str = "R-free-flags",
     testset_value: int = 1,
+    additional_chain: bool = False,
     note: str = ""
 ) -> RocketRefinmentConfig:
 
@@ -52,7 +59,7 @@ def generate_phase1_config(
         rbr_opt_algorithm="lbfgs",
         rbr_lbfgs_learning_rate=150.0,
         alignment_mode="B",
-        additional_chain=False,
+        additional_chain=additional_chain,
         verbose=False,
         bias_version=3,
         iterations=50,
@@ -82,6 +89,7 @@ def generate_phase2_config(
     cuda_device: int = 0,
     free_flag: str = "R-free-flags",
     testset_value: int = 1,
+    additional_chain: bool = False,
     note : str = "",
 ) -> RocketRefinmentConfig:
 
@@ -102,7 +110,7 @@ def generate_phase2_config(
         rbr_opt_algorithm="lbfgs",
         rbr_lbfgs_learning_rate=150.0,
         alignment_mode="B",
-        additional_chain=False,
+        additional_chain=additional_chain,
         verbose=False,
         bias_version=3,
         iterations=300,
@@ -127,12 +135,12 @@ def generate_phase2_config(
     return phase2_config
 
 
-def run_both_phases_single_dataset(*, working_path, file_root, note) -> None:
+def run_both_phases_single_dataset(*, working_path, file_root, note, additional_chain) -> None:
 
-    phase1_config = generate_phase1_config(working_path=working_path, file_root=file_root, note=note)
+    phase1_config = generate_phase1_config(working_path=working_path, file_root=file_root, note=note, additional_chain=additional_chain)
     phase1_uuid = run_refinement(config=phase1_config)
 
-    phase2_config = generate_phase2_config(phase1_uuid=phase1_uuid, working_path=working_path, file_root=file_root, note=note)
+    phase2_config = generate_phase2_config(phase1_uuid=phase1_uuid, working_path=working_path, file_root=file_root, note=note, additional_chain=additional_chain)
     phase2_uuid = run_refinement(config=phase2_config)
 
 
@@ -140,7 +148,7 @@ def run_both_phases_all_datasets() -> None:
     args = parse_arguments()
     datasets = args.systems
     for file_root in datasets:
-        run_both_phases_single_dataset(working_path=args.path, file_root=file_root, note=args.note)
+        run_both_phases_single_dataset(working_path=args.path, file_root=file_root, note=args.note, additional_chain=args.additional_chain)
 
 if __name__ == "__main__":
     run_both_phases_all_datasets()
