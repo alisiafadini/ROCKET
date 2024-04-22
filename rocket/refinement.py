@@ -19,7 +19,7 @@ from pydantic import BaseModel
 
 
 PRESET = "model_1"
-THRESH_B = None
+# THRESH_B = None
 EXCLUDING_RES = None
 
 
@@ -38,6 +38,7 @@ class RocketRefinmentConfig(BaseModel):
     weight_decay: Union[float, None] = 0.00001  # TODO: should default be 0.0?
     batch_sub_ratio: float
     number_of_batches: int
+    kabsch_threshB: Union[float, None] = None
     rbr_opt_algorithm: str
     rbr_lbfgs_learning_rate: float
     alignment_mode: str
@@ -438,7 +439,7 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
             best_pos,
             llgloss.sfc.cra_name,
             pseudo_Bs,
-            thresh_B=THRESH_B,
+            thresh_B=config.kabsch_threshB,
             exclude_res=EXCLUDING_RES,
         )
 
