@@ -35,7 +35,7 @@ class RocketRefinmentConfig(BaseModel):
     refine_sigmaA: bool
     additive_learning_rate: float
     multiplicative_learning_rate: float
-    weight_decay: Union[float, None] = 0.00001  # TODO: should default be 0.0?
+    weight_decay: Union[float, None] = 0.0001  # TODO: should default be 0.0?
     batch_sub_ratio: float
     number_of_batches: int
     kabsch_threshB: Union[float, None] = None
