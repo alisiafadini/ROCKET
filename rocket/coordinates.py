@@ -691,12 +691,6 @@ def select_confident_atoms(current_pos, target_pos, bfacts=None, b_thresh=400.0)
     N = current_pos_conf.numel() // 3
 
     return current_pos_conf.view(N, 3), target_pos_conf.view(N, 3)
-    # if b_thresh is None:
-    #     Bfact_bool = np.ones(len(bfacts), dtype=bool)
-    # else:
-    #     Bfact_bool = utils.assert_numpy(bfacts < b_thresh)
-    
-    # return current_pos[Bfact_bool], target_pos[Bfact_bool]
 
 
 def align_tensors(tensor1, centroid1, centroid2, rotation_matrix):
@@ -705,7 +699,7 @@ def align_tensors(tensor1, centroid1, centroid2, rotation_matrix):
     """
     tensor1_centered = tensor1 - centroid1
     # Apply the rotation and translation to align the first tensor to the second one
-    aligned_tensor1 = torch.matmul(tensor1_centered, rotation_matrix) + centroid2
+    aligned_tensor1 = torch.matmul(tensor1_centered, rotation_matrix.T) + centroid2
 
     return aligned_tensor1
 
@@ -763,6 +757,31 @@ def weighted_kabsch(moving_tensor, ref_tensor, cra_name, weights=None, exclude_r
     centroid1 = torch.tensor(com_moving).to(moving_tensor)
     centroid2 = torch.tensor(com_ref).to(moving_tensor)
     aligned_pos = align_tensors(moving_tensor, centroid1, centroid2, rotation_matrix)
+    return aligned_pos
+
+
+def cutoff_kabsch(moving_tensor, ref_tensor, cra_name, pseudoB, threshB=None, exclude_res=None):
+    # use only backbone atoms
+    backbone_bool = np.array([i.split("-")[-1] in ['N', 'CA', 'C'] for i in cra_name])
+        
+    # exclude some residues, by default 5 residues on both ends
+    resid = [int(i.split('-')[1]) for i in cra_name]
+    if exclude_res is None:
+        minid = min(resid)
+        maxid= max(resid)
+        residue_bool = np.array([(i>minid+4) and (i<(maxid-4)) for i in resid])
+    else:
+        residue_bool = np.array([i not in exclude_res for i in resid])
+
+    if threshB is None:
+        bfactor_bool = np.ones_like(backbone_bool, dtype=bool)
+    else:
+        bfactor_bool = pseudoB < threshB
+        
+    working_set = backbone_bool & residue_bool & bfactor_bool
+    centroid1, centroid2, rotation_matrix = kabsch_align_matrices(moving_tensor[working_set].detach(), ref_tensor[working_set].detach())
+    aligned_pos = align_tensors(moving_tensor, centroid1, centroid2, rotation_matrix)
+    
     return aligned_pos
 
 
