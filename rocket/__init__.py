@@ -8,3 +8,4 @@ from rocket import utils
 from rocket import base
 from rocket import dataset
 from rocket import llg
+from rocket import coordinates

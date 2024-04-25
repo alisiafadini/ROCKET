@@ -434,15 +434,15 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
         pseudo_Bs = rk_coordinates.update_bfactors(plddts)
         llgloss.sfc.atom_b_iso = pseudo_Bs.detach()
 
-        aligned_xyz = rk_coordinates.align_positions(
+        weights = rk_utils.weighting(rk_utils.assert_numpy(pseudo_Bs))
+        aligned_xyz = rk_coordinates.weighted_kabsch(
             xyz_orth_sfc,
             best_pos,
             llgloss.sfc.cra_name,
-            pseudo_Bs,
-            thresh_B=config.kabsch_threshB,
+            weights=weights,
             exclude_res=EXCLUDING_RES,
         )
-
+        
         ##### Residue MSE loss for tracking ######
         # (1) Select CAs
         cra_calphas_list, calphas_mask = rk_coordinates.select_CA_from_craname(

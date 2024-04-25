@@ -2,13 +2,15 @@
 Functions relating model coordinates/PDB file modificaitons
 """
 
-from rocket import utils
+import time
 import torch
+import torch.nn as nn
 import numpy as np
+
+from rocket import utils
 from openfold.np import residue_constants
 from SFC_Torch import SFcalculator
-import torch.nn as nn
-import time
+from scipy.spatial.transform import Rotation
 
 
 """
@@ -532,7 +534,7 @@ def write_pdb_with_positions(input_pdb_file, positions, output_pdb_file):
                 f_out.write(line)
 
 
-def fractionalize_torch(atom_pos_orth, unitcell, spacegroup, device=utils.try_gpu()):
+def fractionalize_torch(atom_pos_orth, unitcell, device=utils.try_gpu()):
     """
     Apply symmetry operations to real space asu model coordinates
 
@@ -673,7 +675,6 @@ def kabsch_align_matrices(tensor1, tensor2):
     return centroid1, centroid2, rotation_matrix
 
 
-
 def select_confident_atoms(current_pos, target_pos, bfacts=None, b_thresh=400.0):
     if bfacts is None:
         # If bfacts is None, set mask to all True
@@ -699,42 +700,69 @@ def select_confident_atoms(current_pos, target_pos, bfacts=None, b_thresh=400.0)
 
 
 def align_tensors(tensor1, centroid1, centroid2, rotation_matrix):
+    """
+    Apply rotation and translation to a tensor
+    """
     tensor1_centered = tensor1 - centroid1
-
     # Apply the rotation and translation to align the first tensor to the second one
-    aligned_tensor1 = torch.matmul(tensor1_centered, rotation_matrix.t()) + centroid2
+    aligned_tensor1 = torch.matmul(tensor1_centered, rotation_matrix) + centroid2
 
     return aligned_tensor1
 
 
-def align_positions(current_pos, target_pos, cra_name, pseudo_Bs, thresh_B=None, exclude_res=None):
-    # Perform alignment of positions
-    with torch.no_grad():
-        # use only backbone atoms
-        backbone_bool = np.array([i.split("-")[-1] in ['N', 'CA', 'C'] for i in cra_name])
-        
-        # exclude some residues, by default 5 residues on both ends
-        resid = [int(i.split('-')[1]) for i in cra_name]
-        if exclude_res is None:
-            minid = min(resid)
-            maxid= max(resid)
-            residue_bool = np.array([(i>minid+4) and (i<(maxid-4)) for i in resid])
-        else:
-            residue_bool = np.array([i not in exclude_res for i in resid])
-        
-        # exclude flexible residues defined by pseudo_Bs
-        if thresh_B is None:
-            pesudoB_bool = np.ones_like(backbone_bool, dtype=bool)
-        else:
-            pesudoB_bool = utils.assert_numpy(pseudo_Bs < thresh_B)
-        working_set = backbone_bool & residue_bool & pesudoB_bool 
+def weighted_kabsch(moving_tensor, ref_tensor, cra_name, weights=None, exclude_res=None):
+    """
+    Weighted Kabsch Alignment, using scipy implementation
+    'scipy.spatial.transform.Rotation.align_vectors'
 
-        current_pos_conf = current_pos[working_set].detach()
-        target_pos_conf = target_pos[working_set].detach()
-        centroid1, centroid2, rotation_matrix = kabsch_align_matrices(
-            current_pos_conf, target_pos_conf
-        )
-    aligned_pos = align_tensors(current_pos, centroid1, centroid2, rotation_matrix)
+    Args:
+        moving_tensor: torch.Tensor, [n_points, 3]
+            coordinates you want to move
+        
+        ref_tensor: torch.Tensor, [n_points, 3]
+            reference coordinates you want to align to
+        
+        cra_name: List[str], [n_points]
+            chain-residue-atom name of each atom
+        
+        weights: torch.Tensor | np.ndarray, [n_points]
+            weights used in the Kabsch Alignment
+        
+        exclude_res: List[int]
+            list of resid you want to exclude from the alignment
+    
+    Returns:
+        aligned_tensor: torch.Tensor, [n_points, 3]
+    """
+    # use only backbone atoms
+    backbone_bool = np.array([i.split("-")[-1] in ['N', 'CA', 'C'] for i in cra_name])
+        
+    # exclude some residues, by default 5 residues on both ends
+    resid = [int(i.split('-')[1]) for i in cra_name]
+    if exclude_res is None:
+        minid = min(resid)
+        maxid= max(resid)
+        residue_bool = np.array([(i>minid+4) and (i<(maxid-4)) for i in resid])
+    else:
+        residue_bool = np.array([i not in exclude_res for i in resid])
+        
+    working_set = backbone_bool & residue_bool
+
+    moving_tensor_np = utils.assert_numpy(moving_tensor)[working_set]
+    ref_tensor_np = utils.assert_numpy(ref_tensor)[working_set]
+    if weights is None:
+        weights_np = None
+    else:
+        weights_np = utils.assert_numpy(weights)[working_set]
+    
+    com_moving = np.average(moving_tensor_np, axis=0, weights=weights_np)
+    com_ref = np.average(ref_tensor_np, axis=0, weights=weights_np)
+    C, _ = Rotation.align_vectors(ref_tensor_np-com_ref, moving_tensor_np-com_moving, weights=weights_np)
+    
+    rotation_matrix = torch.tensor(C.as_matrix()).to(moving_tensor)
+    centroid1 = torch.tensor(com_moving).to(moving_tensor)
+    centroid2 = torch.tensor(com_ref).to(moving_tensor)
+    aligned_pos = align_tensors(moving_tensor, centroid1, centroid2, rotation_matrix)
     return aligned_pos
 
 
@@ -745,7 +773,7 @@ def set_new_positions(orth_pos, frac_pos, sfmodel, device=utils.try_gpu()):
 
 
 def transfer_positions(
-    aligned_pos, sfcalculator_model, b_factors, device=utils.try_gpu()
+    aligned_pos, sfcalculator_model, device=utils.try_gpu()
 ):
     # Transfer positions to sfcalculator
     frac_pos = fractionalize_torch(
