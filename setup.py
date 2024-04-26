@@ -20,7 +20,8 @@ setup(
     entry_points={
         "console_scripts": [
             "rk.refine=rocket.scripts.iterate_rbr_argparse:main",
-            "rk.multiphaserefine=rocket.scripts.run_phase1andphase2:run_both_phases_all_datasets"
+            "rk.multiphaserefine=rocket.scripts.run_phase1andphase2:run_both_phases_all_datasets",
+            "rk.phase1=rocket.scripts.run_phase1:run_phase1_all_datasets",
         ]
     },
 )

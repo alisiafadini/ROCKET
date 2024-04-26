@@ -401,7 +401,7 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
             device_processed_features["msa_feat"][:, :, 25:48, 0].detach().clone()
         )
 
-    progress_bar = tqdm(range(config.iterations), desc=f"version {config.bias_version}, uuid: {refinement_run_uuid[:6]}")
+    progress_bar = tqdm(range(config.iterations), desc=f"{config.file_root}, uuid: {refinement_run_uuid[:6]}")
     loss_weight = config.l2_weight
     for iteration in progress_bar:
         start_time = time.time()
@@ -442,7 +442,7 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
             weights=weights,
             exclude_res=EXCLUDING_RES,
         )
-        
+
         ##### Residue MSE loss for tracking ######
         # (1) Select CAs
         cra_calphas_list, calphas_mask = rk_coordinates.select_CA_from_craname(
@@ -583,7 +583,8 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
         if config.alignment_mode == "B":
             if loss < best_loss:
                 best_loss = loss
-                best_pos = optimized_xyz.clone()
+                best_pos = optimized_xyz.detach().clone()
+                best_pos_bfactor = llgloss.sfc.atom_b_iso.detach().clone()
 
         # Save sigmaA values for further processing
         sigmas_dict = {
@@ -600,29 +601,29 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
 
         #### add an L2 loss to constrain confident atoms ###
         if loss_weight > 0.0:
-            if iteration == 0:
-                # L2_ref_pos = xyz_orth_sfc.clone().detach()
-                L2_ref_pos = optimized_xyz.detach().clone()
-                L2_ref_Bs = llgloss.sfc.atom_b_iso.detach().clone()
-                conf_xyz, conf_best = rk_coordinates.select_confident_atoms(
-                    optimized_xyz,
-                    L2_ref_pos,
-                    bfacts=L2_ref_Bs,
-                    b_thresh=config.b_threshold,
-                )
+            # if iteration == 0:
+            #     # L2_ref_pos = xyz_orth_sfc.clone().detach()
+            #     L2_ref_pos = optimized_xyz.detach().clone()
+            #     L2_ref_Bs = llgloss.sfc.atom_b_iso.detach().clone()
+            #     conf_xyz, conf_best = rk_coordinates.select_confident_atoms(
+            #         optimized_xyz,
+            #         L2_ref_pos,
+            #         bfacts=L2_ref_Bs,
+            #         b_thresh=config.b_threshold,
+            #     )
 
-            else:
-                # Avoid passing through graph twice with L2 loss addition
-                # L2_ref_pos_copy = L2_ref_pos.clone()
-                # L2_ref_Bs_copy = L2_ref_Bs.clone()
-                conf_xyz, conf_best = rk_coordinates.select_confident_atoms(
-                    optimized_xyz,
-                    L2_ref_pos,
-                    bfacts=L2_ref_Bs,
-                    b_thresh=config.b_threshold,
-                )
-
-            L2_loss = torch.sum((conf_xyz - conf_best) ** 2)  # / conf_best.shape[0]
+            # else:
+            #     # Avoid passing through graph twice with L2 loss addition
+            #     # L2_ref_pos_copy = L2_ref_pos.clone()
+            #     # L2_ref_Bs_copy = L2_ref_Bs.clone()
+            #     conf_xyz, conf_best = rk_coordinates.select_confident_atoms(
+            #         optimized_xyz,
+            #         L2_ref_pos,
+            #         bfacts=L2_ref_Bs,
+            #         b_thresh=config.b_threshold,
+            #     )
+            bfactor_weights = rk_utils.weighting_torch(best_pos_bfactor, cutoff2=20.0)
+            L2_loss = torch.sum( bfactor_weights * (optimized_xyz - best_pos) ** 2)  # / conf_best.shape[0]
             corrected_loss = loss + loss_weight * L2_loss
             corrected_loss.backward()
         else:
