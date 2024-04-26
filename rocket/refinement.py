@@ -623,7 +623,7 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
             #         b_thresh=config.b_threshold,
             #     )
             bfactor_weights = rk_utils.weighting_torch(best_pos_bfactor, cutoff2=20.0)
-            L2_loss = torch.sum( bfactor_weights * (optimized_xyz - best_pos) ** 2)  # / conf_best.shape[0]
+            L2_loss = torch.sum( bfactor_weights.unsqueeze(-1) * (optimized_xyz - best_pos) ** 2)  # / conf_best.shape[0]
             corrected_loss = loss + loss_weight * L2_loss
             corrected_loss.backward()
         else:

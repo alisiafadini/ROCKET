@@ -45,9 +45,9 @@ def parse_arguments():
     )
 
     parser.add_argument(
-        "--true_sigmaA", 
-        action="store_false",
-        help=("Using sigma from ground truth model, just for diagnosis")
+        "--refine_sigmaA", 
+        action="store_true",
+        help=("refine sigmaAs")
     )
 
     parser.add_argument(
@@ -123,7 +123,7 @@ def run_phase1_all_datasets() -> None:
                                                additional_chain=args.additional_chain,
                                                w_l2=args.w_l2,
                                                n_step=args.n_step,
-                                               refine_sigmaA= not args.true_sigmaA,
+                                               refine_sigmaA=args.refine_sigmaA,
                                                min_resol=args.min_resolution)
         phase1_uuid = run_refinement(config=phase1_config)
 
