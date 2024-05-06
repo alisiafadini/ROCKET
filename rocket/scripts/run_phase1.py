@@ -38,6 +38,20 @@ def parse_arguments():
     )
 
     parser.add_argument(
+        "--add_lr",
+        default=0.05,
+        type=float,
+        help=("additive learning rate"),
+    )
+
+    parser.add_argument(
+        "--mul_lr",
+        default=1.0,
+        type=float,
+        help=("multiplicative learning rate"),
+    )
+
+    parser.add_argument(
         "--n_step",
         default=50,
         type=int,
@@ -78,7 +92,9 @@ def generate_phase1_config(
     n_step: int = 50,
     min_resol: float = 0.3,
     note: str = "",
-    refine_sigmaA: bool = True
+    refine_sigmaA: bool = True,
+    add_lr: float = 0.05,
+    mul_lr: float = 1.0,
 ) -> RocketRefinmentConfig:
 
     phase1_config = RocketRefinmentConfig(
@@ -99,8 +115,8 @@ def generate_phase1_config(
         solvent=True,
         sfc_scale=True,
         refine_sigmaA=refine_sigmaA,
-        additive_learning_rate=0.05,
-        multiplicative_learning_rate=1.0,
+        additive_learning_rate=add_lr,
+        multiplicative_learning_rate=mul_lr,
         free_flag=free_flag,
         testset_value=testset_value,
         l2_weight=w_l2,
@@ -122,6 +138,8 @@ def run_phase1_all_datasets() -> None:
                                                note=args.note, 
                                                additional_chain=args.additional_chain,
                                                w_l2=args.w_l2,
+                                               add_lr=args.add_lr,
+                                               mul_lr=args.mul_lr,
                                                n_step=args.n_step,
                                                refine_sigmaA=args.refine_sigmaA,
                                                min_resol=args.min_resolution)

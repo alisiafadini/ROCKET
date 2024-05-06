@@ -145,7 +145,7 @@ def generate_phase2_config(
         refine_sigmaA=True,
         additive_learning_rate=0.001,
         multiplicative_learning_rate=0.001,
-        weight_decay=0.0001,
+        weight_decay=None,
         free_flag=free_flag,
         testset_value=testset_value,
         l2_weight=0.0,

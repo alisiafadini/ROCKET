@@ -38,7 +38,7 @@ class RocketRefinmentConfig(BaseModel):
     weight_decay: Union[float, None] = 0.0001  # TODO: should default be 0.0?
     batch_sub_ratio: float
     number_of_batches: int
-    kabsch_threshB: Union[float, None] = None
+    # kabsch_threshB: Union[float, None] = None
     rbr_opt_algorithm: str
     rbr_lbfgs_learning_rate: float
     alignment_mode: str
@@ -48,7 +48,7 @@ class RocketRefinmentConfig(BaseModel):
     additional_chain: bool
     verbose: bool
     l2_weight: float
-    b_threshold: float
+    # b_threshold: float
     min_resolution: Union[float, None] = None
     max_resolution: Union[float, None] = None
     starting_bias: Union[str, None] = None
@@ -502,15 +502,15 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
                 )
                 llgloss.sigmaAs = sigmas
 
-                # sigmas_rbr = llg_utils.sigmaA_from_model(
-                #     Etrue,
-                #     phitrue,
-                #     Ecalc_rbr,
-                #     Fc_rbr,
-                #     llgloss.sfc.dHKL,
-                #     llgloss.bin_labels,
-                # )
-                # llgloss_rbr.sigmaAs = sigmas_rbr
+                sigmas_rbr = llg_utils.sigmaA_from_model(
+                    Etrue,
+                    phitrue,
+                    Ecalc_rbr,
+                    Fc_rbr,
+                    llgloss.sfc.dHKL,
+                    llgloss.bin_labels,
+                )
+                llgloss_rbr.sigmaAs = sigmas_rbr
             
             else:
                 raise ValueError("No Etrue or phitrue provided! Can't get the true sigmaA!")
