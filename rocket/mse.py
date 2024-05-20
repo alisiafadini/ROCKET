@@ -43,10 +43,11 @@ class MSEloss:
     def sequence(self):
         return self.target_pdb.sequence
 
-    def forward(self, xyz_ort: torch.Tensor):
+    def forward(self, xyz_ort: torch.Tensor, subratio=1.0):
+        sub_boolean_mask = np.random.rand(len(self.index_moving)) < subratio
         mse_loss = torch.mean(
             torch.sum(
-                (xyz_ort[self.index_moving] - self.target_pos[self.index_target]) ** 2,
+                (xyz_ort[self.index_moving][sub_boolean_mask] - self.target_pos[self.index_target][sub_boolean_mask]) ** 2,
                 dim=-1,
             )
         )
