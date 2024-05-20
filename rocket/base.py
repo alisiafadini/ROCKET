@@ -100,7 +100,7 @@ class MSABiasAFv1(AlphaFold):
                         torch.clear_autocast_cache()
 
                 # Run the next iteration of the model
-                outputs, m_1_prev, z_prev, x_prev = self.iteration(
+                outputs, m_1_prev, z_prev, x_prev, _ = self.iteration(
                     feats, prevs, _recycle=(num_iters > 1), bias=bias
                 )
 

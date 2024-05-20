@@ -15,11 +15,11 @@ from SFC_Torch import PDBParser
 from openfold.config import model_config
 from typing import Union
 
-PRESET = "model_1"
+PRESET = "model_1_ptm"
 EXCLUDING_RES = None
 
-def parse_arguments():
 
+def parse_arguments():
     """Parse commandline arguments"""
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawTextHelpFormatter, description=__doc__
@@ -68,7 +68,7 @@ def parse_arguments():
         "-lr_a",
         "--additive_learning_rate",
         type=float,
-        default=1e-3,
+        default=1e-4,
         help=("Learning rate for additive bias. Default 1e-3"),
     )
 
@@ -76,7 +76,7 @@ def parse_arguments():
         "-lr_m",
         "--multiplicative_learning_rate",
         type=float,
-        default=1e-2,
+        default=1e-3,
         help=("Learning rate for multiplicative bias. Default 1e-2"),
     )
 
@@ -104,18 +104,19 @@ def parse_arguments():
 
     return parser.parse_args()
 
+
 def mse_optimize(
-        path: str,
-        file_root: str,
-        bias_version: int,
-        iterations: int,
-        target_pdb: str,
-        device: str,
-        additive_learning_rate: float,
-        multiplicative_learning_rate: float,
-        weight_decay: Union[float, None] = 0.0001,
-        note: str = "",
-    ):
+    path: str,
+    file_root: str,
+    bias_version: int,
+    iterations: int,
+    target_pdb: str,
+    device: str,
+    additive_learning_rate: float,
+    multiplicative_learning_rate: float,
+    weight_decay: Union[float, None] = 0.0001,
+    note: str = "",
+):
 
     input_pdb_path = "{p}/{r}/{r}-pred-aligned.pdb".format(p=path, r=file_root)
     target_pdb_path = "{p}/{r}/{t}".format(p=path, r=file_root, t=target_pdb)
@@ -124,14 +125,12 @@ def mse_optimize(
 
     mseloss = MSEloss(target_pdb_obj, moving_pdb_obj, device=device)
 
-    starting_bias = None,
-    starting_weights = None,
+    starting_bias = None  # (None,)
+    starting_weights = None  # (None,)
 
     if bias_version == 4:
         device_processed_features = rocket.make_processed_dict_from_template(
-            template_pdb="{p}/{r}/{t}".format(
-                p=path, r=file_root, t=target_pdb
-            ),
+            template_pdb="{p}/{r}/{t}".format(p=path, r=file_root, t=target_pdb),
             config_preset=PRESET,
             device=device,
             msa_dict=None,
@@ -149,7 +148,7 @@ def mse_optimize(
         )
         # TODO: this still takes up memory in original device?
         del processed_features
-    
+
     # Model initialization
     version_to_class = {
         1: rocket.MSABiasAFv1,
@@ -289,12 +288,12 @@ def mse_optimize(
             )
 
         bias_names = ["msa_feat_bias"]
-    
+
     output_directory_path = f"{path}/{file_root}/outputs/MSEoptimze_{note}"
     warnings.filterwarnings("ignore")
 
     best_loss = float("inf")
-    bset_pos = torch.tensor(moving_pdb_obj.atom_pos, dtype=torch.float32, device=device)
+    best_pos = torch.tensor(moving_pdb_obj.atom_pos, dtype=torch.float32, device=device)
     mse_losses_by_epoch = []
     time_by_epoch = []
     memory_by_epoch = []
@@ -323,13 +322,12 @@ def mse_optimize(
                 print(
                     f"Warning: Directory '{output_directory_path}' already exists. Overwriting..."
                 )
-        
+
         # Avoid passing through graph a second time
         working_batch = copy.deepcopy(device_processed_features)
         for bias in bias_names:
             working_batch[bias] = device_processed_features[bias].clone()
 
-        
         # AF2 pass
         af2_output = af_bias(working_batch, num_iters=1, bias=True)
 
@@ -351,13 +349,13 @@ def mse_optimize(
             exclude_res=EXCLUDING_RES,
         )
 
-        loss = -mseloss(aligned_xyz)
+        loss = mseloss.forward(aligned_xyz)
 
         mse_losses_by_epoch.append(loss.item())
         if mse_losses_by_epoch[-1] < best_loss:
             best_loss = loss.item()
             best_pos = aligned_xyz.detach().clone()
-        
+
         # Save PDB
         moving_pdb_obj.set_biso(rk_utils.assert_numpy(pseudo_Bs))
         moving_pdb_obj.set_positions(rk_utils.assert_numpy(aligned_xyz))
@@ -368,7 +366,7 @@ def mse_optimize(
             memory=f"{torch.cuda.max_memory_allocated()/1024**3:.1f}G",
         )
 
-        if (iteration % 10 == 0) or (iteration == iterations-1):
+        if (iteration % 20 == 0) or (iteration == iterations - 1):
             temp_msa_bias = (
                 device_processed_features["msa_feat_bias"].detach().cpu().clone()
             )
@@ -382,8 +380,8 @@ def mse_optimize(
             )
 
             torch.save(
-                temp_msa_bias,
-                f"{output_directory_path!s}/add_bias_{iteration}.pt",
+                temp_feat_weights,
+                f"{output_directory_path!s}/temp_feat_weights_{iteration}.pt",
             )
 
         loss.backward()
@@ -391,18 +389,15 @@ def mse_optimize(
         time_by_epoch.append(time.time() - start_time)
         memory_by_epoch.append(torch.cuda.max_memory_allocated() / 1024**3)
 
-
     np.save(
         f"{output_directory_path!s}mse_it.npy",
         np.array(mse_losses_by_epoch),
     )
 
-
     np.save(
         f"{output_directory_path!s}/mean_it_plddt.npy",
         np.array(mean_it_plddts),
     )
-
 
     np.save(
         f"{output_directory_path!s}/time_it.npy",
@@ -430,7 +425,7 @@ def mse_optimize(
         "multiplicative_learning_rate": multiplicative_learning_rate,
     }
 
-    with open(f"{output_directory_path!s}/config.json", 'w') as file:
+    with open(f"{output_directory_path!s}/config.json", "w") as file:
         json.dump(config, file, indent=4)
 
 
@@ -438,3 +433,7 @@ def main():
     args = parse_arguments()
     args_dict = vars(args)
     mse_optimize(**args_dict)
+
+
+if __name__ == "__main__":
+    main()
