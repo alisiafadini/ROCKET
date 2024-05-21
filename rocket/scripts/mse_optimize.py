@@ -125,8 +125,8 @@ def mse_optimize(
 
     mseloss = MSEloss(target_pdb_obj, moving_pdb_obj, device=device)
 
-    starting_bias = None  # (None,)
-    starting_weights = None  # (None,)
+    starting_bias = None  # "kras/6mbt_alisia/outputs/MSEoptimze_lowlrAcontinued2/add_bias_399.pt"  # (None,)
+    starting_weights = None  # "kras/6mbt_alisia/outputs/MSEoptimze_lowlrAcontinued2/temp_feat_weights_399.pt"  # (None,)
 
     if bias_version == 4:
         device_processed_features = rocket.make_processed_dict_from_template(
