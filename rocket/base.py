@@ -33,7 +33,7 @@ class MSABiasAFv1(AlphaFold):
         model_basename = get_model_basename(params_path)
         model_version = "_".join(model_basename.split("_")[1:])
         import_jax_weights_(self, params_path, version=model_version)
-        config.globals.use_deepspeed_evo_attention = True
+        config.globals.use_deepspeed_evo_attention = False
         print("DEEPSPEED IS ", config.globals.use_deepspeed_evo_attention)
         self.eval()  # without this, dropout enabled
 
@@ -77,29 +77,62 @@ class MSABiasAFv1(AlphaFold):
             feats = self._bias(feats)
         return super(MSABiasAFv1, self).iteration(feats, prevs, _recycle)
 
-    def forward(self, batch, num_iters=1, bias=True):
-        """
-        Args:
-            batch:
-                Dictionary of arguments outlined in Algorithm 2. Keys must
-                include the official names of the features in the
-                supplement subsection 1.2.9.
+    # def forward(self, batch, num_iters=1, bias=True):
+    #    """
+    #    Args:
+    #        batch:
+    #            Dictionary of arguments outlined in Algorithm 2. Keys must
+    #            include the official names of the features in the
+    #            supplement subsection 1.2.9.
+    #
+    #        num_iters:
+    #            Number of recycling loops. Default 1, no recycling
+    #    """
+    #    m_1_prev, z_prev, x_prev = None, None, None
+    #    prevs = [m_1_prev, z_prev, x_prev]
+    #    is_grad_enabled = torch.is_grad_enabled()
 
-            num_iters:
-                Number of recycling loops. Default 1, no recycling
-        """
-        m_1_prev, z_prev, x_prev = None, None, None
-        prevs = [m_1_prev, z_prev, x_prev]
+    # Main recycling loop
+    #  for cycle_no in range(num_iters):
+    #     # Select the features for the current recycling cycle
+    #     fetch_cur_batch = lambda t: t[..., cycle_no]
+    #     feats = tensor_tree_map(fetch_cur_batch, batch)
+
+    # Enable grad iff we're training and it's the final recycling layer
+    #   is_final_iter = cycle_no == (num_iters - 1)
+    #    with torch.set_grad_enabled(is_grad_enabled and is_final_iter):
+    #        if is_final_iter:
+    # Sidestep AMP bug (PyTorch issue #65766)
+    #            if torch.is_autocast_enabled():
+    #                torch.clear_autocast_cache()
+
+    # Run the next iteration of the model
+    #        outputs, m_1_prev, z_prev, x_prev, _ = self.iteration(
+    #            feats, prevs, _recycle=(num_iters > 1), bias=bias
+    #        )
+
+    #        if not is_final_iter:
+    #            del outputs
+    #            prevs = [m_1_prev, z_prev, x_prev]
+    #            del m_1_prev, z_prev, x_prev
+    # Run auxiliary heads
+    # outputs.update(self.aux_heads(outputs))
+
+    # return outputs
+
+    def forward(self, batch, prevs=[None, None, None], num_iters=1, bias=True):
+
         is_grad_enabled = torch.is_grad_enabled()
 
         # Main recycling loop
+
         for cycle_no in range(num_iters):
             # Select the features for the current recycling cycle
             fetch_cur_batch = lambda t: t[..., cycle_no]
             feats = tensor_tree_map(fetch_cur_batch, batch)
 
-            # Enable grad iff we're training and it's the final recycling layer
             is_final_iter = cycle_no == (num_iters - 1)
+
             with torch.set_grad_enabled(is_grad_enabled and is_final_iter):
                 if is_final_iter:
                     # Sidestep AMP bug (PyTorch issue #65766)
@@ -115,10 +148,11 @@ class MSABiasAFv1(AlphaFold):
                     del outputs
                     prevs = [m_1_prev, z_prev, x_prev]
                     del m_1_prev, z_prev, x_prev
+
         # Run auxiliary heads
         outputs.update(self.aux_heads(outputs))
 
-        return outputs
+        return outputs, [m_1_prev, z_prev, x_prev]
 
 
 class MSABiasAFv2(MSABiasAFv1):

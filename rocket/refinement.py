@@ -455,8 +455,21 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
         for bias in bias_names:
             working_batch[bias] = device_processed_features[bias].clone()
 
+        if iteration == 0:
+            af2_output, prevs = af_bias(
+                working_batch, [None, None, None], num_iters=4, bias=False
+            )
+
+            prevs = [tensor.detach() for tensor in prevs]
+
+        else:
+            deep_copied_prevs = [tensor.clone().detach() for tensor in prevs]
+            af2_output, __ = af_bias(
+                working_batch, deep_copied_prevs, num_iters=1, bias=True
+            )
+
         # AF2 pass
-        af2_output = af_bias(working_batch, num_iters=1, bias=True)
+        # af2_output = af_bias(working_batch, num_iters=1, bias=True)
 
         # Position alignment
         xyz_orth_sfc, plddts = rk_coordinates.extract_allatoms(
