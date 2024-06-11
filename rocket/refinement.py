@@ -38,7 +38,7 @@ class RocketRefinmentConfig(BaseModel):
     weight_decay: Union[float, None] = 0.0001  # TODO: should default be 0.0?
     batch_sub_ratio: float
     number_of_batches: int
-    # kabsch_threshB: Union[float, None] = None
+    kabsch_threshB: Union[float, None] = 11.5
     rbr_opt_algorithm: str
     rbr_lbfgs_learning_rate: float
     alignment_mode: str
@@ -53,7 +53,7 @@ class RocketRefinmentConfig(BaseModel):
     max_resolution: Union[float, None] = None
     starting_bias: Union[str, None] = None
     starting_weights: Union[str, None] = None
-    uuid_hex : Union[str, None] = None
+    uuid_hex: Union[str, None] = None
 
     # TODO the Path types are ugly
     # intercept them upload load/save and cast to string as appropriate
@@ -91,7 +91,7 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
 
     if os.path.exists(true_pdb):
         REFPDB = True
-    else: 
+    else:
         REFPDB = False
 
     if config.additional_chain:
@@ -118,7 +118,7 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
     else:
         constant_fp_added_HKL = None
         constant_fp_added_asu = None
-        
+
         phitrue_path = "{p}/{r}/{r}-phitrue-solvent{s}.npy".format(
             p=path, r=config.file_root, s=config.solvent
         )
@@ -131,7 +131,7 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
             phitrue = np.load(phitrue_path)
             Etrue = np.load(Etrue_path)
         else:
-            SIGMA_TRUE = False 
+            SIGMA_TRUE = False
 
     if config.bias_version == 4:
         device_processed_features = rocket.make_processed_dict_from_template(
@@ -361,9 +361,14 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
     else:
         refinement_run_uuid = config.uuid_hex
 
-    output_directory_path = f"{path}/{config.file_root}/outputs/{refinement_run_uuid}/{config.note}"
+    output_directory_path = (
+        f"{path}/{config.file_root}/outputs/{refinement_run_uuid}/{config.note}"
+    )
 
-    print(f"System: {config.file_root}, refinment run ID: {refinement_run_uuid!s}, Note: {config.note}", flush=True)
+    print(
+        f"System: {config.file_root}, refinment run ID: {refinement_run_uuid!s}, Note: {config.note}",
+        flush=True,
+    )
     if not config.verbose:
         warnings.filterwarnings("ignore")
 
@@ -389,6 +394,7 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
     all_pldtts = []
     mean_it_plddts = []
     absolute_feats_changes = []
+    lrs_by_it = []
 
     if config.bias_version == 4:
         features_at_it_start = (
@@ -401,8 +407,37 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
             device_processed_features["msa_feat"][:, :, 25:48, 0].detach().clone()
         )
 
-    progress_bar = tqdm(range(config.iterations), desc=f"{config.file_root}, uuid: {refinement_run_uuid[:6]}")
+    progress_bar = tqdm(
+        range(config.iterations),
+        desc=f"{config.file_root}, uuid: {refinement_run_uuid[:6]}",
+    )
     loss_weight = config.l2_weight
+
+    ######
+    # Phase2 optimization
+
+    def get_current_lr(optimizer):
+        for param_group in optimizer.param_groups:
+            return param_group["lr"]
+
+    import torch.optim as optim
+
+    # Early stopping parameters
+    patience = 50
+    stopping_patience = 100
+    lr_decrease_factor = 0.1
+    best_loss_for_lr = float("inf")
+    min_llg_delta = 0.1
+    it_no_improve = 0
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer,
+        mode="min",
+        factor=lr_decrease_factor,
+        patience=patience,
+        verbose=True,
+    )
+    #####
+
     for iteration in progress_bar:
         start_time = time.time()
         optimizer.zero_grad()
@@ -511,10 +546,11 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
                     llgloss.bin_labels,
                 )
                 llgloss_rbr.sigmaAs = sigmas_rbr
-            
-            else:
-                raise ValueError("No Etrue or phitrue provided! Can't get the true sigmaA!")
 
+            else:
+                raise ValueError(
+                    "No Etrue or phitrue provided! Can't get the true sigmaA!"
+                )
 
         if SIGMA_TRUE:
             true_sigmas = llg_utils.sigmaA_from_model(
@@ -601,35 +637,40 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
 
         #### add an L2 loss to constrain confident atoms ###
         if loss_weight > 0.0:
-            # if iteration == 0:
-            #     # L2_ref_pos = xyz_orth_sfc.clone().detach()
-            #     L2_ref_pos = optimized_xyz.detach().clone()
-            #     L2_ref_Bs = llgloss.sfc.atom_b_iso.detach().clone()
-            #     conf_xyz, conf_best = rk_coordinates.select_confident_atoms(
-            #         optimized_xyz,
-            #         L2_ref_pos,
-            #         bfacts=L2_ref_Bs,
-            #         b_thresh=config.b_threshold,
-            #     )
-
-            # else:
-            #     # Avoid passing through graph twice with L2 loss addition
-            #     # L2_ref_pos_copy = L2_ref_pos.clone()
-            #     # L2_ref_Bs_copy = L2_ref_Bs.clone()
-            #     conf_xyz, conf_best = rk_coordinates.select_confident_atoms(
-            #         optimized_xyz,
-            #         L2_ref_pos,
-            #         bfacts=L2_ref_Bs,
-            #         b_thresh=config.b_threshold,
-            #     )
             bfactor_weights = rk_utils.weighting_torch(best_pos_bfactor, cutoff2=20.0)
-            L2_loss = torch.sum( bfactor_weights.unsqueeze(-1) * (optimized_xyz - best_pos) ** 2)  # / conf_best.shape[0]
+            L2_loss = torch.sum(
+                bfactor_weights.unsqueeze(-1) * (optimized_xyz - best_pos) ** 2
+            )  # / conf_best.shape[0]
             corrected_loss = loss + loss_weight * L2_loss
             corrected_loss.backward()
         else:
             loss.backward()
 
+            # scheduler step in Phase2
+            lr_before_step = get_current_lr(optimizer)
+            scheduler.step(loss)
+            lr_after_step = get_current_lr(optimizer)
+            lrs_by_it.append(lr_after_step)
+
+            # Reset best loss if learning rate has been changed
+            if lr_after_step < lr_before_step:
+                best_loss_for_lr = loss
+
+            # Check early stopping
+            if loss < best_loss_for_lr - min_llg_delta:
+                best_loss_for_lr = loss
+                it_no_improve = 0
+            else:
+                print("best loss is", best_loss_for_lr.item())
+                print("loss no improve is ", loss.item())
+                it_no_improve += 1
+
+            if it_no_improve >= stopping_patience:
+                print(f"Early stopping after {iteration+1} epochs.")
+                break
+
         optimizer.step()
+
         time_by_epoch.append(time.time() - start_time)
         memory_by_epoch.append(torch.cuda.max_memory_allocated() / 1024**3)
 
@@ -653,11 +694,16 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
         absolute_feats_changes.append(rk_utils.assert_numpy(mean_change))
 
     ####### Save data
-
     # Average plddt per iteration
     np.save(
         f"{output_directory_path!s}/mean_it_plddt.npy",
         np.array(mean_it_plddts),
+    )
+
+    # Learning rate per iteration
+    np.save(
+        f"{output_directory_path!s}/lr_it.npy",
+        np.array(lrs_by_it),
     )
 
     # LLG per iteration
