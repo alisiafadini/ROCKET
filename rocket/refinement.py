@@ -29,7 +29,8 @@ class RocketRefinmentConfig(BaseModel):
     bias_version: int
     iterations: int
     template_pdb: Union[str, None] = None
-    cuda_device: int = 0
+    cuda_device: int = 0,
+    init_recycling: int = 1,
     solvent: bool
     sfc_scale: bool
     refine_sigmaA: bool
@@ -38,7 +39,6 @@ class RocketRefinmentConfig(BaseModel):
     weight_decay: Union[float, None] = 0.0001  # TODO: should default be 0.0?
     batch_sub_ratio: float
     number_of_batches: int
-    kabsch_threshB: Union[float, None] = 11.5
     rbr_opt_algorithm: str
     rbr_lbfgs_learning_rate: float
     alignment_mode: str
@@ -224,6 +224,7 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
         3: rocket.MSABiasAFv3,
         4: rocket.TemplateBiasAF,
     }
+
     af_bias = version_to_class[config.bias_version](
         model_config(PRESET, train=True), PRESET
     ).to(device)
@@ -284,6 +285,45 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
         if config.starting_bias is not None:
             device_processed_features["msa_feat_bias"] = (
                 torch.load(config.starting_bias).detach().to(device=device)
+            )
+        
+        # MH @ June 18: Fix the scales for phase 2 running
+        # Use the starting point to initialize the scales
+        if (config.starting_bias is not None) or (config.starting_bias is not None):
+            # Get the prediction from checkpoint bias
+            af2_output, prevs = af_bias(
+                device_processed_features, [None, None, None], num_iters=1, bias=False
+            )
+            xyz_orth_sfc, plddts = rk_coordinates.extract_allatoms(
+                af2_output, device_processed_features, llgloss.sfc.cra_name
+            )
+            # Kabsch align the prediction to the reference position
+            pseudo_Bs = rk_coordinates.update_bfactors(plddts)
+            llgloss.sfc.atom_b_iso = pseudo_Bs.detach()
+            weights = rk_utils.weighting(rk_utils.assert_numpy(pseudo_Bs))
+            aligned_xyz = rk_coordinates.weighted_kabsch(
+                xyz_orth_sfc,
+                reference_pos,
+                llgloss.sfc.cra_name,
+                weights=weights,
+                exclude_res=EXCLUDING_RES,
+            )
+            # Use aligned positions to update the scales
+            _ = llgloss.compute_Ecalc(
+                aligned_xyz,
+                return_Fc=False,
+                update_scales=True,
+                added_chain_HKL=constant_fp_added_HKL,
+                added_chain_asu=constant_fp_added_asu,
+            )
+
+            _ = llgloss_rbr.compute_Ecalc(
+                aligned_xyz,
+                return_Fc=False,
+                solvent=False,
+                update_scales=True,
+                added_chain_HKL=constant_fp_added_HKL,
+                added_chain_asu=constant_fp_added_asu,
             )
 
         device_processed_features["msa_feat_bias"].requires_grad = True
@@ -457,7 +497,7 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
 
         if iteration == 0:
             af2_output, prevs = af_bias(
-                working_batch, [None, None, None], num_iters=4, bias=False
+                working_batch, [None, None, None], num_iters=config.init_recycling, bias=False
             )
 
             prevs = [tensor.detach() for tensor in prevs]
