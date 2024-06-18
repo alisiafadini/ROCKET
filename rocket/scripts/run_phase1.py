@@ -66,7 +66,7 @@ def parse_arguments():
 
     parser.add_argument(
         "--min_resolution",
-        default=0.30,
+        default=3.0,
         type=float,
         help=("min resolution cut"),
     )
@@ -90,7 +90,7 @@ def generate_phase1_config(
     additional_chain: bool = False,
     w_l2: float = 1e-11,
     n_step: int = 50,
-    min_resol: float = 0.3,
+    min_resol: float = 3.0,
     note: str = "",
     refine_sigmaA: bool = True,
     add_lr: float = 0.05,
@@ -100,9 +100,9 @@ def generate_phase1_config(
     phase1_config = RocketRefinmentConfig(
         file_root=file_root,
         path=working_path,
+        init_recycling=4,
         batch_sub_ratio=0.7,
         number_of_batches=1,
-        kabsch_threshB=400.0,
         rbr_opt_algorithm="lbfgs",
         rbr_lbfgs_learning_rate=150.0,
         alignment_mode="B",

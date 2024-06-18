@@ -289,7 +289,7 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
         
         # MH @ June 18: Fix the scales for phase 2 running
         # Use the starting point to initialize the scales
-        if (config.starting_bias is not None) or (config.starting_bias is not None):
+        if (config.starting_bias is not None) or (config.starting_weights is not None):
             # Get the prediction from checkpoint bias
             af2_output, prevs = af_bias(
                 device_processed_features, [None, None, None], num_iters=1, bias=False
