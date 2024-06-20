@@ -1,4 +1,4 @@
-import argparse, os
+import argparse, os, glob
 from rocket.refinement import RocketRefinmentConfig, run_refinement
 from typing import Union
 
@@ -71,7 +71,7 @@ def generate_phase1_config(
         file_root=file_root,
         path=working_path,
         init_recycling=4,
-        batch_sub_ratio=1.0,
+        batch_sub_ratio=0.7,
         number_of_batches=1,
         rbr_opt_algorithm="lbfgs",
         rbr_lbfgs_learning_rate=150.0,
@@ -114,10 +114,9 @@ def generate_phase2_config(
         starting_weights_path = None
     else:
         output_directory_path = f"{working_path}/{file_root}/outputs/{phase1_uuid}"
-        starting_bias_path = f"{output_directory_path}/phase1{note}/best_msa_bias.pt"
-        starting_weights_path = (
-            f"{output_directory_path}/phase1{note}/best_feat_weights.pt"
-        )
+        phase1_path = glob.glob(f"{output_directory_path}/phase1*/")[0]
+        starting_bias_path = os.path.join(phase1_path, "best_msa_bias.pt")
+        starting_weights_path = os.path.join(phase1_path, "best_feat_weights.pt")
 
     for p in [starting_bias_path, starting_weights_path]:
         if not os.path.exists(p):
@@ -128,7 +127,7 @@ def generate_phase2_config(
         path=working_path,
         batch_sub_ratio=1.0,
         number_of_batches=1,
-        init_recycling=1,
+        init_recycling=4,
         rbr_opt_algorithm="lbfgs",
         rbr_lbfgs_learning_rate=150.0,
         alignment_mode="B",
@@ -136,7 +135,7 @@ def generate_phase2_config(
         verbose=False,
         bias_version=3,
         # iterations=300,
-        iterations=500,
+        iterations=20,
         cuda_device=cuda_device,
         solvent=True,
         sfc_scale=True,

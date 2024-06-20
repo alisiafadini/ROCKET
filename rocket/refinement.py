@@ -289,42 +289,55 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
         
         # MH @ June 18: Fix the scales for phase 2 running
         # Use the starting point to initialize the scales
-        if (config.starting_bias is not None) or (config.starting_weights is not None):
-            # Get the prediction from checkpoint bias
-            af2_output, prevs = af_bias(
-                device_processed_features, [None, None, None], num_iters=1, bias=True
-            )
-            xyz_orth_sfc, plddts = rk_coordinates.extract_allatoms(
-                af2_output, device_processed_features, llgloss.sfc.cra_name
-            )
-            # Kabsch align the prediction to the reference position
-            pseudo_Bs = rk_coordinates.update_bfactors(plddts)
-            llgloss.sfc.atom_b_iso = pseudo_Bs.detach()
-            weights = rk_utils.weighting(rk_utils.assert_numpy(pseudo_Bs))
-            aligned_xyz = rk_coordinates.weighted_kabsch(
-                xyz_orth_sfc,
-                reference_pos,
-                llgloss.sfc.cra_name,
-                weights=weights,
-                exclude_res=EXCLUDING_RES,
-            )
-            # Use aligned positions to update the scales
-            _ = llgloss.compute_Ecalc(
-                aligned_xyz,
-                return_Fc=False,
-                update_scales=True,
-                added_chain_HKL=constant_fp_added_HKL,
-                added_chain_asu=constant_fp_added_asu,
-            )
+        # if (config.starting_bias is not None) or (config.starting_weights is not None):
+            
+        #     # Get the prediction from checkpoint bias
+        #     af2_output, prevs = af_bias(
+        #         device_processed_features, [None, None, None], num_iters=config.init_recycling, bias=False
+        #     )
+        #     prevs = [tensor.detach() for tensor in prevs]
 
-            _ = llgloss_rbr.compute_Ecalc(
-                aligned_xyz,
-                return_Fc=False,
-                solvent=False,
-                update_scales=True,
-                added_chain_HKL=constant_fp_added_HKL,
-                added_chain_asu=constant_fp_added_asu,
-            )
+        #     deep_copied_prevs = [tensor.clone().detach() for tensor in prevs]
+        #     af2_output, __ = af_bias(
+        #         device_processed_features, deep_copied_prevs, num_iters=1, bias=True
+        #     )  
+            
+        #     xyz_orth_sfc, plddts = rk_coordinates.extract_allatoms(
+        #         af2_output, device_processed_features, llgloss.sfc.cra_name
+        #     )
+        #     # Kabsch align the prediction to the reference position
+        #     pseudo_Bs = rk_coordinates.update_bfactors(plddts)
+        #     llgloss.sfc.atom_b_iso = pseudo_Bs.detach()
+        #     weights = rk_utils.weighting(rk_utils.assert_numpy(pseudo_Bs))
+        #     aligned_xyz = rk_coordinates.weighted_kabsch(
+        #         xyz_orth_sfc,
+        #         reference_pos,
+        #         llgloss.sfc.cra_name,
+        #         weights=weights,
+        #         exclude_res=EXCLUDING_RES,
+        #     )
+            
+        #     # Use aligned positions to update the scales
+        #     _ = llgloss.compute_Ecalc(
+        #         aligned_xyz,
+        #         return_Fc=False,
+        #         update_scales=True,
+        #         scale_steps=100,
+        #         scale_initialize=True,
+        #         added_chain_HKL=constant_fp_added_HKL,
+        #         added_chain_asu=constant_fp_added_asu,
+        #     )
+
+        #     _ = llgloss_rbr.compute_Ecalc(
+        #         aligned_xyz,
+        #         return_Fc=False,
+        #         solvent=False,
+        #         update_scales=True,
+        #         scale_steps=100,
+        #         scale_initialize=True,
+        #         added_chain_HKL=constant_fp_added_HKL,
+        #         added_chain_asu=constant_fp_added_asu,
+        #     )
 
         device_processed_features["msa_feat_bias"].requires_grad = True
         device_processed_features["msa_feat_weights"].requires_grad = True
@@ -497,10 +510,17 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
 
         if iteration == 0:
             af2_output, prevs = af_bias(
-                working_batch, [None, None, None], num_iters=config.init_recycling, bias=True
+                working_batch, [None, None, None], num_iters=config.init_recycling, bias=False
             )
-
             prevs = [tensor.detach() for tensor in prevs]
+
+            # MH @ June 19: Fix the iteration 0 for phase 2 running
+            if (config.starting_bias is not None) or (config.starting_weights is not None):
+                
+                deep_copied_prevs = [tensor.clone().detach() for tensor in prevs]
+                af2_output, __ = af_bias(
+                    working_batch, deep_copied_prevs, num_iters=1, bias=True
+                ) 
 
         else:
             deep_copied_prevs = [tensor.clone().detach() for tensor in prevs]
@@ -663,7 +683,7 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
         llgloss.sfc.savePDB(f"{output_directory_path!s}/{iteration}_postRBR.pdb")
 
         progress_bar.set_postfix(
-            LLG_Estimate=f"{llg_estimate:.2f}",
+            LLG=f"{llg_estimate:.2f}",
             r_work=f"{llgloss.sfc.r_work.item():.3f}",
             r_free=f"{llgloss.sfc.r_free.item():.3f}",
             memory=f"{torch.cuda.max_memory_allocated()/1024**3:.1f}G",

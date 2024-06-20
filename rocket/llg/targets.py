@@ -248,6 +248,8 @@ class LLGloss(torch.nn.Module):
         solvent=True,
         return_Fc=False,
         update_scales=False,
+        scale_steps=10,
+        scale_initialize=False,
         added_chain_HKL=None,
         added_chain_asu=None
     ) -> torch.Tensor:
@@ -262,9 +264,9 @@ class LLGloss(torch.nn.Module):
             if update_scales:
                 self.sfc.get_scales_adam(
                     lr=0.01,
-                    n_steps=10,
+                    n_steps=scale_steps,
                     sub_ratio=0.7,
-                    initialize=False,
+                    initialize=scale_initialize,
                 )
             Fc = self.sfc.calc_ftotal()
         else:
@@ -273,9 +275,9 @@ class LLGloss(torch.nn.Module):
             if update_scales:
                 self.sfc.get_scales_adam(
                     lr=0.01,
-                    n_steps=10,
+                    n_steps=scale_steps,
                     sub_ratio=0.7,
-                    initialize=False,
+                    initialize=scale_initialize,
                 )
             Fc = self.sfc.calc_ftotal()
 
