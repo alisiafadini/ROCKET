@@ -292,7 +292,7 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
         if (config.starting_bias is not None) or (config.starting_weights is not None):
             # Get the prediction from checkpoint bias
             af2_output, prevs = af_bias(
-                device_processed_features, [None, None, None], num_iters=1, bias=False
+                device_processed_features, [None, None, None], num_iters=1, bias=True
             )
             xyz_orth_sfc, plddts = rk_coordinates.extract_allatoms(
                 af2_output, device_processed_features, llgloss.sfc.cra_name
@@ -462,20 +462,20 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
 
     import torch.optim as optim
 
-    # Early stopping parameters
-    patience = 50
-    stopping_patience = 100
-    lr_decrease_factor = 0.1
-    best_loss_for_lr = float("inf")
-    min_llg_delta = 0.1
-    it_no_improve = 0
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer,
-        mode="min",
-        factor=lr_decrease_factor,
-        patience=patience,
-        verbose=True,
-    )
+    # # Early stopping parameters
+    # patience = 50
+    # stopping_patience = 100
+    # lr_decrease_factor = 0.1
+    # best_loss_for_lr = float("inf")
+    # min_llg_delta = 0.1
+    # it_no_improve = 0
+    # scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+    #     optimizer,
+    #     mode="min",
+    #     factor=lr_decrease_factor,
+    #     patience=patience,
+    #     verbose=True,
+    # )
     #####
 
     for iteration in progress_bar:
@@ -497,7 +497,7 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
 
         if iteration == 0:
             af2_output, prevs = af_bias(
-                working_batch, [None, None, None], num_iters=config.init_recycling, bias=False
+                working_batch, [None, None, None], num_iters=config.init_recycling, bias=True
             )
 
             prevs = [tensor.detach() for tensor in prevs]
@@ -643,7 +643,7 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
             added_chain_asu=constant_fp_added_asu,
         )
 
-        llg_estimate = loss.item() / (config.batch_sub_ratio * config.number_of_batches)
+        llg_estimate = loss.clone().item() / (config.batch_sub_ratio * config.number_of_batches)
         llg_losses.append(llg_estimate)
         rwork_by_epoch.append(llgloss.sfc.r_work.item())
         rfree_by_epoch.append(llgloss.sfc.r_free.item())
@@ -699,28 +699,28 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
         else:
             loss.backward()
 
-            # scheduler step in Phase2
-            lr_before_step = get_current_lr(optimizer)
-            scheduler.step(loss)
-            lr_after_step = get_current_lr(optimizer)
-            lrs_by_it.append(lr_after_step)
+            # # scheduler step in Phase2
+            # lr_before_step = get_current_lr(optimizer)
+            # scheduler.step(loss)
+            # lr_after_step = get_current_lr(optimizer)
+            # lrs_by_it.append(lr_after_step)
 
             # Reset best loss if learning rate has been changed
-            if lr_after_step < lr_before_step:
-                best_loss_for_lr = loss
+            # if lr_after_step < lr_before_step:
+            #     best_loss_for_lr = loss
 
-            # Check early stopping
-            if loss < best_loss_for_lr - min_llg_delta:
-                best_loss_for_lr = loss
-                it_no_improve = 0
-            else:
-                print("best loss is", best_loss_for_lr.item())
-                print("loss no improve is ", loss.item())
-                it_no_improve += 1
+            # # Check early stopping
+            # if loss < best_loss_for_lr - min_llg_delta:
+            #     best_loss_for_lr = loss
+            #     it_no_improve = 0
+            # else:
+            #     print("best loss is", best_loss_for_lr.item())
+            #     print("loss no improve is ", loss.item())
+            #     it_no_improve += 1
 
-            if it_no_improve >= stopping_patience:
-                print(f"Early stopping after {iteration+1} epochs.")
-                break
+            # if it_no_improve >= stopping_patience:
+            #     print(f"Early stopping after {iteration+1} epochs.")
+            #     break
 
         optimizer.step()
 
@@ -754,10 +754,10 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
     )
 
     # Learning rate per iteration
-    np.save(
-        f"{output_directory_path!s}/lr_it.npy",
-        np.array(lrs_by_it),
-    )
+    # np.save(
+    #     f"{output_directory_path!s}/lr_it.npy",
+    #     np.array(lrs_by_it),
+    # )
 
     # LLG per iteration
     np.save(
