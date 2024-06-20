@@ -481,17 +481,17 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
     best_loss_for_stop = float("inf")
     min_llg_delta = 0.1
 
-    # patience = 50
-    # lr_decrease_factor = 0.1
+    patience = 50
+    lr_decrease_factor = 0.1
     # best_loss_for_lr = float("inf")
     # min_llg_delta = 0.1
-    # scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-    #     optimizer,
-    #     mode="min",
-    #     factor=lr_decrease_factor,
-    #     patience=patience,
-    #     verbose=True,
-    # )
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer,
+        mode="min",
+        factor=lr_decrease_factor,
+        patience=patience,
+        verbose=True,
+    )
     #####
 
     for iteration in progress_bar:
@@ -731,7 +731,7 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
 
             # # scheduler step in Phase2
             # lr_before_step = get_current_lr(optimizer)
-            # scheduler.step(loss)
+            scheduler.step(loss)
             # lr_after_step = get_current_lr(optimizer)
             # lrs_by_it.append(lr_after_step)
 
