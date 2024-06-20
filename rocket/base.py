@@ -33,8 +33,8 @@ class MSABiasAFv1(AlphaFold):
         model_basename = get_model_basename(params_path)
         model_version = "_".join(model_basename.split("_")[1:])
         import_jax_weights_(self, params_path, version=model_version)
-        config.globals.use_deepspeed_evo_attention = False
-        print("DEEPSPEED IS ", config.globals.use_deepspeed_evo_attention)
+        config.globals.use_deepspeed_evo_attention = True
+        # print("DEEPSPEED IS ", config.globals.use_deepspeed_evo_attention)
         self.eval()  # without this, dropout enabled
 
         # self.train()
