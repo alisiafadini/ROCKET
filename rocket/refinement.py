@@ -29,8 +29,8 @@ class RocketRefinmentConfig(BaseModel):
     bias_version: int
     iterations: int
     template_pdb: Union[str, None] = None
-    cuda_device: int = 0,
-    init_recycling: int = 1,
+    cuda_device: int = (0,)
+    init_recycling: int = (1,)
     solvent: bool
     sfc_scale: bool
     refine_sigmaA: bool
@@ -286,11 +286,11 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
             device_processed_features["msa_feat_bias"] = (
                 torch.load(config.starting_bias).detach().to(device=device)
             )
-        
+
         # MH @ June 18: Fix the scales for phase 2 running
         # Use the starting point to initialize the scales
         # if (config.starting_bias is not None) or (config.starting_weights is not None):
-            
+
         #     # Get the prediction from checkpoint bias
         #     af2_output, prevs = af_bias(
         #         device_processed_features, [None, None, None], num_iters=config.init_recycling, bias=False
@@ -300,8 +300,8 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
         #     deep_copied_prevs = [tensor.clone().detach() for tensor in prevs]
         #     af2_output, __ = af_bias(
         #         device_processed_features, deep_copied_prevs, num_iters=1, bias=True
-        #     )  
-            
+        #     )
+
         #     xyz_orth_sfc, plddts = rk_coordinates.extract_allatoms(
         #         af2_output, device_processed_features, llgloss.sfc.cra_name
         #     )
@@ -316,7 +316,7 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
         #         weights=weights,
         #         exclude_res=EXCLUDING_RES,
         #     )
-            
+
         #     # Use aligned positions to update the scales
         #     _ = llgloss.compute_Ecalc(
         #         aligned_xyz,
@@ -476,12 +476,15 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
     import torch.optim as optim
 
     # # Early stopping parameters
+    stopping_patience = 200
+    it_no_improve = 0
+    best_loss_for_stop = float("inf")
+    min_llg_delta = 0.1
+
     # patience = 50
-    # stopping_patience = 100
     # lr_decrease_factor = 0.1
     # best_loss_for_lr = float("inf")
     # min_llg_delta = 0.1
-    # it_no_improve = 0
     # scheduler = optim.lr_scheduler.ReduceLROnPlateau(
     #     optimizer,
     #     mode="min",
@@ -510,17 +513,22 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
 
         if iteration == 0:
             af2_output, prevs = af_bias(
-                working_batch, [None, None, None], num_iters=config.init_recycling, bias=False
+                working_batch,
+                [None, None, None],
+                num_iters=config.init_recycling,
+                bias=False,
             )
             prevs = [tensor.detach() for tensor in prevs]
 
             # MH @ June 19: Fix the iteration 0 for phase 2 running
-            if (config.starting_bias is not None) or (config.starting_weights is not None):
-                
+            if (config.starting_bias is not None) or (
+                config.starting_weights is not None
+            ):
+
                 deep_copied_prevs = [tensor.clone().detach() for tensor in prevs]
                 af2_output, __ = af_bias(
                     working_batch, deep_copied_prevs, num_iters=1, bias=True
-                ) 
+                )
 
         else:
             deep_copied_prevs = [tensor.clone().detach() for tensor in prevs]
@@ -663,7 +671,9 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
             added_chain_asu=constant_fp_added_asu,
         )
 
-        llg_estimate = loss.clone().item() / (config.batch_sub_ratio * config.number_of_batches)
+        llg_estimate = loss.clone().item() / (
+            config.batch_sub_ratio * config.number_of_batches
+        )
         llg_losses.append(llg_estimate)
         rwork_by_epoch.append(llgloss.sfc.r_work.item())
         rfree_by_epoch.append(llgloss.sfc.r_free.item())
@@ -730,17 +740,17 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
             #     best_loss_for_lr = loss
 
             # # Check early stopping
-            # if loss < best_loss_for_lr - min_llg_delta:
-            #     best_loss_for_lr = loss
-            #     it_no_improve = 0
-            # else:
-            #     print("best loss is", best_loss_for_lr.item())
-            #     print("loss no improve is ", loss.item())
-            #     it_no_improve += 1
+            if loss < best_loss_for_stop - min_llg_delta:
+                best_loss_for_stop = loss
+                it_no_improve = 0
+            else:
+                #     print("best loss is", best_loss_for_lr.item())
+                #     print("loss no improve is ", loss.item())
+                it_no_improve += 1
 
-            # if it_no_improve >= stopping_patience:
-            #     print(f"Early stopping after {iteration+1} epochs.")
-            #     break
+            if it_no_improve >= stopping_patience:
+                print(f"Early stopping after {iteration+1} epochs.")
+                break
 
         optimizer.step()
 
