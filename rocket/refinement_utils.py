@@ -7,8 +7,8 @@ from rocket import coordinates as rk_coordinates
 from rocket.llg import utils as llg_utils
 
 def number_to_letter(n):
-    if 1 <= n <= 26:
-        return chr(n + 64)
+    if 0 <= n <= 25:
+        return chr(n + 65)
     else:
         return None
 

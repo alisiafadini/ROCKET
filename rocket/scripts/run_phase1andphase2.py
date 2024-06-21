@@ -79,7 +79,8 @@ def generate_phase1_config(
         additional_chain=additional_chain,
         verbose=False,
         bias_version=3,
-        iterations=100,
+        num_of_runs=3,
+        iterations=20,
         cuda_device=cuda_device,
         solvent=True,
         sfc_scale=True,
@@ -115,8 +116,8 @@ def generate_phase2_config(
     else:
         output_directory_path = f"{working_path}/{file_root}/outputs/{phase1_uuid}"
         phase1_path = glob.glob(f"{output_directory_path}/phase1*/")[0]
-        starting_bias_path = os.path.join(phase1_path, "best_msa_bias.pt")
-        starting_weights_path = os.path.join(phase1_path, "best_feat_weights.pt")
+        starting_bias_path = glob.glob(os.path.join(phase1_path, "best_msa_bias*.pt"))[0]
+        starting_weights_path = glob.glob(os.path.join(phase1_path, "best_feat_weights*.pt"))[0]
 
     for p in [starting_bias_path, starting_weights_path]:
         if not os.path.exists(p):
@@ -135,7 +136,7 @@ def generate_phase2_config(
         verbose=False,
         bias_version=3,
         # iterations=300,
-        iterations=20,
+        iterations=40,
         cuda_device=cuda_device,
         solvent=True,
         sfc_scale=True,

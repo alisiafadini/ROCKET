@@ -83,10 +83,17 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
     else:
         raise ValueError("rbr_opt only supports lbfgs or adam")
 
-    # Configure Paths 
+    # Configure input paths 
     tng_file = "{p}/{r}/{r}-tng_withrfree.mtz".format(p=config.path, r=config.file_root)
     input_pdb = "{p}/{r}/{r}-pred-aligned.pdb".format(p=config.path, r=config.file_root)
     true_pdb = "{p}/{r}/{r}_noalts.pdb".format(p=config.path, r=config.file_root)
+    
+    # Configure output path
+    # Generate uuid for this run
+    if config.uuid_hex is None:
+        refinement_run_uuid = uuid.uuid4().hex
+    else:
+        refinement_run_uuid = config.uuid_hex
     output_directory_path = (
         f"{config.path}/{config.file_root}/outputs/{refinement_run_uuid}/{config.note}"
     )
@@ -96,6 +103,12 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
         print(
             f"Warning: Directory '{output_directory_path}' already exists. Overwriting..."
         )
+    print(
+        f"System: {config.file_root}, refinment run ID: {refinement_run_uuid!s}, Note: {config.note}",
+        flush=True,
+    )
+    if not config.verbose:
+        warnings.filterwarnings("ignore")
 
     # If reference pdb exsits
     if os.path.exists(true_pdb):
@@ -200,20 +213,6 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
     # Optimizer settings and initialization
     lr_a = config.additive_learning_rate
     lr_m = config.multiplicative_learning_rate
-
-    # Generate uuid for this run
-    if config.uuid_hex is None:
-        refinement_run_uuid = uuid.uuid4().hex
-    else:
-        refinement_run_uuid = config.uuid_hex
-
-    print(
-        f"System: {config.file_root}, refinment run ID: {refinement_run_uuid!s}, Note: {config.note}",
-        flush=True,
-    )
-    if not config.verbose:
-        warnings.filterwarnings("ignore")
-
 
     # Initialize best Rfree weights and bias for Phase 1
     best_rfree = float("inf")
