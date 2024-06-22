@@ -283,6 +283,18 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
         min_llg_delta = 0.1
         #####
 
+        #### Phase 2 scheduling ######
+
+        lr_a_initial = lr_a
+        lr_m_initial = lr_m
+        loss_weight_initial = loss_weight
+        lr_stage1_final = 1e-3
+        stage1_epochs = 50
+
+        # Decay rates for each stage
+        decay_rate_stage1_add = (lr_stage1_final / lr_a) ** (1 / stage1_epochs)
+        decay_rate_stage1_mul = (lr_stage1_final / lr_m) ** (1 / stage1_epochs)
+
         ############ 3. Run Refinement ############
         for iteration in progress_bar:
             start_time = time.time()
@@ -485,8 +497,20 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
                     if it_no_improve >= stopping_patience:
                         print(f"Early stopping after {iteration+1} epochs.")
                         break
+            if "phase2" in config.note:
+                if iteration < stage1_epochs:
+                    lr_a = lr_a_initial * (decay_rate_stage1_add**iteration)
+                    lr_m = lr_m_initial * (decay_rate_stage1_mul**iteration)
+                    loss_weight = loss_weight_initial * (
+                        1 - (iteration / stage1_epochs)
+                    )
+                else:
+                    loss_weight = 0.0
 
-            optimizer.step()
+                # Update the learning rates in the optimizer
+                optimizer.param_groups[0]["lr"] = lr_a
+                optimizer.param_groups[1]["lr"] = lr_m
+                optimizer.step()
 
             time_by_epoch.append(time.time() - start_time)
             memory_by_epoch.append(torch.cuda.max_memory_allocated() / 1024**3)
