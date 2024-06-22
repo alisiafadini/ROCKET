@@ -276,23 +276,11 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
         loss_weight = config.l2_weight
 
         ######
-        # Phase2 optimization
-        # import torch.optim as optim
-
         # # Early stopping parameters
-        # patience = 50
-        # stopping_patience = 100
-        # lr_decrease_factor = 0.1
-        # best_loss_for_lr = float("inf")
-        # min_llg_delta = 0.1
-        # it_no_improve = 0
-        # scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-        #     optimizer,
-        #     mode="min",
-        #     factor=lr_decrease_factor,
-        #     patience=patience,
-        #     verbose=True,
-        # )
+        stopping_patience = 200
+        it_no_improve = 0
+        best_loss_for_stop = float("inf")
+        min_llg_delta = 0.1
         #####
 
         ############ 3. Run Refinement ############
@@ -487,28 +475,16 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
             else:
                 loss.backward()
 
-                # # scheduler step in Phase2
-                # lr_before_step = get_current_lr(optimizer)
-                # scheduler.step(loss)
-                # lr_after_step = get_current_lr(optimizer)
-                # lrs_by_it.append(lr_after_step)
-
-                # Reset best loss if learning rate has been changed
-                # if lr_after_step < lr_before_step:
-                #     best_loss_for_lr = loss
-
                 # # Check early stopping
-                # if loss < best_loss_for_lr - min_llg_delta:
-                #     best_loss_for_lr = loss
-                #     it_no_improve = 0
-                # else:
-                #     print("best loss is", best_loss_for_lr.item())
-                #     print("loss no improve is ", loss.item())
-                #     it_no_improve += 1
+                if loss < best_loss_for_stop - min_llg_delta:
+                    best_loss_for_stop = loss
+                    it_no_improve = 0
+                else:
+                    it_no_improve += 1
 
-                # if it_no_improve >= stopping_patience:
-                #     print(f"Early stopping after {iteration+1} epochs.")
-                #     break
+                    if it_no_improve >= stopping_patience:
+                        print(f"Early stopping after {iteration+1} epochs.")
+                        break
 
             optimizer.step()
 
