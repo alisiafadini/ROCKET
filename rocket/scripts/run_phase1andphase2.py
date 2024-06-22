@@ -70,7 +70,7 @@ def generate_phase1_config(
     phase1_config = RocketRefinmentConfig(
         file_root=file_root,
         path=working_path,
-        init_recycling=4,
+        init_recycling=20,
         batch_sub_ratio=0.7,
         number_of_batches=1,
         rbr_opt_algorithm="lbfgs",
@@ -128,7 +128,7 @@ def generate_phase2_config(
         path=working_path,
         batch_sub_ratio=1.0,
         number_of_batches=1,
-        init_recycling=4,
+        init_recycling=20,
         rbr_opt_algorithm="lbfgs",
         rbr_lbfgs_learning_rate=150.0,
         alignment_mode="B",
