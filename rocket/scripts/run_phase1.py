@@ -113,7 +113,6 @@ def generate_phase1_config(
         number_of_batches=1,
         rbr_opt_algorithm="lbfgs",
         rbr_lbfgs_learning_rate=150.0,
-        alignment_mode="B",
         additional_chain=additional_chain,
         verbose=False,
         bias_version=3,

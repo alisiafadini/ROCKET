@@ -43,7 +43,6 @@ class RocketRefinmentConfig(BaseModel):
     number_of_batches: int
     rbr_opt_algorithm: str
     rbr_lbfgs_learning_rate: float
-    alignment_mode: str
     smooth_stage_epochs: int = 50
     phase2_final_lr: float = 1e-3
     note: str = ""
@@ -278,12 +277,7 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
         loss_weight = config.l2_weight
 
         ######
-        # # Early stopping parameters
-        # stopping_patience = config.stopping_patience
-        # it_no_improve = 0
-        # best_loss_for_stop = float("inf")
-        # min_llg_delta = 0.1
-        #####
+        early_stopper = rkrf_utils.EarlyStopper(patience=200, min_delta=0.1)
 
         #### Phase 2 scheduling ######
         lr_a_initial = lr_a
@@ -488,18 +482,9 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
             else:
                 loss.backward()
 
-                if rkrf_utils.EarlyStopper.early_stop(loss.item()):
+                if early_stopper.early_stop(loss.item()):
                     break
-                # # Check early stopping
-                # if loss < best_loss_for_stop - min_llg_delta:
-                #    best_loss_for_stop = loss.item()
-                #    it_no_improve = 0
-                # else:
-                #    it_no_improve += 1
 
-                #    if it_no_improve >= stopping_patience:
-                #        print(f"Early stopping after {iteration+1} epochs.")
-                #        break
             if "phase2" in config.note:
                 if iteration < smooth_stage_epochs:
                     lr_a = lr_a_initial * (decay_rate_stage1_add**iteration)
