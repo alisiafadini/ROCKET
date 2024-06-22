@@ -240,7 +240,7 @@ class LLGloss(torch.nn.Module):
 
             sigmaAs_updated = llg_utils.newton_step(sigmaAs_tensor, dL_total, Htotal)
             sigmaAs_new = torch.clamp(sigmaAs_updated, 0.015, 0.99)
-            self.sigmaAs = [s.detach() for s in sigmaAs_new]
+            self.sigmaAs = [s.detach().requires_grad_(False) for s in sigmaAs_new]
 
     def compute_Ecalc(
         self,

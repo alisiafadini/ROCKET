@@ -52,6 +52,13 @@ def parse_arguments():
     )
 
     parser.add_argument(
+        "--num_of_runs",
+        default=1,
+        type=int,
+        help=("number of trials"),
+    )
+
+    parser.add_argument(
         "--n_step",
         default=50,
         type=int,
@@ -89,6 +96,7 @@ def generate_phase1_config(
     testset_value: int = 1,
     additional_chain: bool = False,
     w_l2: float = 1e-11,
+    num_of_runs: int = 1,
     n_step: int = 50,
     min_resol: float = 3.0,
     note: str = "",
@@ -109,6 +117,7 @@ def generate_phase1_config(
         additional_chain=additional_chain,
         verbose=False,
         bias_version=3,
+        num_of_runs=num_of_runs,
         iterations=n_step,
         # iterations=2,
         cuda_device=cuda_device,
@@ -140,6 +149,7 @@ def run_phase1_all_datasets() -> None:
                                                w_l2=args.w_l2,
                                                add_lr=args.add_lr,
                                                mul_lr=args.mul_lr,
+                                               num_of_runs=args.num_of_runs,
                                                n_step=args.n_step,
                                                refine_sigmaA=args.refine_sigmaA,
                                                min_resol=args.min_resolution)

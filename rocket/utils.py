@@ -2,6 +2,7 @@ import torch
 import numpy as np
 import reciprocalspaceship as rs
 from functools import partial
+from SFC_Torch import PDBParser
 
 def weighting(x, cutoff1=11.5, cutoff2=30.0):
     """
@@ -135,13 +136,26 @@ def assert_numpy(x, arr_type=None):
         x = x.astype(arr_type)
     return x
 
+def assert_tensor(x, arr_type=None, device="cuda:0"):
+    if isinstance(x, np.ndarray):
+        x = torch.tensor(x, device=device)
+    if is_list_or_tuple(x):
+        x = np.array(x)
+        x = torch.tensor(x, device=device)
+    assert isinstance(x, torch.Tensor)
+    if arr_type is not None:
+        x = x.to(arr_type)
+    return x
 
 def d2q(d):
     return 2 * np.pi / d
 
 
-def load_mtz(mtz):
+def load_mtz(mtz: str) -> rs.DataSet:
     dataset = rs.read_mtz(mtz)
     dataset.compute_dHKL(inplace=True)
-
     return dataset
+
+def load_pdb(pdb: str) -> PDBParser:
+    model = PDBParser(pdb)
+    return model
