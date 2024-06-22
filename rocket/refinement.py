@@ -44,6 +44,8 @@ class RocketRefinmentConfig(BaseModel):
     rbr_opt_algorithm: str
     rbr_lbfgs_learning_rate: float
     alignment_mode: str
+    smooth_stage_epochs: int = 50
+    phase2_final_lr: float = 1e-3
     note: str = ""
     free_flag: str
     testset_value: int
@@ -277,23 +279,22 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
 
         ######
         # # Early stopping parameters
-        stopping_patience = 200
-        it_no_improve = 0
-        best_loss_for_stop = float("inf")
-        min_llg_delta = 0.1
+        # stopping_patience = config.stopping_patience
+        # it_no_improve = 0
+        # best_loss_for_stop = float("inf")
+        # min_llg_delta = 0.1
         #####
 
         #### Phase 2 scheduling ######
-
         lr_a_initial = lr_a
         lr_m_initial = lr_m
         loss_weight_initial = loss_weight
-        lr_stage1_final = 1e-3
-        stage1_epochs = 50
+        lr_stage1_final = config.phase2_final_lr
+        smooth_stage_epochs = config.smooth_stage_epochs
 
         # Decay rates for each stage
-        decay_rate_stage1_add = (lr_stage1_final / lr_a) ** (1 / stage1_epochs)
-        decay_rate_stage1_mul = (lr_stage1_final / lr_m) ** (1 / stage1_epochs)
+        decay_rate_stage1_add = (lr_stage1_final / lr_a) ** (1 / smooth_stage_epochs)
+        decay_rate_stage1_mul = (lr_stage1_final / lr_m) ** (1 / smooth_stage_epochs)
 
         ############ 3. Run Refinement ############
         for iteration in progress_bar:
@@ -487,22 +488,24 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
             else:
                 loss.backward()
 
+                if rkrf_utils.EarlyStopper.early_stop(loss.item()):
+                    break
                 # # Check early stopping
-                if loss < best_loss_for_stop - min_llg_delta:
-                    best_loss_for_stop = loss
-                    it_no_improve = 0
-                else:
-                    it_no_improve += 1
+                # if loss < best_loss_for_stop - min_llg_delta:
+                #    best_loss_for_stop = loss.item()
+                #    it_no_improve = 0
+                # else:
+                #    it_no_improve += 1
 
-                    if it_no_improve >= stopping_patience:
-                        print(f"Early stopping after {iteration+1} epochs.")
-                        break
+                #    if it_no_improve >= stopping_patience:
+                #        print(f"Early stopping after {iteration+1} epochs.")
+                #        break
             if "phase2" in config.note:
-                if iteration < stage1_epochs:
+                if iteration < smooth_stage_epochs:
                     lr_a = lr_a_initial * (decay_rate_stage1_add**iteration)
                     lr_m = lr_m_initial * (decay_rate_stage1_mul**iteration)
                     loss_weight = loss_weight_initial * (
-                        1 - (iteration / stage1_epochs)
+                        1 - (iteration / smooth_stage_epochs)
                     )
                 else:
                     loss_weight = 0.0

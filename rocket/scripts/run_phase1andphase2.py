@@ -70,7 +70,7 @@ def generate_phase1_config(
     phase1_config = RocketRefinmentConfig(
         file_root=file_root,
         path=working_path,
-        init_recycling=20,
+        init_recycling=3,
         batch_sub_ratio=0.7,
         number_of_batches=1,
         rbr_opt_algorithm="lbfgs",
@@ -79,12 +79,8 @@ def generate_phase1_config(
         additional_chain=additional_chain,
         verbose=False,
         bias_version=3,
-<<<<<<< HEAD
-        iterations=150,
-=======
-        num_of_runs=3,
-        iterations=20,
->>>>>>> 765760d4f72df23b2619e6b77601a6b56fc32419
+        num_of_runs=1,
+        iterations=2,
         cuda_device=cuda_device,
         solvent=True,
         sfc_scale=True,
@@ -120,8 +116,12 @@ def generate_phase2_config(
     else:
         output_directory_path = f"{working_path}/{file_root}/outputs/{phase1_uuid}"
         phase1_path = glob.glob(f"{output_directory_path}/phase1*/")[0]
-        starting_bias_path = glob.glob(os.path.join(phase1_path, "best_msa_bias*.pt"))[0]
-        starting_weights_path = glob.glob(os.path.join(phase1_path, "best_feat_weights*.pt"))[0]
+        starting_bias_path = glob.glob(os.path.join(phase1_path, "best_msa_bias*.pt"))[
+            0
+        ]
+        starting_weights_path = glob.glob(
+            os.path.join(phase1_path, "best_feat_weights*.pt")
+        )[0]
 
     for p in [starting_bias_path, starting_weights_path]:
         if not os.path.exists(p):
@@ -132,29 +132,27 @@ def generate_phase2_config(
         path=working_path,
         batch_sub_ratio=1.0,
         number_of_batches=1,
-        init_recycling=20,
+        init_recycling=3,
         rbr_opt_algorithm="lbfgs",
         rbr_lbfgs_learning_rate=150.0,
         alignment_mode="B",
+        smooth_stage_epochs=50,
+        phase2_final_lr=1e-3,
         additional_chain=additional_chain,
         verbose=False,
         bias_version=3,
         # iterations=300,
-<<<<<<< HEAD
-        iterations=1000,
-=======
-        iterations=40,
->>>>>>> 765760d4f72df23b2619e6b77601a6b56fc32419
+        iterations=10,
         cuda_device=cuda_device,
         solvent=True,
         sfc_scale=True,
         refine_sigmaA=True,
-        additive_learning_rate=1e-3,
-        multiplicative_learning_rate=1e-3,
+        additive_learning_rate=0.05,
+        multiplicative_learning_rate=1.0,
         weight_decay=None,
         free_flag=free_flag,
         testset_value=testset_value,
-        l2_weight=0.0,
+        l2_weight=1e-11,
         b_threshold=10.0,
         note="phase2" + note,
         uuid_hex=phase1_uuid,
