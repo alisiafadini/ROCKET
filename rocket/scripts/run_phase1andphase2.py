@@ -53,6 +53,27 @@ def parse_arguments():
         "--phase1_uuid", default=None, help=("uuid for phase 1 running")
     )
 
+    parser.add_argument(
+        "--phase1_add_lr",
+        default=0.05,
+        type=float,
+        help=("phase 1 additive learning rate"),
+    )
+
+    parser.add_argument(
+        "--phase1_mul_lr",
+        default=1.0,
+        type=float,
+        help=("phase 1 multiplicative learning rate"),
+    )
+
+    parser.add_argument(
+        "--phase2_final_lr",
+        default=1e-3,
+        type=float,
+        help=("phase 2 final learning rate"),
+    )
+
     return parser.parse_args()
 
 
@@ -64,6 +85,8 @@ def generate_phase1_config(
     free_flag: str = "R-free-flags",
     testset_value: int = 1,
     additional_chain: bool = False,
+    additive_learning_rate: float = 0.05,
+    multiplicative_learning_rate: float = 1.0,
     note: str = "",
 ) -> RocketRefinmentConfig:
 
@@ -84,8 +107,8 @@ def generate_phase1_config(
         solvent=True,
         sfc_scale=True,
         refine_sigmaA=True,
-        additive_learning_rate=0.05,
-        multiplicative_learning_rate=1.0,
+        additive_learning_rate=additive_learning_rate,
+        multiplicative_learning_rate=multiplicative_learning_rate,
         free_flag=free_flag,
         testset_value=testset_value,
         l2_weight=1e-11,
@@ -106,6 +129,9 @@ def generate_phase2_config(
     free_flag: str = "R-free-flags",
     testset_value: int = 1,
     additional_chain: bool = False,
+    phase1_add_lr: float = 0.05,
+    phase1_mul_lr: float = 1.0,
+    phase2_final_lr: float = 1e-3,
     note: str = "",
 ) -> RocketRefinmentConfig:
 
@@ -144,8 +170,9 @@ def generate_phase2_config(
         solvent=True,
         sfc_scale=True,
         refine_sigmaA=True,
-        additive_learning_rate=0.05,
-        multiplicative_learning_rate=1.0,
+        additive_learning_rate=phase1_add_lr,
+        multiplicative_learning_rate=phase1_mul_lr,
+        phase2_final_lr=phase2_final_lr,
         weight_decay=None,
         free_flag=free_flag,
         testset_value=testset_value,
@@ -161,7 +188,7 @@ def generate_phase2_config(
 
 
 def run_both_phases_single_dataset(
-    *, working_path, file_root, note, additional_chain
+    *, working_path, file_root, note, additional_chain, phase1_add_lr, phase1_mul_lr, phase2_final_lr
 ) -> None:
 
     phase1_config = generate_phase1_config(
@@ -169,6 +196,8 @@ def run_both_phases_single_dataset(
         file_root=file_root,
         note=note,
         additional_chain=additional_chain,
+        additive_learning_rate=phase1_add_lr,
+        multiplicative_learning_rate=phase1_mul_lr,
     )
     phase1_uuid = run_refinement(config=phase1_config)
 
@@ -178,6 +207,9 @@ def run_both_phases_single_dataset(
         file_root=file_root,
         note=note,
         additional_chain=additional_chain,
+        phase1_add_lr=phase1_add_lr,
+        phase1_mul_lr=phase1_mul_lr,
+        phase2_final_lr=phase2_final_lr,
     )
     phase2_uuid = run_refinement(config=phase2_config)
 
@@ -194,6 +226,8 @@ def run_both_phases_all_datasets() -> None:
                 file_root=file_root,
                 note=args.note,
                 additional_chain=args.additional_chain,
+                additive_learning_rate=args.phase1_add_lr,
+                multiplicative_learning_rate=args.phase1_mul_lr,
             )
             phase1_uuid = run_refinement(config=phase1_config)
 
@@ -204,6 +238,9 @@ def run_both_phases_all_datasets() -> None:
                 file_root=file_root,
                 note=args.note,
                 additional_chain=args.additional_chain,
+                phase1_add_lr=args.phase1_add_lr,
+                phase1_mul_lr=args.phase1_mul_lr,
+                phase2_final_lr=args.phase2_final_lr,
             )
             phase2_uuid = run_refinement(config=phase2_config)
 
@@ -213,8 +250,10 @@ def run_both_phases_all_datasets() -> None:
                 file_root=file_root,
                 note=args.note,
                 additional_chain=args.additional_chain,
+                phase1_add_lr=args.phase1_add_lr,
+                phase1_mul_lr=args.phase1_mul_lr,
+                phase2_final_lr=args.phase2_final_lr
             )
-
 
 if __name__ == "__main__":
     run_both_phases_all_datasets()
