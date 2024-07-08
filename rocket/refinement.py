@@ -499,6 +499,8 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
                 optimizer.param_groups[0]["lr"] = lr_a
                 optimizer.param_groups[1]["lr"] = lr_m
                 optimizer.step()
+            else:
+                optimizer.step()
 
             time_by_epoch.append(time.time() - start_time)
             memory_by_epoch.append(torch.cuda.max_memory_allocated() / 1024**3)

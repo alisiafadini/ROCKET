@@ -54,6 +54,13 @@ def parse_arguments():
     )
 
     parser.add_argument(
+        "--init_recycling",
+        default=20,
+        type=int,
+        help=("number of initial recycling"),
+    )
+
+    parser.add_argument(
         "--phase1_add_lr",
         default=0.05,
         type=float,
@@ -87,13 +94,14 @@ def generate_phase1_config(
     additional_chain: bool = False,
     additive_learning_rate: float = 0.05,
     multiplicative_learning_rate: float = 1.0,
+    init_recycling: int = 20,
     note: str = "",
 ) -> RocketRefinmentConfig:
 
     phase1_config = RocketRefinmentConfig(
         file_root=file_root,
         path=working_path,
-        init_recycling=20,
+        init_recycling=init_recycling,
         batch_sub_ratio=0.7,
         number_of_batches=1,
         rbr_opt_algorithm="lbfgs",
@@ -132,6 +140,7 @@ def generate_phase2_config(
     phase1_add_lr: float = 0.05,
     phase1_mul_lr: float = 1.0,
     phase2_final_lr: float = 1e-3,
+    init_recycling: int = 20,
     note: str = "",
 ) -> RocketRefinmentConfig:
 
@@ -157,11 +166,10 @@ def generate_phase2_config(
         path=working_path,
         batch_sub_ratio=1.0,
         number_of_batches=1,
-        init_recycling=20,
+        init_recycling=init_recycling,
         rbr_opt_algorithm="lbfgs",
         rbr_lbfgs_learning_rate=150.0,
         smooth_stage_epochs=50,
-        phase2_final_lr=1e-3,
         additional_chain=additional_chain,
         verbose=False,
         bias_version=3,
@@ -188,7 +196,7 @@ def generate_phase2_config(
 
 
 def run_both_phases_single_dataset(
-    *, working_path, file_root, note, additional_chain, phase1_add_lr, phase1_mul_lr, phase2_final_lr
+    *, working_path, file_root, note, additional_chain, phase1_add_lr, phase1_mul_lr, phase2_final_lr, init_recycling,
 ) -> None:
 
     phase1_config = generate_phase1_config(
@@ -198,6 +206,7 @@ def run_both_phases_single_dataset(
         additional_chain=additional_chain,
         additive_learning_rate=phase1_add_lr,
         multiplicative_learning_rate=phase1_mul_lr,
+        init_recycling=init_recycling,
     )
     phase1_uuid = run_refinement(config=phase1_config)
 
@@ -210,6 +219,7 @@ def run_both_phases_single_dataset(
         phase1_add_lr=phase1_add_lr,
         phase1_mul_lr=phase1_mul_lr,
         phase2_final_lr=phase2_final_lr,
+        init_recycling=init_recycling
     )
     phase2_uuid = run_refinement(config=phase2_config)
 
@@ -228,6 +238,7 @@ def run_both_phases_all_datasets() -> None:
                 additional_chain=args.additional_chain,
                 additive_learning_rate=args.phase1_add_lr,
                 multiplicative_learning_rate=args.phase1_mul_lr,
+                init_recycling=args.init_recycling,
             )
             phase1_uuid = run_refinement(config=phase1_config)
 
@@ -241,6 +252,7 @@ def run_both_phases_all_datasets() -> None:
                 phase1_add_lr=args.phase1_add_lr,
                 phase1_mul_lr=args.phase1_mul_lr,
                 phase2_final_lr=args.phase2_final_lr,
+                init_recycling=args.init_recycling,
             )
             phase2_uuid = run_refinement(config=phase2_config)
 
@@ -252,7 +264,8 @@ def run_both_phases_all_datasets() -> None:
                 additional_chain=args.additional_chain,
                 phase1_add_lr=args.phase1_add_lr,
                 phase1_mul_lr=args.phase1_mul_lr,
-                phase2_final_lr=args.phase2_final_lr
+                phase2_final_lr=args.phase2_final_lr,
+                init_recycling=args.init_recycling,
             )
 
 if __name__ == "__main__":
