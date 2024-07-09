@@ -178,6 +178,11 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
     # CA mask and residue numbers for track
     cra_calphas_list, calphas_mask = rk_coordinates.select_CA_from_craname(sfc.cra_name)
     residue_numbers = [int(name.split("-")[1]) for name in cra_calphas_list]
+    # Use initial pos B factor instead of best pos B factor for weighted L2
+    init_pos_bfactor = sfc.atom_b_iso.clone()
+    bfactor_weights = rk_utils.weighting_torch(
+        init_pos_bfactor, cutoff2=20.0
+    )
 
     sfc_rbr = llg_sf.initial_SFC(
         input_pdb,
@@ -436,7 +441,7 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
                 best_run = run_id
                 best_iter = iteration
                 best_pos = optimized_xyz.detach().clone()
-                best_pos_bfactor = llgloss.sfc.atom_b_iso.detach().clone()
+                # best_pos_bfactor = llgloss.sfc.atom_b_iso.detach().clone()
 
             llgloss.sfc.atom_pos_orth = optimized_xyz
             # Save postRBR PDB
@@ -471,9 +476,7 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
 
             #### add an L2 loss to constrain confident atoms ###
             if loss_weight > 0.0:
-                bfactor_weights = rk_utils.weighting_torch(
-                    best_pos_bfactor, cutoff2=20.0
-                )
+                # use
                 L2_loss = torch.sum(
                     bfactor_weights.unsqueeze(-1) * (optimized_xyz - best_pos) ** 2
                 )  # / conf_best.shape[0]

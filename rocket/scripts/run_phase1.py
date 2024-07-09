@@ -38,6 +38,13 @@ def parse_arguments():
     )
 
     parser.add_argument(
+        "--sub_ratio",
+        default=0.7,
+        type=float,
+        help=("Sub ratio of reflectios for each iteratio"),
+    )
+
+    parser.add_argument(
         "--add_lr",
         default=0.05,
         type=float,
@@ -97,6 +104,7 @@ def generate_phase1_config(
     additional_chain: bool = False,
     w_l2: float = 1e-11,
     num_of_runs: int = 1,
+    sub_ratio: float = 0.7, 
     n_step: int = 50,
     min_resol: float = 3.0,
     note: str = "",
@@ -109,7 +117,7 @@ def generate_phase1_config(
         file_root=file_root,
         path=working_path,
         init_recycling=4,
-        batch_sub_ratio=0.7,
+        batch_sub_ratio=sub_ratio,
         number_of_batches=1,
         rbr_opt_algorithm="lbfgs",
         rbr_lbfgs_learning_rate=150.0,
@@ -146,6 +154,7 @@ def run_phase1_all_datasets() -> None:
                                                note=args.note, 
                                                additional_chain=args.additional_chain,
                                                w_l2=args.w_l2,
+                                               sub_ratio=args.sub_ratio,
                                                add_lr=args.add_lr,
                                                mul_lr=args.mul_lr,
                                                num_of_runs=args.num_of_runs,
