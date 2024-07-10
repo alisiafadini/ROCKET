@@ -75,6 +75,13 @@ def parse_arguments():
     )
 
     parser.add_argument(
+        "--phase1_w_l2",
+        default=1e-11,
+        type=float,
+        help=("phase 1 weights of L2 loss"),
+    )
+
+    parser.add_argument(
         "--phase2_final_lr",
         default=1e-3,
         type=float,
@@ -103,6 +110,7 @@ def generate_phase1_config(
     multiplicative_learning_rate: float = 1.0,
     init_recycling: int = 20,
     phase1_min_resol: float = 4.0,
+    phase1_w_l2: float = 1e-11,
     note: str = "",
 ) -> RocketRefinmentConfig:
 
@@ -127,7 +135,7 @@ def generate_phase1_config(
         multiplicative_learning_rate=multiplicative_learning_rate,
         free_flag=free_flag,
         testset_value=testset_value,
-        l2_weight=1e-11,
+        l2_weight=phase1_w_l2,
         b_threshold=10.0,
         min_resolution=phase1_min_resol,
         note="phase1" + note,
@@ -147,6 +155,7 @@ def generate_phase2_config(
     additional_chain: bool = False,
     phase1_add_lr: float = 0.05,
     phase1_mul_lr: float = 1.0,
+    phase1_w_l2: float = 1e-11,
     phase2_final_lr: float = 1e-3,
     init_recycling: int = 20,
     note: str = "",
@@ -192,7 +201,7 @@ def generate_phase2_config(
         weight_decay=None,
         free_flag=free_flag,
         testset_value=testset_value,
-        l2_weight=1e-11,
+        l2_weight=phase1_w_l2,
         b_threshold=10.0,
         note="phase2" + note,
         uuid_hex=phase1_uuid,
@@ -204,7 +213,7 @@ def generate_phase2_config(
 
 
 def run_both_phases_single_dataset(
-    *, working_path, file_root, note, additional_chain, phase1_add_lr, phase1_mul_lr, phase2_final_lr, init_recycling, phase1_min_resol,
+    *, working_path, file_root, note, additional_chain, phase1_add_lr, phase1_mul_lr, phase1_w_l2, phase2_final_lr, init_recycling, phase1_min_resol,
 ) -> None:
 
     phase1_config = generate_phase1_config(
@@ -214,6 +223,7 @@ def run_both_phases_single_dataset(
         additional_chain=additional_chain,
         additive_learning_rate=phase1_add_lr,
         multiplicative_learning_rate=phase1_mul_lr,
+        phase1_w_l2=phase1_w_l2,
         init_recycling=init_recycling,
         phase1_min_resol=phase1_min_resol
     )
@@ -227,6 +237,7 @@ def run_both_phases_single_dataset(
         additional_chain=additional_chain,
         phase1_add_lr=phase1_add_lr,
         phase1_mul_lr=phase1_mul_lr,
+        phase1_w_l2=phase1_w_l2,
         phase2_final_lr=phase2_final_lr,
         init_recycling=init_recycling
     )
@@ -247,6 +258,7 @@ def run_both_phases_all_datasets() -> None:
                 additional_chain=args.additional_chain,
                 additive_learning_rate=args.phase1_add_lr,
                 multiplicative_learning_rate=args.phase1_mul_lr,
+                phase1_w_l2=args.phase1_w_l2,
                 init_recycling=args.init_recycling,
                 phase1_min_resol=args.phase1_min_resol,
             )
@@ -261,6 +273,7 @@ def run_both_phases_all_datasets() -> None:
                 additional_chain=args.additional_chain,
                 phase1_add_lr=args.phase1_add_lr,
                 phase1_mul_lr=args.phase1_mul_lr,
+                phase1_w_l2=args.phase1_w_l2,
                 phase2_final_lr=args.phase2_final_lr,
                 init_recycling=args.init_recycling,
             )
@@ -274,6 +287,7 @@ def run_both_phases_all_datasets() -> None:
                 additional_chain=args.additional_chain,
                 phase1_add_lr=args.phase1_add_lr,
                 phase1_mul_lr=args.phase1_mul_lr,
+                phase1_w_l2=args.phase1_w_l2,
                 phase2_final_lr=args.phase2_final_lr,
                 init_recycling=args.init_recycling,
                 phase1_min_resol=args.phase1_min_resol,
