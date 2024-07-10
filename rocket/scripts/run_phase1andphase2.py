@@ -81,6 +81,13 @@ def parse_arguments():
         help=("phase 2 final learning rate"),
     )
 
+    parser.add_argument(
+        "--phase1_min_resol",
+        default=4.0,
+        type=float,
+        help=("phase 1 resolution cut"),
+    )
+
     return parser.parse_args()
 
 
@@ -95,6 +102,7 @@ def generate_phase1_config(
     additive_learning_rate: float = 0.05,
     multiplicative_learning_rate: float = 1.0,
     init_recycling: int = 20,
+    phase1_min_resol: float = 4.0,
     note: str = "",
 ) -> RocketRefinmentConfig:
 
@@ -121,7 +129,7 @@ def generate_phase1_config(
         testset_value=testset_value,
         l2_weight=1e-11,
         b_threshold=10.0,
-        min_resolution=3.0,
+        min_resolution=phase1_min_resol,
         note="phase1" + note,
     )
 
@@ -196,7 +204,7 @@ def generate_phase2_config(
 
 
 def run_both_phases_single_dataset(
-    *, working_path, file_root, note, additional_chain, phase1_add_lr, phase1_mul_lr, phase2_final_lr, init_recycling,
+    *, working_path, file_root, note, additional_chain, phase1_add_lr, phase1_mul_lr, phase2_final_lr, init_recycling, phase1_min_resol,
 ) -> None:
 
     phase1_config = generate_phase1_config(
@@ -207,6 +215,7 @@ def run_both_phases_single_dataset(
         additive_learning_rate=phase1_add_lr,
         multiplicative_learning_rate=phase1_mul_lr,
         init_recycling=init_recycling,
+        phase1_min_resol=phase1_min_resol
     )
     phase1_uuid = run_refinement(config=phase1_config)
 
@@ -239,6 +248,7 @@ def run_both_phases_all_datasets() -> None:
                 additive_learning_rate=args.phase1_add_lr,
                 multiplicative_learning_rate=args.phase1_mul_lr,
                 init_recycling=args.init_recycling,
+                phase1_min_resol=args.phase1_min_resol,
             )
             phase1_uuid = run_refinement(config=phase1_config)
 
@@ -266,6 +276,7 @@ def run_both_phases_all_datasets() -> None:
                 phase1_mul_lr=args.phase1_mul_lr,
                 phase2_final_lr=args.phase2_final_lr,
                 init_recycling=args.init_recycling,
+                phase1_min_resol=args.phase1_min_resol,
             )
 
 if __name__ == "__main__":
