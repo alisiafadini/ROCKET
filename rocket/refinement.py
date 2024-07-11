@@ -478,7 +478,7 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
             if loss_weight > 0.0:
                 # use
                 L2_loss = torch.sum(
-                    bfactor_weights.unsqueeze(-1) * (optimized_xyz - best_pos) ** 2
+                    bfactor_weights.unsqueeze(-1) * (optimized_xyz - reference_pos) ** 2
                 )  # / conf_best.shape[0]
                 corrected_loss = loss + loss_weight * L2_loss
                 corrected_loss.backward()
