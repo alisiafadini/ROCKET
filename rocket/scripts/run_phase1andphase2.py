@@ -90,9 +90,23 @@ def parse_arguments():
 
     parser.add_argument(
         "--phase1_min_resol",
-        default=4.0,
+        default=3.0,
         type=float,
         help=("phase 1 resolution cut"),
+    )
+
+    parser.add_argument(
+        "--free_flag",
+        default="R-free-flags",
+        type=str,
+        help=("Column name of free flag"),
+    )
+
+    parser.add_argument(
+        "--testset_value",
+        default=1,
+        type=int,
+        help=("Value for test set"),
     )
 
     return parser.parse_args()
@@ -213,13 +227,15 @@ def generate_phase2_config(
 
 
 def run_both_phases_single_dataset(
-    *, working_path, file_root, note, additional_chain, phase1_add_lr, phase1_mul_lr, phase1_w_l2, phase2_final_lr, init_recycling, phase1_min_resol,
+    *, working_path, file_root, note, free_flag, testset_value, additional_chain, phase1_add_lr, phase1_mul_lr, phase1_w_l2, phase2_final_lr, init_recycling, phase1_min_resol,
 ) -> None:
 
     phase1_config = generate_phase1_config(
         working_path=working_path,
         file_root=file_root,
         note=note,
+        free_flag=free_flag,
+        testset_value=testset_value,
         additional_chain=additional_chain,
         additive_learning_rate=phase1_add_lr,
         multiplicative_learning_rate=phase1_mul_lr,
@@ -234,6 +250,8 @@ def run_both_phases_single_dataset(
         working_path=working_path,
         file_root=file_root,
         note=note,
+        free_flag=free_flag,
+        testset_value=testset_value,
         additional_chain=additional_chain,
         phase1_add_lr=phase1_add_lr,
         phase1_mul_lr=phase1_mul_lr,
@@ -255,6 +273,8 @@ def run_both_phases_all_datasets() -> None:
                 working_path=args.path,
                 file_root=file_root,
                 note=args.note,
+                free_flag=args.free_flag,
+                testset_value=args.testset_value,
                 additional_chain=args.additional_chain,
                 additive_learning_rate=args.phase1_add_lr,
                 multiplicative_learning_rate=args.phase1_mul_lr,
@@ -268,6 +288,8 @@ def run_both_phases_all_datasets() -> None:
             phase2_config = generate_phase2_config(
                 phase1_uuid=args.phase1_uuid,
                 working_path=args.path,
+                free_flag=args.free_flag,
+                testset_value=args.testset_value,
                 file_root=file_root,
                 note=args.note,
                 additional_chain=args.additional_chain,
@@ -284,6 +306,8 @@ def run_both_phases_all_datasets() -> None:
                 working_path=args.path,
                 file_root=file_root,
                 note=args.note,
+                free_flag=args.free_flag,
+                testset_value=args.testset_value,
                 additional_chain=args.additional_chain,
                 phase1_add_lr=args.phase1_add_lr,
                 phase1_mul_lr=args.phase1_mul_lr,
