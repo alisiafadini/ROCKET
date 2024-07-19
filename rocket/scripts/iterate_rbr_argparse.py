@@ -24,24 +24,8 @@ rk.refine
     --verbose                            # Be verbose during refinement
 """
 
-import copy, warnings
-import torch
-import pickle
-import numpy as np
-from tqdm import tqdm
-import rocket
-import os, time
 import argparse
-from rocket.llg import utils as llg_utils
-from rocket import coordinates as rk_coordinates
-from rocket import utils as rk_utils
-from rocket.llg import structurefactors as llg_sf
-from openfold.config import model_config
-import pickle
-
-PRESET = "model_1"
-THRESH_B = None
-EXCLUDING_RES = None
+from rocket.refinement import run_refinement, RocketRefinmentConfig
 
 
 def parse_arguments():
@@ -67,7 +51,7 @@ def parse_arguments():
 
     parser.add_argument(
         "-v",
-        "--version",
+        "--bias_version",
         required=True,
         type=int,
         help=("Bias version to implement (1, 2, 3, 4)"),
@@ -89,30 +73,33 @@ def parse_arguments():
         help=("Name of template pdb file in the file_root"),
     )
 
-    parser.add_argument("-c", "--cuda", type=int, default=0, help="Cuda device")
+    parser.add_argument("-c", "--cuda_device", type=int, default=0, help="Cuda device")
     parser.add_argument(
         "-solv",
         "--solvent",
         help="Turn on solvent calculation in refinement step",
         action=argparse.BooleanOptionalAction,
+        default=False,
     )
     parser.add_argument(
         "-s",
-        "--scale",
+        "--sfc_scale",
         help="Turn on SFC scale_update at each epoch",
         action=argparse.BooleanOptionalAction,
+        default=False,
     )
 
     parser.add_argument(
         "-sigmaA",
-        "--sigmaArefine",
+        "--refine_sigmaA",
         help="Turn on sigmaA refinement at each epoch",
         action=argparse.BooleanOptionalAction,
+        default=False,
     )
 
     parser.add_argument(
         "-lr_a",
-        "--lr_add",
+        "--additive_learning_rate",
         type=float,
         default=1e-3,
         help=("Learning rate for additive bias. Default 1e-3"),
@@ -120,7 +107,7 @@ def parse_arguments():
 
     parser.add_argument(
         "-lr_m",
-        "--lr_mul",
+        "--multiplicative_learning_rate",
         type=float,
         default=1e-2,
         help=("Learning rate for multiplicative bias. Default 1e-2"),
@@ -135,7 +122,7 @@ def parse_arguments():
 
     parser.add_argument(
         "-sub_r",
-        "--sub_ratio",
+        "--batch_sub_ratio",
         type=float,
         default=1.0,
         help=("Ratio of reflections for each batch. Default 1.0 (no batching)"),
@@ -143,21 +130,21 @@ def parse_arguments():
 
     parser.add_argument(
         "-b",
-        "--batches",
+        "--number_of_batches",
         type=int,
         default=1,
         help=("Number of batches. Default 1 (no batching)"),
     )
 
     parser.add_argument(
-        "--rbr_opt",
+        "--rbr_opt_algorithm",
         type=str,
         default="lbfgs",
         help=("Optimization algorithm used in RBR, lbfgs or adam"),
     )
 
     parser.add_argument(
-        "--rbr_lbfgs_lr",
+        "--rbr_lbfgs_learning_rate",
         type=float,
         default=150.0,
         help=("Learning rate of lbfgs used in RBR"),
@@ -165,7 +152,7 @@ def parse_arguments():
 
     parser.add_argument(
         "-a",
-        "--align",
+        "--alignment_mode",
         type=str,
         default="B",
         choices=["B", "I"],
@@ -197,9 +184,10 @@ def parse_arguments():
 
     parser.add_argument(
         "-chain",
-        "--added_chain",
+        "--additional_chain",
         help="additional chain in asu",
         action=argparse.BooleanOptionalAction,
+        default=False,
     )
 
     parser.add_argument(
@@ -210,7 +198,7 @@ def parse_arguments():
 
     parser.add_argument(
         "-L2_w",
-        "--L2_weight",
+        "--l2_weight",
         type=float,
         default=0.0,
         help=("Weight for L2 loss"),
@@ -225,28 +213,28 @@ def parse_arguments():
     )
 
     parser.add_argument(
-        "--resol_min",
+        "--min_resolution",
         type=float,
         default=None,
         help=("min resolution for llg calculation"),
     )
 
     parser.add_argument(
-        "--resol_max",
+        "--max_resolution",
         type=float,
         default=None,
         help=("max resolution for llg calculation"),
     )
 
     parser.add_argument(
-        "--bias_start",
+        "--starting_bias",
         type=str,
         default=None,
         help=("initial bias to start with"),
     )
 
     parser.add_argument(
-        "--weights_start",
+        "--starting_weights",
         type=str,
         default=None,
         help=("initial weights to start with"),
@@ -256,748 +244,10 @@ def parse_arguments():
 
 
 def main():
-    # Parse commandline arguments
     args = parse_arguments()
-
-    # General settings
-    device = "cuda:{}".format(args.cuda)
-
-    # Using LBFGS or Adam in RBR
-    if args.rbr_opt == "lbfgs":
-        RBR_LBFGS = True
-    elif args.rbr_opt == "adam":
-        RBR_LBFGS = False
-    else:
-        raise ValueError("rbr_opt only supports lbfgs or adam")
-
-    # Load external files
-    path = args.path
-    tng_file = "{p}/{r}/{r}-tng_withrfree.mtz".format(p=path, r=args.file_root)
-    input_pdb = "{p}/{r}/{r}-pred-aligned.pdb".format(p=path, r=args.file_root)
-    true_pdb = "{p}/{r}/{r}_noalts.pdb".format(p=path, r=args.file_root)
-
-    if args.added_chain:
-        constant_fp_added_HKL = torch.load(
-            "{p}/{r}/{r}_added_chain_atoms_HKL.pt".format(p=path, r=args.file_root)
-        ).to(device=device)
-        constant_fp_added_asu = torch.load(
-            "{p}/{r}/{r}_added_chain_atoms_asu.pt".format(p=path, r=args.file_root)
-        ).to(device=device)
-
-        phitrue = np.load(
-            "{p}/{r}/{r}_allchains-phitrue-solvent{s}.npy".format(
-                p=path, r=args.file_root, s=args.solvent
-            )
-        )
-        Etrue = np.load(
-            "{p}/{r}/{r}_allchains-Etrue-solvent{s}.npy".format(
-                p=path, r=args.file_root, s=args.solvent
-            )
-        )
-    else:
-        constant_fp_added_HKL = None
-        constant_fp_added_asu = None
-        phitrue = np.load(
-            "{p}/{r}/{r}-phitrue-solvent{s}.npy".format(
-                p=path, r=args.file_root, s=args.solvent
-            )
-        )
-        Etrue = np.load(
-            "{p}/{r}/{r}-Etrue-solvent{s}.npy".format(
-                p=path, r=args.file_root, s=args.solvent
-            )
-        )
-
-    if args.version == 4:
-        device_processed_features = rocket.make_processed_dict_from_template(
-            template_pdb="{p}/{r}/{t}".format(
-                p=path, r=args.file_root, t=args.template_pdb
-            ),
-            config_preset=PRESET,
-            device=device,
-            msa_dict=None,
-        )
-    else:
-        with open(
-            "{p}/{r}/{r}_processed_feats.pickle".format(p=path, r=args.file_root), "rb"
-        ) as file:
-            # Load the data from the pickle file
-            processed_features = pickle.load(file)
-
-        device_processed_features = rk_utils.move_tensors_to_device(
-            processed_features, device=device
-        )
-        # TODO: this still takes up memory in original device?
-        del processed_features
-
-    # SFC initialization, only have to do it once
-    sfc = llg_sf.initial_SFC(
-        input_pdb,
-        tng_file,
-        "FP",
-        "SIGFP",
-        Freelabel=args.free_flag,
-        device=device,
-        testset_value=args.testset_value,
-        added_chain_HKL=constant_fp_added_HKL,
-        added_chain_asu=constant_fp_added_asu,
-    )
-    reference_pos = sfc.atom_pos_orth.clone()
-
-    # Load true positions
-    sfc_true = llg_sf.initial_SFC(
-        true_pdb,
-        tng_file,
-        "FP",
-        "SIGFP",
-        Freelabel=args.free_flag,
-        device=device,
-        testset_value=args.testset_value,
-    )
-    true_pos = sfc_true.atom_pos_orth.clone()
-    # true_Bs = sfc_true.atom_b_iso.clone()
-    # true_cras = sfc_true.cra_name
-    del sfc_true
-
-    sfc_rbr = llg_sf.initial_SFC(
-        input_pdb,
-        tng_file,
-        "FP",
-        "SIGFP",
-        Freelabel=args.free_flag,
-        device=device,
-        solvent=False,
-        testset_value=args.testset_value,
-        added_chain_HKL=constant_fp_added_HKL,
-        added_chain_asu=constant_fp_added_asu,
-    )
-
-    # LLG initialization with resol cut
-    if args.resol_min is None:
-        resol_min = min(sfc.dHKL)
-    else:
-        resol_min = args.resol_min
-
-    if args.resol_max is None:
-        resol_max = max(sfc.dHKL)
-    else:
-        resol_max = args.resol_max
-
-    llgloss = rocket.llg.targets.LLGloss(sfc, tng_file, device, resol_min, resol_max)
-    llgloss_rbr = rocket.llg.targets.LLGloss(
-        sfc_rbr, tng_file, device, resol_min, resol_max
-    )
-    # llgloss = rocket.llg.targets.LLGloss(sfc, tng_file, device)
-
-    # Model initialization
-    version_to_class = {
-        1: rocket.MSABiasAFv1,
-        2: rocket.MSABiasAFv2,
-        3: rocket.MSABiasAFv3,
-        4: rocket.TemplateBiasAF,
-    }
-    af_bias = version_to_class[args.version](
-        model_config(PRESET, train=True), PRESET
-    ).to(device)
-    af_bias.freeze()  # Free all AF2 parameters to save time
-
-    # Initiate additive cluster bias
-    num_res = device_processed_features["aatype"].shape[0]
-    msa_params_bias = torch.zeros((512, num_res, 23), requires_grad=True, device=device)
-    device_processed_features["msa_feat_bias"] = msa_params_bias
-
-    # Optimizer settings and initialization
-    lr_a = args.lr_add
-    lr_m = args.lr_mul
-
-    if args.version == 4:
-        device_processed_features["template_torsion_angles_sin_cos_bias"] = (
-            torch.zeros_like(
-                device_processed_features["template_torsion_angles_sin_cos"],
-                requires_grad=True,
-                device=device,
-            )
-        )
-        if args.weight_decay is None:
-            optimizer = torch.optim.Adam(
-                [
-                    {
-                        "params": device_processed_features[
-                            "template_torsion_angles_sin_cos_bias"
-                        ],
-                        "lr": lr_a,
-                    },
-                ]
-            )
-        else:
-            optimizer = torch.optim.AdamW(
-                [
-                    {
-                        "params": device_processed_features[
-                            "template_torsion_angles_sin_cos_bias"
-                        ],
-                        "lr": lr_a,
-                    },
-                ],
-                weight_decay=args.weight_decay,
-            )
-        bias_names = ["template_torsion_angles_sin_cos_bias"]
-
-    elif args.version == 3:
-        if args.weights_start is not None:
-            device_processed_features["msa_feat_weights"] = (
-                torch.load(args.weights_start).detach().to(device=device)
-            )
-        else:
-            device_processed_features["msa_feat_weights"] = torch.ones(
-                (512, num_res, 23), requires_grad=True, device=device
-            )
-
-        if args.bias_start is not None:
-            device_processed_features["msa_feat_bias"] = (
-                torch.load(args.bias_start).detach().to(device=device)
-            )
-
-        device_processed_features["msa_feat_bias"].requires_grad = True
-        device_processed_features["msa_feat_weights"].requires_grad = True
-
-        if args.weight_decay is None:
-            optimizer = torch.optim.Adam(
-                [
-                    {"params": device_processed_features["msa_feat_bias"], "lr": lr_a},
-                    {
-                        "params": device_processed_features["msa_feat_weights"],
-                        "lr": lr_m,
-                    },
-                ]
-            )
-        else:
-            optimizer = torch.optim.AdamW(
-                [
-                    {"params": device_processed_features["msa_feat_bias"], "lr": lr_a},
-                    {
-                        "params": device_processed_features["msa_feat_weights"],
-                        "lr": lr_m,
-                    },
-                ],
-                weight_decay=args.weight_decay,
-            )
-        bias_names = ["msa_feat_bias", "msa_feat_weights"]
-
-    elif args.version == 2:
-        msa_params_weights = torch.eye(512, dtype=torch.float32, device=device)
-        device_processed_features["msa_feat_weights"] = msa_params_weights
-
-        if args.weight_decay is None:
-            optimizer = torch.optim.Adam(
-                [
-                    {"params": device_processed_features["msa_feat_bias"], "lr": lr_a},
-                    {
-                        "params": device_processed_features["msa_feat_weights"],
-                        "lr": lr_m,
-                    },
-                ]
-            )
-        else:
-            optimizer = torch.optim.AdamW(
-                [
-                    {"params": device_processed_features["msa_feat_bias"], "lr": lr_a},
-                    {
-                        "params": device_processed_features["msa_feat_weights"],
-                        "lr": lr_m,
-                    },
-                ],
-                weight_decay=args.weight_decay,
-            )
-        bias_names = ["msa_feat_bias", "msa_feat_weights"]
-
-    elif args.version == 1:
-        if args.weight_decay is None:
-            optimizer = torch.optim.Adam(
-                [
-                    {"params": device_processed_features["msa_feat_bias"], "lr": lr_a},
-                ]
-            )
-        else:
-            optimizer = torch.optim.AdamW(
-                [
-                    {"params": device_processed_features["msa_feat_bias"], "lr": lr_a},
-                ],
-                weight_decay=args.weight_decay,
-            )
-
-        bias_names = ["msa_feat_bias"]
-
-    # Run options
-    output_name = "{root}_it{it}_v{v}_lr{a}+{m}_wd{wd}_batch{b}_subr{subr}_solv{solv}_scale{scale}_sigmaA{sigma}_resol_{resol_min:.2f}_{resol_max:.2f}_rbr{rbr_opt}_{rbr_lbfgs_lr}_ali{align}_L2{weight}+{thresh}_{add}".format(
-        root=args.file_root,
-        it=args.iterations,
-        v=args.version,
-        a=args.lr_add,
-        m=args.lr_mul,
-        wd=args.weight_decay,
-        b=args.batches,
-        subr=args.sub_ratio,
-        solv=args.solvent,
-        scale=args.scale,
-        sigma=args.sigmaArefine,
-        resol_min=resol_min,
-        resol_max=resol_max,
-        rbr_opt=args.rbr_opt,
-        rbr_lbfgs_lr=args.rbr_lbfgs_lr,
-        align=args.align,
-        weight=args.L2_weight,
-        thresh=args.b_threshold,
-        add=args.note,
-    )
-    print(output_name, flush=True)
-    if not args.verbose:
-        warnings.filterwarnings("ignore")
-
-    # Initialize best variables for alignement
-    best_loss = float("inf")
-    best_pos = reference_pos
-
-    # Initialize best Rfree weights and bias for Phase 1
-    best_rfree = float("inf")
-    best_msa_bias = None
-    best_feat_weights = None
-
-    # List initialization for saving values
-    mse_losses_by_epoch = []
-    rbr_loss_by_epoch = []
-    sigmas_by_epoch = []
-    true_sigmas_by_epoch = []
-    llg_losses = []
-    rfree_by_epoch = []
-    rwork_by_epoch = []
-    time_by_epoch = []
-    memory_by_epoch = []
-    all_pldtts = []
-    mean_it_plddts = []
-    absolute_feats_changes = []
-
-    if args.version == 4:
-        features_at_it_start = (
-            device_processed_features["template_torsion_angles_sin_cos"][..., 0]
-            .detach()
-            .clone()
-        )
-    else:
-        features_at_it_start = (
-            device_processed_features["msa_feat"][:, :, 25:48, 0].detach().clone()
-        )
-
-    progress_bar = tqdm(range(args.iterations), desc=f"version {args.version}")
-    loss_weight = args.L2_weight
-    for iteration in progress_bar:
-        start_time = time.time()
-        optimizer.zero_grad()
-
-        if iteration == 0:
-            directory_path = "{path}/{r}/outputs/{out}".format(
-                path=path, r=args.file_root, out=output_name
-            )
-            try:
-                os.makedirs(directory_path, exist_ok=True)
-            except FileExistsError:
-                print(
-                    f"Warning: Directory '{directory_path}' already exists. Overwriting..."
-                )
-
-        # if iteration == 250:
-        #    lr_a = 1e-4
-        #    lr_m = 1e-3
-
-        # Avoid passing through graph a second time
-        working_batch = copy.deepcopy(device_processed_features)
-        for bias in bias_names:
-            working_batch[bias] = device_processed_features[bias].clone()
-
-        # AF2 pass
-        af2_output = af_bias(working_batch, num_iters=1, bias=True)
-
-        # Position alignment
-        xyz_orth_sfc, plddts = rk_coordinates.extract_allatoms(
-            af2_output, device_processed_features, llgloss.sfc.cra_name
-        )
-
-        all_pldtts.append(rk_utils.assert_numpy(af2_output["plddt"]))
-        mean_it_plddts.append(rk_utils.assert_numpy(torch.mean(plddts)))
-
-        pseudo_Bs = rk_coordinates.update_bfactors(plddts)
-        llgloss.sfc.atom_b_iso = pseudo_Bs.detach()
-
-        aligned_xyz = rk_coordinates.align_positions(
-            xyz_orth_sfc,
-            best_pos,
-            llgloss.sfc.cra_name,
-            pseudo_Bs,
-            thresh_B=THRESH_B,
-            exclude_res=EXCLUDING_RES,
-        )
-
-        ##### Residue MSE loss for tracking ######
-        # (1) Select CAs
-        cra_calphas_list, calphas_mask = rk_coordinates.select_CA_from_craname(
-            sfc.cra_name
-        )
-
-        # (2) Convert residue names to residue numbers
-        residue_numbers = [int(name.split("-")[1]) for name in cra_calphas_list]
-
-        # (3) Calculate total MSE loss
-        total_mse_loss = rk_coordinates.calculate_mse_loss_per_residue(
-            aligned_xyz[calphas_mask], true_pos[calphas_mask], residue_numbers
-        )
-        mse_losses_by_epoch.append(total_mse_loss)
-        ##############################################
-
-        # Calculate (or refine) sigmaA
-        # TODO before or after RBR step?
-        Ecalc, Fc = llgloss.compute_Ecalc(
-            aligned_xyz,
-            return_Fc=True,
-            update_scales=True,
-            added_chain_HKL=constant_fp_added_HKL,
-            added_chain_asu=constant_fp_added_asu,
-        )
-
-        Ecalc_rbr, Fc_rbr = llgloss_rbr.compute_Ecalc(
-            aligned_xyz,
-            return_Fc=True,
-            solvent=False,
-            update_scales=True,
-            added_chain_HKL=constant_fp_added_HKL,
-            added_chain_asu=constant_fp_added_asu,
-        )
-
-        if args.sigmaArefine is True:
-            # llgloss.refine_sigmaA_adam(
-            #    Ecalc, sub_ratio=1.00, lr=0.005, initialize=True, verbose=False
-            # )
-
-            llgloss.refine_sigmaA_newton(
-                Ecalc, n_steps=5, subset="working", smooth_overall_weight=0.0
-            )
-            llgloss_rbr.refine_sigmaA_newton(
-                Ecalc_rbr, n_steps=2, subset="working", smooth_overall_weight=0.0
-            )
-            sigmas = llgloss.sigmaAs
-
-            # print(
-            #    f"#########  {iteration} sigmas after refinement are",
-            #    [sigmaA.item() for sigmaA in llgloss.sigmaAs],
-            #    flush=True,
-            # )
-
-        else:
-            sigmas = llg_utils.sigmaA_from_model(
-                Etrue,
-                phitrue,
-                Ecalc,
-                Fc,
-                llgloss.sfc.dHKL,
-                llgloss.bin_labels,
-            )
-            llgloss.sigmaAs = sigmas
-
-            sigmas_rbr = llg_utils.sigmaA_from_model(
-                Etrue,
-                phitrue,
-                Ecalc_rbr,
-                Fc_rbr,
-                llgloss.sfc.dHKL,
-                llgloss.bin_labels,
-            )
-            llgloss_rbr.sigmaAs = sigmas_rbr
-
-        true_sigmas = llg_utils.sigmaA_from_model(
-            Etrue,
-            phitrue,
-            Ecalc,
-            Fc,
-            llgloss.sfc.dHKL,
-            llgloss.bin_labels,
-        )
-
-        # print(f"######### {iteration} True sigmas are", [sigmaA.item() for sigmaA in true_sigmas], flush=True)
-
-        # Update SFC and save
-        llgloss.sfc.atom_pos_orth = aligned_xyz
-        llgloss.sfc.savePDB(
-            "{path}/{r}/outputs/{out}/{it}_preRBR.pdb".format(
-                path=path, r=args.file_root, out=output_name, it=iteration
-            )
-        )
-
-        # Rigid body refinement (RBR) step
-        optimized_xyz, loss_track_pose = rk_coordinates.rigidbody_refine_quat(
-            aligned_xyz,
-            llgloss_rbr,
-            lbfgs=RBR_LBFGS,
-            added_chain_HKL=constant_fp_added_HKL,
-            added_chain_asu=constant_fp_added_asu,
-            lbfgs_lr=args.rbr_lbfgs_lr,
-            verbose=args.verbose,
-        )
-        rbr_loss_by_epoch.append(loss_track_pose)
-
-        # LLG loss
-        loss = -llgloss(
-            optimized_xyz,
-            bin_labels=None,
-            num_batch=args.batches,
-            sub_ratio=args.sub_ratio,
-            solvent=args.solvent,
-            update_scales=args.scale,
-            added_chain_HKL=constant_fp_added_HKL,
-            added_chain_asu=constant_fp_added_asu,
-        )
-
-        llg_estimate = loss.item() / (args.sub_ratio * args.batches)
-        llg_losses.append(llg_estimate)
-        rwork_by_epoch.append(llgloss.sfc.r_work.item())
-        rfree_by_epoch.append(llgloss.sfc.r_free.item())
-
-        # Check if current Rfree is the best so far
-        if rfree_by_epoch[-1] < best_rfree:
-            best_rfree = rfree_by_epoch[-1]
-            best_msa_bias = (
-                device_processed_features["msa_feat_bias"].detach().cpu().clone()
-            )
-            best_feat_weights = (
-                device_processed_features["msa_feat_weights"].detach().cpu().clone()
-            )
-
-        llgloss.sfc.atom_pos_orth = optimized_xyz
-        # Save postRBR PDB
-        llgloss.sfc.savePDB(
-            "{path}/{r}/outputs/{out}/{it}_postRBR.pdb".format(
-                path=path, r=args.file_root, out=output_name, it=iteration
-            )
-        )
-
-        progress_bar.set_postfix(
-            LLG_Estimate=f"{llg_estimate:.2f}",
-            r_work=f"{llgloss.sfc.r_work.item():.3f}",
-            r_free=f"{llgloss.sfc.r_free.item():.3f}",
-            memory=f"{torch.cuda.max_memory_allocated()/1024**3:.1f}G",
-        )
-
-        if args.align == "B":
-            if loss < best_loss:
-                best_loss = loss
-                best_pos = optimized_xyz.clone()
-
-        # Save sigmaA values for further processing
-        sigmas_dict = {
-            f"sigma_{i + 1}": sigma_value.item() for i, sigma_value in enumerate(sigmas)
-        }
-        sigmas_by_epoch.append(sigmas_dict)
-
-        true_sigmas_dict = {
-            f"sigma_{i + 1}": sigma_value.item()
-            for i, sigma_value in enumerate(true_sigmas)
-        }
-        true_sigmas_by_epoch.append(true_sigmas_dict)
-
-        #### add an L2 loss to constrain confident atoms ###
-        if loss_weight > 0.0:
-            if iteration == 0:
-                # L2_ref_pos = xyz_orth_sfc.clone().detach()
-                L2_ref_pos = optimized_xyz.detach().clone()
-                L2_ref_Bs = llgloss.sfc.atom_b_iso.detach().clone()
-                conf_xyz, conf_best = rk_coordinates.select_confident_atoms(
-                    optimized_xyz,
-                    L2_ref_pos,
-                    bfacts=L2_ref_Bs,
-                    b_thresh=args.b_threshold,
-                )
-
-            else:
-                # Avoid passing through graph twice with L2 loss addition
-                # L2_ref_pos_copy = L2_ref_pos.clone()
-                # L2_ref_Bs_copy = L2_ref_Bs.clone()
-                conf_xyz, conf_best = rk_coordinates.select_confident_atoms(
-                    optimized_xyz,
-                    L2_ref_pos,
-                    bfacts=L2_ref_Bs,
-                    b_thresh=args.b_threshold,
-                )
-
-            L2_loss = torch.sum((conf_xyz - conf_best) ** 2)  # / conf_best.shape[0]
-            corrected_loss = loss + loss_weight * L2_loss
-            corrected_loss.backward()
-        else:
-            loss.backward()
-
-        optimizer.step()
-        time_by_epoch.append(time.time() - start_time)
-        memory_by_epoch.append(torch.cuda.max_memory_allocated() / 1024**3)
-
-        # Save the absolute difference in mean contribution from each residue channel from previous iteration
-        if args.version == 4:
-            features_at_step_end = (
-                working_batch["template_torsion_angles_sin_cos"][..., 0]
-                .detach()
-                .clone()
-            )
-            mean_change = torch.mean(
-                torch.abs(features_at_step_end - features_at_it_start), dim=(0, 2, 3)
-            )
-        else:
-            features_at_step_end = (
-                working_batch["msa_feat"][:, :, 25:48, 0].detach().clone()
-            )
-            mean_change = torch.mean(
-                torch.abs(features_at_step_end - features_at_it_start), dim=(0, 2)
-            )
-        absolute_feats_changes.append(rk_utils.assert_numpy(mean_change))
-        # print("Mean absolute feats change", torch.mean(mean_change).item())
-        if (iteration % 5 == 1) or (iteration == args.iterations - 1):
-            # print("Currently at last iteration {}".format(iteration))
-            torch.save(
-                device_processed_features["msa_feat_bias"].detach().cpu().clone(),
-                "{path}/{r}/outputs/{out}/add_bias_{iter}.pt".format(
-                    path=path,
-                    r=args.file_root,
-                    out=output_name,
-                    iter=iteration,
-                ),
-            )
-            torch.save(
-                device_processed_features["msa_feat_weights"].detach().cpu().clone(),
-                "{path}/{r}/outputs/{out}/mul_bias_{iter}.pt".format(
-                    path=path, r=args.file_root, out=output_name, iter=iteration
-                ),
-            )
-
-    ####### Save data
-
-    # Average plddt per iteration
-    np.save(
-        "{path}/{r}/outputs/{out}/mean_it_plddt.npy".format(
-            path=path,
-            r=args.file_root,
-            out=output_name,
-        ),
-        np.array(mean_it_plddts),
-    )
-
-    # LLG per iteration
-    np.save(
-        "{path}/{r}/outputs/{out}/LLG_it.npy".format(
-            path=path,
-            r=args.file_root,
-            out=output_name,
-        ),
-        rk_utils.assert_numpy(llg_losses),
-    )
-
-    # MSE loss per iteration
-    np.save(
-        "{path}/{r}/outputs/{out}/MSE_loss_it.npy".format(
-            path=path,
-            r=args.file_root,
-            out=output_name,
-        ),
-        rk_utils.assert_numpy(mse_losses_by_epoch),
-    )
-
-    # R work per iteration
-    np.save(
-        "{path}/{r}/outputs/{out}/rwork_it.npy".format(
-            path=path,
-            r=args.file_root,
-            out=output_name,
-        ),
-        rk_utils.assert_numpy(rwork_by_epoch),
-    )
-
-    # R free per iteration
-    np.save(
-        "{path}/{r}/outputs/{out}/rfree_it.npy".format(
-            path=path,
-            r=args.file_root,
-            out=output_name,
-        ),
-        rk_utils.assert_numpy(rfree_by_epoch),
-    )
-
-    np.save(
-        "{path}/{r}/outputs/{out}/time_it.npy".format(
-            path=path,
-            r=args.file_root,
-            out=output_name,
-        ),
-        rk_utils.assert_numpy(time_by_epoch),
-    )
-
-    np.save(
-        "{path}/{r}/outputs/{out}/memory_it.npy".format(
-            path=path,
-            r=args.file_root,
-            out=output_name,
-        ),
-        rk_utils.assert_numpy(memory_by_epoch),
-    )
-
-    # Absolute MSA change per column per iteration
-    np.save(
-        "{path}/{r}/outputs/{out}/MSA_changes_it.npy".format(
-            path=path,
-            r=args.file_root,
-            out=output_name,
-        ),
-        rk_utils.assert_numpy(absolute_feats_changes),
-    )
-
-    # Mean plddt per residue (over iterations)
-    np.save(
-        "{path}/{r}/outputs/{out}/mean_plddt_res.npy".format(
-            path=path,
-            r=args.file_root,
-            out=output_name,
-        ),
-        np.mean(np.array(all_pldtts), axis=0),
-    )
-
-    # Iteration sigmaA dictionary
-    with open(
-        "{path}/{r}/outputs/{out}/sigmas_by_epoch.pkl".format(
-            path=path,
-            r=args.file_root,
-            out=output_name,
-        ),
-        "wb",
-    ) as file:
-        pickle.dump(sigmas_by_epoch, file)
-
-    with open(
-        "{path}/{r}/outputs/{out}/true_sigmas_by_epoch.pkl".format(
-            path=path,
-            r=args.file_root,
-            out=output_name,
-        ),
-        "wb",
-    ) as file:
-        pickle.dump(true_sigmas_by_epoch, file)
-
-    # Save the best msa_bias and feat_weights
-    torch.save(
-        best_msa_bias,
-        "{path}/{r}/outputs/{out}/best_msa_bias.pt".format(
-            path=path, r=args.file_root, out=output_name
-        ),
-    )
-
-    torch.save(
-        best_feat_weights,
-        "{path}/{r}/outputs/{out}/best_feat_weights.pt".format(
-            path=path, r=args.file_root, out=output_name
-        ),
-    )
+    args_dict: dict[str, Any] = vars(args)
+    config = RocketRefinmentConfig(**args_dict)
+    run_refinement(config=config)
 
 
 if __name__ == "__main__":
