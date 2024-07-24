@@ -33,6 +33,7 @@ class RocketRefinmentConfig(BaseModel):
     template_pdb: Union[str, None] = None
     cuda_device: int = (0,)
     init_recycling: int = (1,)
+    domain_segs: Union[List[int], None] = None
     solvent: bool
     sfc_scale: bool
     refine_sigmaA: bool
@@ -342,6 +343,7 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
                 cra_name=sfc.cra_name,
                 best_pos=best_pos,
                 exclude_res=EXCLUDING_RES,
+                domain_segs=args.domain_segs,
             )
             llgloss.sfc.atom_b_iso = pseudo_Bs.detach()
             all_pldtts.append(plddts_res)

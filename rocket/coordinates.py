@@ -704,7 +704,7 @@ def align_tensors(tensor1, centroid1, centroid2, rotation_matrix):
     return aligned_tensor1
 
 
-def weighted_kabsch(moving_tensor, ref_tensor, cra_name, weights=None, exclude_res=None):
+def weighted_kabsch(moving_tensor, ref_tensor, cra_name, weights=None, exclude_res=None, domain_segs=None):
     """
     Weighted Kabsch Alignment, using scipy implementation
     'scipy.spatial.transform.Rotation.align_vectors'
@@ -722,8 +722,12 @@ def weighted_kabsch(moving_tensor, ref_tensor, cra_name, weights=None, exclude_r
         weights: torch.Tensor | np.ndarray, [n_points]
             weights used in the Kabsch Alignment
         
-        exclude_res: List[int]
+        exclude_res: List[int] or None
             list of resid you want to exclude from the alignment
+        
+        domain_segs: List[int] or None
+            List of resid as boundary between different domains, 
+            i.e. domain_segs = [196] means there are two domains, [0-195] and [196-END]
     
     Returns:
         aligned_tensor: torch.Tensor, [n_points, 3]
@@ -732,31 +736,44 @@ def weighted_kabsch(moving_tensor, ref_tensor, cra_name, weights=None, exclude_r
     backbone_bool = np.array([i.split("-")[-1] in ['N', 'CA', 'C'] for i in cra_name])
         
     # exclude some residues, by default 5 residues on both ends
-    resid = [int(i.split('-')[1]) for i in cra_name]
-    if exclude_res is None:
-        minid = min(resid)
-        maxid= max(resid)
+    resid = [int(i.split('-')[1])+1 for i in cra_name]
+    minid = min(resid)
+    maxid = max(resid)
+    if exclude_res is None:    
         residue_bool = np.array([(i>minid+4) and (i<(maxid-4)) for i in resid])
     else:
         residue_bool = np.array([i not in exclude_res for i in resid])
         
-    working_set = backbone_bool & residue_bool
-
-    moving_tensor_np = utils.assert_numpy(moving_tensor)[working_set]
-    ref_tensor_np = utils.assert_numpy(ref_tensor)[working_set]
-    if weights is None:
-        weights_np = None
+    if domain_segs is None:
+        domain_ranges = [[minid, maxid+1]]
     else:
-        weights_np = utils.assert_numpy(weights)[working_set]
-    
-    com_moving = np.average(moving_tensor_np, axis=0, weights=weights_np)
-    com_ref = np.average(ref_tensor_np, axis=0, weights=weights_np)
-    C, _ = Rotation.align_vectors(ref_tensor_np-com_ref, moving_tensor_np-com_moving, weights=weights_np)
-    
-    rotation_matrix = torch.tensor(C.as_matrix()).to(moving_tensor)
-    centroid1 = torch.tensor(com_moving).to(moving_tensor)
-    centroid2 = torch.tensor(com_ref).to(moving_tensor)
-    aligned_pos = align_tensors(moving_tensor, centroid1, centroid2, rotation_matrix)
+        domain_ranges = []
+        start = minid
+        for i, seg in enumerate(domain_segs):
+            domain_ranges.append([start, seg])
+            start = seg
+            if i == len(domain_segs) - 1:
+                domain_ranges.append([start, maxid+1]) 
+    aligned_pos = torch.ones_like(moving_tensor)
+    for domain_range in domain_ranges:
+        domain_start, domain_end_notin = domain_range
+        domain_bool = np.array([(i>=domain_start) and (i<domain_end_notin) for i in resid])
+        working_set = backbone_bool & residue_bool & domain_bool
+        moving_tensor_np = utils.assert_numpy(moving_tensor)[working_set]
+        ref_tensor_np = utils.assert_numpy(ref_tensor)[working_set]
+        if weights is None:
+            weights_np = None
+        else:
+            weights_np = utils.assert_numpy(weights)[working_set]
+        
+        com_moving = np.average(moving_tensor_np, axis=0, weights=weights_np)
+        com_ref = np.average(ref_tensor_np, axis=0, weights=weights_np)
+        C, _ = Rotation.align_vectors(ref_tensor_np-com_ref, moving_tensor_np-com_moving, weights=weights_np)
+        
+        rotation_matrix = torch.tensor(C.as_matrix()).to(moving_tensor)
+        centroid1 = torch.tensor(com_moving).to(moving_tensor)
+        centroid2 = torch.tensor(com_ref).to(moving_tensor)
+        aligned_pos[domain_bool] = align_tensors(moving_tensor[domain_bool], centroid1, centroid2, rotation_matrix)
     return aligned_pos
 
 
