@@ -76,13 +76,6 @@ def parse_arguments():
     )
 
     parser.add_argument(
-        "--phase1_add_lr",
-        default=0.05,
-        type=float,
-        help=("phase 1 additive learning rate"),
-    )
-
-    parser.add_argument(
         "--phase1_mul_lr",
         default=1.0,
         type=float,

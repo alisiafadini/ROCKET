@@ -319,22 +319,22 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
                 )
                 prevs = [tensor.detach() for tensor in prevs]
 
-                # MH @ June 19: Fix the iteration 0 for phase 2 running
-                if (config.starting_bias is not None) or (
-                    config.starting_weights is not None
-                ):
-                    deep_copied_prevs = [tensor.clone().detach() for tensor in prevs]
-                    af2_output, __ = af_bias(
-                        device_processed_features,
-                        deep_copied_prevs,
-                        num_iters=1,
-                        bias=True,
-                    )
-            else:
-                deep_copied_prevs = [tensor.clone().detach() for tensor in prevs]
-                af2_output, __ = af_bias(
-                    device_processed_features, deep_copied_prevs, num_iters=1, bias=True
-                )
+                # # MH @ June 19: Fix the iteration 0 for phase 2 running
+                # print("config.starting_bias", config.starting_bias)
+                # if (config.starting_bias is not None) or (
+                #     config.starting_weights is not None
+                # ):
+                #     deep_copied_prevs = [tensor.clone().detach() for tensor in prevs]
+                #     af2_output, __ = af_bias(
+                #         device_processed_features,
+                #         deep_copied_prevs,
+                #         num_iters=1,
+                #         bias=True,
+                #     )
+            deep_copied_prevs = [tensor.clone().detach() for tensor in prevs]
+            af2_output, __ = af_bias(
+                device_processed_features, deep_copied_prevs, num_iters=1, bias=True
+            )
 
             # Position Kabsch Alignment
             aligned_xyz, plddts_res, pseudo_Bs = rkrf_utils.position_alignment(
@@ -345,6 +345,7 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
                 exclude_res=EXCLUDING_RES,
                 domain_segs=config.domain_segs,
             )
+
             llgloss.sfc.atom_b_iso = pseudo_Bs.detach()
             all_pldtts.append(plddts_res)
             mean_it_plddts.append(np.mean(plddts_res))
