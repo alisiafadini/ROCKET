@@ -15,7 +15,7 @@ from rocket import utils as rk_utils
 from rocket import refinement_utils as rkrf_utils
 from rocket.llg import structurefactors as llg_sf
 from openfold.config import model_config
-from typing import Union
+from typing import Union, List
 from pydantic import BaseModel
 
 
@@ -343,7 +343,7 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
                 cra_name=sfc.cra_name,
                 best_pos=best_pos,
                 exclude_res=EXCLUDING_RES,
-                domain_segs=args.domain_segs,
+                domain_segs=config.domain_segs,
             )
             llgloss.sfc.atom_b_iso = pseudo_Bs.detach()
             all_pldtts.append(plddts_res)

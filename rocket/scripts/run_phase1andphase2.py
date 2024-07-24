@@ -1,6 +1,6 @@
 import argparse, os, glob
 from rocket.refinement import RocketRefinmentConfig, run_refinement
-from typing import Union
+from typing import Union, List
 
 # WORKING_DIRECTORY = Path("/net/cci/alisia/openfold_tests/run_openfold/test_cases")
 # ALL_DATASETS = ["6lzm"]
@@ -34,6 +34,14 @@ def parse_arguments():
     )
 
     parser.add_argument(
+        "--domain_segs",
+        type=int,
+        nargs="*",
+        default=None,
+        help=("A list of resid as domain boundaries"),
+    )
+
+    parser.add_argument(
         "--additional_chain", action="store_true", help=("Additional Chain in ASU")
     )
 
@@ -58,6 +66,13 @@ def parse_arguments():
         default=20,
         type=int,
         help=("number of initial recycling"),
+    )
+
+    parser.add_argument(
+        "--phase1_add_lr",
+        default=0.05,
+        type=float,
+        help=("phase 1 additive learning rate"),
     )
 
     parser.add_argument(
@@ -125,6 +140,7 @@ def generate_phase1_config(
     init_recycling: int = 20,
     phase1_min_resol: float = 4.0,
     phase1_w_l2: float = 1e-11,
+    domain_segs: Union[List[int], None] = None,
     note: str = "",
 ) -> RocketRefinmentConfig:
 
@@ -137,6 +153,7 @@ def generate_phase1_config(
         rbr_opt_algorithm="lbfgs",
         rbr_lbfgs_learning_rate=150.0,
         additional_chain=additional_chain,
+        domain_segs=domain_segs,
         verbose=False,
         bias_version=3,
         num_of_runs=3,
@@ -171,6 +188,7 @@ def generate_phase2_config(
     phase1_mul_lr: float = 1.0,
     phase1_w_l2: float = 1e-11,
     phase2_final_lr: float = 1e-3,
+    domain_segs: Union[List[int], None] = None,
     init_recycling: int = 20,
     note: str = "",
 ) -> RocketRefinmentConfig:
@@ -202,6 +220,7 @@ def generate_phase2_config(
         rbr_lbfgs_learning_rate=150.0,
         smooth_stage_epochs=50,
         additional_chain=additional_chain,
+        domain_segs=domain_segs,
         verbose=False,
         bias_version=3,
         iterations=500,
@@ -227,7 +246,7 @@ def generate_phase2_config(
 
 
 def run_both_phases_single_dataset(
-    *, working_path, file_root, note, free_flag, testset_value, additional_chain, phase1_add_lr, phase1_mul_lr, phase1_w_l2, phase2_final_lr, init_recycling, phase1_min_resol,
+    *, working_path, file_root, note, free_flag, testset_value, additional_chain, phase1_add_lr, phase1_mul_lr, phase1_w_l2, phase2_final_lr, init_recycling, phase1_min_resol, domain_segs
 ) -> None:
 
     phase1_config = generate_phase1_config(
@@ -241,7 +260,8 @@ def run_both_phases_single_dataset(
         multiplicative_learning_rate=phase1_mul_lr,
         phase1_w_l2=phase1_w_l2,
         init_recycling=init_recycling,
-        phase1_min_resol=phase1_min_resol
+        phase1_min_resol=phase1_min_resol,
+        domain_segs=domain_segs
     )
     phase1_uuid = run_refinement(config=phase1_config)
 
@@ -257,7 +277,8 @@ def run_both_phases_single_dataset(
         phase1_mul_lr=phase1_mul_lr,
         phase1_w_l2=phase1_w_l2,
         phase2_final_lr=phase2_final_lr,
-        init_recycling=init_recycling
+        init_recycling=init_recycling,
+        domain_segs=domain_segs,
     )
     phase2_uuid = run_refinement(config=phase2_config)
 
@@ -281,6 +302,7 @@ def run_both_phases_all_datasets() -> None:
                 phase1_w_l2=args.phase1_w_l2,
                 init_recycling=args.init_recycling,
                 phase1_min_resol=args.phase1_min_resol,
+                domain_segs=args.domain_segs
             )
             phase1_uuid = run_refinement(config=phase1_config)
 
@@ -298,6 +320,7 @@ def run_both_phases_all_datasets() -> None:
                 phase1_w_l2=args.phase1_w_l2,
                 phase2_final_lr=args.phase2_final_lr,
                 init_recycling=args.init_recycling,
+                domain_segs=args.domain_segs,
             )
             phase2_uuid = run_refinement(config=phase2_config)
 
@@ -315,6 +338,7 @@ def run_both_phases_all_datasets() -> None:
                 phase2_final_lr=args.phase2_final_lr,
                 init_recycling=args.init_recycling,
                 phase1_min_resol=args.phase1_min_resol,
+                domain_segs=args.domain_segs
             )
 
 if __name__ == "__main__":
