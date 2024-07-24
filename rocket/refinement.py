@@ -404,6 +404,8 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
             optimized_xyz, loss_track_pose = rk_coordinates.rigidbody_refine_quat(
                 aligned_xyz,
                 llgloss_rbr,
+                sfc.cra_name,
+                domain_segs=config.domain_segs,
                 lbfgs=RBR_LBFGS,
                 added_chain_HKL=constant_fp_added_HKL,
                 added_chain_asu=constant_fp_added_asu,
