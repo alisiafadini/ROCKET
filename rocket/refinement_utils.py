@@ -5,6 +5,7 @@ import rocket
 from rocket import utils as rk_utils
 from rocket import coordinates as rk_coordinates
 from rocket.llg import utils as llg_utils
+import skbio, re
 
 
 def number_to_letter(n):
@@ -12,6 +13,58 @@ def number_to_letter(n):
         return chr(n + 65)
     else:
         return None
+
+
+def get_identical_indices(A, B):
+    '''
+    Get indices of aligned string A and B to produce identical sequence
+
+    >>> A = 'EWTUY'
+    >>> B = 'E-RUY'
+    >>> get_identical_indices(A, B)
+    [0,3,4], [0,2,3]
+
+    So A[0,3,4] = 'EUY' = B[0,2,3]
+    '''
+    ind_A = []
+    ind_B = []
+    ai = 0 
+    bi = 0
+    for a, b in zip(A,B):
+        if a == '-':
+            bi += 1
+            continue
+        if b == '-':
+            ai += 1
+            continue
+        if a == b:
+            ind_A.append(ai)
+            ind_B.append(bi)
+            ai += 1
+            bi += 1
+        else:
+            ai += 1
+            bi += 1
+    return np.array(ind_A), np.array(ind_B)
+
+
+def get_pattern_index(str_list, pattern):
+    return next((i for i, s in enumerate(str_list) if re.match(pattern, s)), None)
+
+
+def get_common_ca_ind(pdb1, pdb2):
+    seq1 = pdb1.sequence
+    seq2 = pdb2.sequence
+    alignment = skbio.alignment.StripedSmithWaterman(seq1)(seq2) # Align sequence with Smith Waterman Algorithm
+    subind_1 = np.arange(alignment.query_begin, alignment.query_end+1)
+    subind_2 = np.arange(alignment.target_begin, alignment.target_end_optimal+1)
+    subsubind_1, subsubind_2 = get_identical_indices(alignment.aligned_query_sequence, alignment.aligned_target_sequence)
+    common_seq1 = subind_1[subsubind_1]
+    common_seq2 = subind_2[subsubind_2]
+    common_ca_ind_1 = [get_pattern_index(pdb1.cra_name, rf'.*-{j}-.*-CA$') for j in common_seq1]
+    common_ca_ind_2 = [get_pattern_index(pdb2.cra_name, rf'.*-{i}-.*-CA$') for i in common_seq2]
+    assert (np.array([i[-6:] for i in np.array(pdb1.cra_name)[common_ca_ind_1]]) == np.array([i[-6:] for i in np.array(pdb2.cra_name)[common_ca_ind_2]])).all()
+    return common_ca_ind_1, common_ca_ind_2
 
 
 def get_current_lr(optimizer):
@@ -226,7 +279,7 @@ def init_bias(
 
 
 def position_alignment(
-    af2_output, device_processed_features, cra_name, best_pos, exclude_res
+    af2_output, device_processed_features, cra_name, best_pos, exclude_res, domain_segs
 ):
     xyz_orth_sfc, plddts = rk_coordinates.extract_allatoms(
         af2_output, device_processed_features, cra_name
@@ -241,6 +294,7 @@ def position_alignment(
         cra_name,
         weights=weights,
         exclude_res=exclude_res,
+        domain_segs=domain_segs,
     )
     return aligned_xyz, plddts_res, pseudo_Bs.detach()
 
