@@ -58,7 +58,11 @@ def parse_arguments():
     )
 
     parser.add_argument(
-        "--phase1_uuid", default=None, help=("uuid for phase 1 running")
+        "--phase1_uuid", default=None, help=("uuid for phase 1 run")
+    )
+
+    parser.add_argument(
+        "--mse_uuid", default=None, help=("uuid for mse run")
     )
 
     parser.add_argument(
@@ -135,8 +139,22 @@ def generate_phase1_config(
     phase1_w_l2: float = 1e-11,
     domain_segs: Union[List[int], None] = None,
     note: str = "",
+    mse_uuid: Union[str, None] = None,
 ) -> RocketRefinmentConfig:
 
+    if mse_uuid is None:
+        starting_bias_path = None
+        starting_weights_path = None
+    else:
+        output_directory_path = f"{working_path}/{file_root}/outputs/{mse_uuid}"
+        mse_path = glob.glob(f"{output_directory_path}/mse*/")[0]
+        starting_bias_path = glob.glob(os.path.join(mse_path, "best_msa_bias*.pt"))[
+            0
+        ]
+        starting_weights_path = glob.glob(
+            os.path.join(mse_path, "best_feat_weights*.pt")
+        )[0]
+    
     phase1_config = RocketRefinmentConfig(
         file_root=file_root,
         path=working_path,
@@ -163,6 +181,9 @@ def generate_phase1_config(
         b_threshold=10.0,
         min_resolution=phase1_min_resol,
         note="phase1" + note,
+        uuid_hex=mse_uuid,
+        starting_bias=starting_bias_path,
+        starting_weights=starting_weights_path,
     )
 
     return phase1_config
@@ -239,7 +260,7 @@ def generate_phase2_config(
 
 
 def run_both_phases_single_dataset(
-    *, working_path, file_root, note, free_flag, testset_value, additional_chain, phase1_add_lr, phase1_mul_lr, phase1_w_l2, phase2_final_lr, init_recycling, phase1_min_resol, domain_segs
+    *, working_path, file_root, note, free_flag, testset_value, additional_chain, phase1_add_lr, phase1_mul_lr, phase1_w_l2, phase2_final_lr, init_recycling, phase1_min_resol, domain_segs, mse_uuid
 ) -> None:
 
     phase1_config = generate_phase1_config(
@@ -254,7 +275,8 @@ def run_both_phases_single_dataset(
         phase1_w_l2=phase1_w_l2,
         init_recycling=init_recycling,
         phase1_min_resol=phase1_min_resol,
-        domain_segs=domain_segs
+        domain_segs=domain_segs,
+        mse_uuid=mse_uuid,
     )
     phase1_uuid = run_refinement(config=phase1_config)
 
@@ -295,7 +317,8 @@ def run_both_phases_all_datasets() -> None:
                 phase1_w_l2=args.phase1_w_l2,
                 init_recycling=args.init_recycling,
                 phase1_min_resol=args.phase1_min_resol,
-                domain_segs=args.domain_segs
+                domain_segs=args.domain_segs,
+                mse_uuid=args.mse_uuid,
             )
             phase1_uuid = run_refinement(config=phase1_config)
 
@@ -331,7 +354,8 @@ def run_both_phases_all_datasets() -> None:
                 phase2_final_lr=args.phase2_final_lr,
                 init_recycling=args.init_recycling,
                 phase1_min_resol=args.phase1_min_resol,
-                domain_segs=args.domain_segs
+                domain_segs=args.domain_segs,
+                mse_uuid=args.mse_uuid
             )
 
 if __name__ == "__main__":
