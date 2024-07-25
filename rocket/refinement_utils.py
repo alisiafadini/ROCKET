@@ -67,6 +67,27 @@ def get_common_ca_ind(pdb1, pdb2):
     return common_ca_ind_1, common_ca_ind_2
 
 
+def get_common_bb_ind(pdb1, pdb2):
+    seq1 = pdb1.sequence
+    seq2 = pdb2.sequence
+    alignment = skbio.alignment.StripedSmithWaterman(seq1)(seq2) # Align sequence with Smith Waterman Algorithm
+    subind_1 = np.arange(alignment.query_begin, alignment.query_end+1)
+    subind_2 = np.arange(alignment.target_begin, alignment.target_end_optimal+1)
+    subsubind_1, subsubind_2 = get_identical_indices(alignment.aligned_query_sequence, alignment.aligned_target_sequence)
+    common_seq1 = subind_1[subsubind_1]
+    common_seq2 = subind_2[subsubind_2]
+    common_ca_ind_1 = [get_pattern_index(pdb1.cra_name, rf'.*-{j}-.*-CA$') for j in common_seq1]
+    common_N_ind_1 = [get_pattern_index(pdb1.cra_name, rf'.*-{j}-.*-N$') for j in common_seq1]
+    common_C_ind_1 = [get_pattern_index(pdb1.cra_name, rf'.*-{j}-.*-C$') for j in common_seq1]
+    common_ca_ind_2 = [get_pattern_index(pdb2.cra_name, rf'.*-{i}-.*-CA$') for i in common_seq2]
+    common_N_ind_2 = [get_pattern_index(pdb2.cra_name, rf'.*-{i}-.*-N$') for i in common_seq2]
+    common_C_ind_2 = [get_pattern_index(pdb2.cra_name, rf'.*-{i}-.*-C$') for i in common_seq2]
+    common_bb_ind_1 = common_ca_ind_1 + common_N_ind_1 + common_C_ind_1
+    common_bb_ind_2 = common_ca_ind_2 + common_N_ind_2 + common_C_ind_2
+    assert (np.array([i[-6:] for i in np.array(pdb1.cra_name)[common_bb_ind_1]]) == np.array([i[-6:] for i in np.array(pdb2.cra_name)[common_bb_ind_2]])).all()
+    return common_bb_ind_1, common_bb_ind_2
+
+
 def get_current_lr(optimizer):
     for param_group in optimizer.param_groups:
         return param_group["lr"]
@@ -279,7 +300,7 @@ def init_bias(
 
 
 def position_alignment(
-    af2_output, device_processed_features, cra_name, best_pos, exclude_res, domain_segs
+    af2_output, device_processed_features, cra_name, best_pos, exclude_res, domain_segs=None
 ):
     xyz_orth_sfc, plddts = rk_coordinates.extract_allatoms(
         af2_output, device_processed_features, cra_name

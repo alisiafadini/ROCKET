@@ -179,6 +179,7 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
     # CA mask and residue numbers for track
     cra_calphas_list, calphas_mask = rk_coordinates.select_CA_from_craname(sfc.cra_name)
     residue_numbers = [int(name.split("-")[1]) for name in cra_calphas_list]
+    
     # Use initial pos B factor instead of best pos B factor for weighted L2
     init_pos_bfactor = sfc.atom_b_iso.clone()
     bfactor_weights = rk_utils.weighting_torch(
@@ -345,7 +346,6 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
                 exclude_res=EXCLUDING_RES,
                 domain_segs=config.domain_segs,
             )
-
             llgloss.sfc.atom_b_iso = pseudo_Bs.detach()
             all_pldtts.append(plddts_res)
             mean_it_plddts.append(np.mean(plddts_res))

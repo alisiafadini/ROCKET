@@ -6,6 +6,42 @@ import torch
 import numpy as np
 from SFC_Torch import PDBParser
 from rocket import utils
+from rocket import coordinates as rk_coordinates
+from rocket import refinement_utils as rkrf_utils
+
+
+class MSElossBB:
+    """
+    Object_oreinted interface to calculate MSE loss for backbone or CA atoms
+    """
+
+    def __init__(self, target: PDBParser, moving: PDBParser, device: torch.device, selection="BB"):
+        """
+        selection: str
+            "BB" for backbone, "CA" for Calpha
+        """
+    
+        self.device = device
+        self.target_cra = target.cra_name
+        self.moving_cra = moving.cra_name
+        self.pdb_obj = moving
+        self.target_pos = torch.tensor(
+            target.atom_pos, device=device, dtype=torch.float32
+        ).clone()
+        self.selection = selection
+        if selection == "BB":
+            self.ind1, self.ind2 = rkrf_utils.get_common_bb_ind(moving, target)
+        elif selection == "CA":
+            self.ind1, self.ind2 = rkrf_utils.get_common_ca_ind(moving, target)
+
+    def forward(self, xyz_ort: torch.Tensor, weights: torch.Tensor):
+        mse_loss = torch.mean(
+            torch.sum(
+                (xyz_ort[self.ind1] - self.target_pos[self.ind2]) ** 2,
+                dim=-1,
+            ) * weights[self.ind1]
+        )
+        return mse_loss
 
 
 class MSEloss:
