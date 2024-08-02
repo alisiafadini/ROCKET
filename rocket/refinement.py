@@ -58,6 +58,7 @@ class RocketRefinmentConfig(BaseModel):
     starting_bias: Union[str, None] = None
     starting_weights: Union[str, None] = None
     uuid_hex: Union[str, None] = None
+    voxel_spacing: float = 4.5
 
     # intercept them upload load/save and cast to string as appropriate
     def to_yaml_file(self, file_path: str) -> None:
@@ -174,6 +175,7 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
         testset_value=config.testset_value,
         added_chain_HKL=constant_fp_added_HKL,
         added_chain_asu=constant_fp_added_asu,
+        spacing=config.voxel_spacing,
     )
     reference_pos = sfc.atom_pos_orth.clone()
     # CA mask and residue numbers for track
@@ -197,6 +199,7 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
         testset_value=config.testset_value,
         added_chain_HKL=constant_fp_added_HKL,
         added_chain_asu=constant_fp_added_asu,
+        spacing=config.voxel_spacing,
     )
 
     if REFPDB:

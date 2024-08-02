@@ -20,6 +20,7 @@ def initial_SFC(
     solvent=True,
     added_chain_HKL=None,
     added_chain_asu=None,
+    spacing=4.5,
 ):
     sfcalculator = SFcalculator(
         pdb_file,
@@ -31,7 +32,7 @@ def initial_SFC(
         device=device,
         n_bins=n_bins
     )
-    sfcalculator.inspect_data(verbose=False)
+    sfcalculator.inspect_data(verbose=False, spacing=spacing)
     sfcalculator.calc_fprotein()
     
     if added_chain_HKL is not None:

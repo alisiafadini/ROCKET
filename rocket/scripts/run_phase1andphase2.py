@@ -121,6 +121,13 @@ def parse_arguments():
         help=("Value for test set"),
     )
 
+    parser.add_argument(
+        "--voxel_spacing",
+        default=4.5,
+        type=float,
+        help=("Voxel spacing for solvent percentage estimation"),
+    ) 
+
     return parser.parse_args()
 
 
@@ -140,6 +147,7 @@ def generate_phase1_config(
     domain_segs: Union[List[int], None] = None,
     note: str = "",
     mse_uuid: Union[str, None] = None,
+    voxel_spacing: float = 4.5
 ) -> RocketRefinmentConfig:
 
     if mse_uuid is None:
@@ -184,6 +192,7 @@ def generate_phase1_config(
         uuid_hex=mse_uuid,
         starting_bias=starting_bias_path,
         starting_weights=starting_weights_path,
+        voxel_spacing=voxel_spacing,
     )
 
     return phase1_config
@@ -203,6 +212,7 @@ def generate_phase2_config(
     phase1_w_l2: float = 1e-11,
     phase2_final_lr: float = 1e-3,
     domain_segs: Union[List[int], None] = None,
+    voxel_spacing: float = 4.5,
     init_recycling: int = 20,
     note: str = "",
 ) -> RocketRefinmentConfig:
@@ -254,13 +264,14 @@ def generate_phase2_config(
         uuid_hex=phase1_uuid,
         starting_bias=starting_bias_path,
         starting_weights=starting_weights_path,
+        voxel_spacing=voxel_spacing,
     )
 
     return phase2_config
 
 
 def run_both_phases_single_dataset(
-    *, working_path, file_root, note, free_flag, testset_value, additional_chain, phase1_add_lr, phase1_mul_lr, phase1_w_l2, phase2_final_lr, init_recycling, phase1_min_resol, domain_segs, mse_uuid
+    *, working_path, file_root, note, free_flag, testset_value, additional_chain, phase1_add_lr, phase1_mul_lr, phase1_w_l2, phase2_final_lr, init_recycling, phase1_min_resol, domain_segs, mse_uuid, voxel_spacing,
 ) -> None:
 
     phase1_config = generate_phase1_config(
@@ -277,6 +288,7 @@ def run_both_phases_single_dataset(
         phase1_min_resol=phase1_min_resol,
         domain_segs=domain_segs,
         mse_uuid=mse_uuid,
+        voxel_spacing=voxel_spacing,
     )
     phase1_uuid = run_refinement(config=phase1_config)
 
@@ -294,6 +306,7 @@ def run_both_phases_single_dataset(
         phase2_final_lr=phase2_final_lr,
         init_recycling=init_recycling,
         domain_segs=domain_segs,
+        voxel_spacing=voxel_spacing,
     )
     phase2_uuid = run_refinement(config=phase2_config)
 
@@ -319,6 +332,7 @@ def run_both_phases_all_datasets() -> None:
                 phase1_min_resol=args.phase1_min_resol,
                 domain_segs=args.domain_segs,
                 mse_uuid=args.mse_uuid,
+                voxel_spacing=args.voxel_spacing,
             )
             phase1_uuid = run_refinement(config=phase1_config)
 
@@ -337,6 +351,7 @@ def run_both_phases_all_datasets() -> None:
                 phase2_final_lr=args.phase2_final_lr,
                 init_recycling=args.init_recycling,
                 domain_segs=args.domain_segs,
+                voxel_spacing=args.voxel_spacing,
             )
             phase2_uuid = run_refinement(config=phase2_config)
 
@@ -355,7 +370,8 @@ def run_both_phases_all_datasets() -> None:
                 init_recycling=args.init_recycling,
                 phase1_min_resol=args.phase1_min_resol,
                 domain_segs=args.domain_segs,
-                mse_uuid=args.mse_uuid
+                mse_uuid=args.mse_uuid,
+                voxel_spacing=args.voxel_spacing,
             )
 
 if __name__ == "__main__":
