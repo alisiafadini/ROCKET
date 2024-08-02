@@ -225,8 +225,13 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
     af_bias.freeze()  # Free all AF2 parameters to save time
 
     # Optimizer settings and initialization
-    lr_a = config.additive_learning_rate
-    lr_m = config.multiplicative_learning_rate
+    # Run smooth stage in phase 1 instead
+    if "phase1" in config.note:
+        lr_a = config.additive_learning_rate
+        lr_m = config.multiplicative_learning_rate
+    elif "phase2" in config.note:
+        lr_a = config.phase2_final_lr
+        lr_m = config.phase2_final_lr
 
     # Initialize best Rfree weights and bias for Phase 1
     best_rfree = float("inf")
@@ -281,12 +286,17 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
             range(config.iterations),
             desc=f"{config.file_root}, uuid: {refinement_run_uuid[:4]}, run: {run_id}",
         )
-        loss_weight = config.l2_weight
-
+        
+        # Run smooth stage in phase 1
+        if "phase1" in config.note:
+            loss_weight = config.l2_weight
+        elif "phase2" in config.note:
+            loss_weight = 0.0
+            
         ######
         early_stopper = rkrf_utils.EarlyStopper(patience=200, min_delta=0.1)
 
-        #### Phase 2 scheduling ######
+        #### Phase 1 scheduling ######
         lr_a_initial = lr_a
         lr_m_initial = lr_m
         loss_weight_initial = loss_weight
@@ -493,16 +503,15 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
                 if early_stopper.early_stop(loss.item()):
                     break
 
-            if "phase2" in config.note:
-                if iteration < smooth_stage_epochs:
+            # Do smooth in last several iterations of phase 1 instead of beginning of phase 2 
+            if "phase1" in config.note:
+                if iteration > (config.iterations - smooth_stage_epochs):
                     lr_a = lr_a_initial * (decay_rate_stage1_add**iteration)
                     lr_m = lr_m_initial * (decay_rate_stage1_mul**iteration)
                     loss_weight = loss_weight_initial * (
                         1 - (iteration / smooth_stage_epochs)
                     )
-                else:
-                    loss_weight = 0.0
-
+                
                 # Update the learning rates in the optimizer
                 optimizer.param_groups[0]["lr"] = lr_a
                 optimizer.param_groups[1]["lr"] = lr_m
