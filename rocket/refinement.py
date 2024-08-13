@@ -52,6 +52,7 @@ class RocketRefinmentConfig(BaseModel):
     additional_chain: bool
     verbose: bool
     l2_weight: float
+    w_plddt: float = 0.0
     # b_threshold: float
     min_resolution: Union[float, None] = None
     max_resolution: Union[float, None] = None
@@ -292,9 +293,9 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
         
         # Run smooth stage in phase 1
         if "phase1" in config.note:
-            loss_weight = config.l2_weight
+            w_L2 = config.l2_weight
         elif "phase2" in config.note:
-            loss_weight = 0.0
+            w_L2 = 0.0
             
         ######
         early_stopper = rkrf_utils.EarlyStopper(patience=200, min_delta=0.1)
@@ -302,7 +303,7 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
         #### Phase 1 scheduling ######
         lr_a_initial = lr_a
         lr_m_initial = lr_m
-        loss_weight_initial = loss_weight
+        w_L2_initial = w_L2
         lr_stage1_final = config.phase2_final_lr
         smooth_stage_epochs = config.smooth_stage_epochs
 
@@ -349,6 +350,9 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
             af2_output, __ = af_bias(
                 device_processed_features, deep_copied_prevs, num_iters=1, bias=True
             )
+
+            # pLDDT loss
+            L_plddt = - torch.mean(af2_output["plddt"])
 
             # Position Kabsch Alignment
             aligned_xyz, plddts_res, pseudo_Bs = rkrf_utils.position_alignment(
@@ -429,7 +433,7 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
             rbr_loss_by_epoch.append(loss_track_pose)
 
             # LLG loss
-            loss = -llgloss(
+            L_llg = -llgloss(
                 optimized_xyz,
                 bin_labels=None,
                 num_batch=config.number_of_batches,
@@ -440,7 +444,7 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
                 added_chain_asu=constant_fp_added_asu,
             )
 
-            llg_estimate = loss.clone().item() / (
+            llg_estimate = L_llg.clone().item() / (
                 config.batch_sub_ratio * config.number_of_batches
             )
             llg_losses.append(llg_estimate)
@@ -493,14 +497,15 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
                 true_sigmas_by_epoch.append(true_sigmas_dict)
 
             #### add an L2 loss to constrain confident atoms ###
-            if loss_weight > 0.0:
+            if w_L2 > 0.0:
                 # use
                 L2_loss = torch.sum(
                     bfactor_weights.unsqueeze(-1) * (optimized_xyz - reference_pos) ** 2
                 )  # / conf_best.shape[0]
-                corrected_loss = loss + loss_weight * L2_loss
-                corrected_loss.backward()
+                loss = L_llg + w_L2 * L2_loss + config.w_plddt * L_plddt
+                loss.backward()
             else:
+                loss = L_llg + config.w_plddt * L_plddt
                 loss.backward()
 
                 if early_stopper.early_stop(loss.item()):
@@ -511,7 +516,7 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
                 if iteration > (config.iterations - smooth_stage_epochs):
                     lr_a = lr_a_initial * (decay_rate_stage1_add**iteration)
                     lr_m = lr_m_initial * (decay_rate_stage1_mul**iteration)
-                    loss_weight = loss_weight_initial * (
+                    w_L2 = w_L2_initial * (
                         1 - (iteration / smooth_stage_epochs)
                     )
                 
@@ -600,8 +605,8 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
 
         # Mean plddt per residue (over iterations)
         np.save(
-            f"{output_directory_path!s}/mean_plddt_res_{run_id}.npy",
-            np.mean(np.array(all_pldtts), axis=0),
+            f"{output_directory_path!s}/plddt_res_{run_id}.npy",
+            np.array(all_pldtts),
         )
 
         # Iteration sigmaA dictionary

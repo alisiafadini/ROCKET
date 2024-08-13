@@ -126,6 +126,13 @@ def parse_arguments():
         default=4.5,
         type=float,
         help=("Voxel spacing for solvent percentage estimation"),
+    )
+
+    parser.add_argument(
+        "--w_plddt",
+        default=0.0,
+        type=float,
+        help=("Weights for plddt loss"),
     ) 
 
     return parser.parse_args()
@@ -215,6 +222,7 @@ def generate_phase2_config(
     voxel_spacing: float = 4.5,
     init_recycling: int = 20,
     note: str = "",
+    w_plddt: float = 0.0,
 ) -> RocketRefinmentConfig:
 
     if phase1_uuid is None:
@@ -247,7 +255,7 @@ def generate_phase2_config(
         domain_segs=domain_segs,
         verbose=False,
         bias_version=3,
-        iterations=500,
+        iterations=250,
         cuda_device=cuda_device,
         solvent=True,
         sfc_scale=True,
@@ -259,6 +267,7 @@ def generate_phase2_config(
         free_flag=free_flag,
         testset_value=testset_value,
         l2_weight=phase1_w_l2,
+        w_plddt=w_plddt,
         b_threshold=10.0,
         note="phase2" + note,
         uuid_hex=phase1_uuid,
@@ -271,7 +280,7 @@ def generate_phase2_config(
 
 
 def run_both_phases_single_dataset(
-    *, working_path, file_root, note, free_flag, testset_value, additional_chain, phase1_add_lr, phase1_mul_lr, phase1_w_l2, phase2_final_lr, init_recycling, phase1_min_resol, domain_segs, mse_uuid, voxel_spacing,
+    *, working_path, file_root, note, free_flag, testset_value, additional_chain, phase1_add_lr, phase1_mul_lr, phase1_w_l2, w_plddt, phase2_final_lr, init_recycling, phase1_min_resol, domain_segs, mse_uuid, voxel_spacing,
 ) -> None:
 
     phase1_config = generate_phase1_config(
@@ -303,6 +312,7 @@ def run_both_phases_single_dataset(
         phase1_add_lr=phase1_add_lr,
         phase1_mul_lr=phase1_mul_lr,
         phase1_w_l2=phase1_w_l2,
+        w_plddt=w_plddt,
         phase2_final_lr=phase2_final_lr,
         init_recycling=init_recycling,
         domain_segs=domain_segs,
@@ -348,6 +358,7 @@ def run_both_phases_all_datasets() -> None:
                 phase1_add_lr=args.phase1_add_lr,
                 phase1_mul_lr=args.phase1_mul_lr,
                 phase1_w_l2=args.phase1_w_l2,
+                w_plddt=args.w_plddt,
                 phase2_final_lr=args.phase2_final_lr,
                 init_recycling=args.init_recycling,
                 domain_segs=args.domain_segs,
@@ -366,6 +377,7 @@ def run_both_phases_all_datasets() -> None:
                 phase1_add_lr=args.phase1_add_lr,
                 phase1_mul_lr=args.phase1_mul_lr,
                 phase1_w_l2=args.phase1_w_l2,
+                w_plddt=args.w_plddt,
                 phase2_final_lr=args.phase2_final_lr,
                 init_recycling=args.init_recycling,
                 phase1_min_resol=args.phase1_min_resol,
