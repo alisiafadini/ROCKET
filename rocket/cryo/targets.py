@@ -71,25 +71,25 @@ class LLGloss(torch.nn.Module):
         # TODO: make sure the correlation works for complex number
 
         Args:
-            Ec_HKL (torch.tensor) : [N_HKL] or [N_batch, N_HKL]
+            Ec_HKL (torch.tensor) : [N_HKL]
         
         Returns:
-            sigmaAs [N_bins] or [N_batch, N_bins]
+            sigmaAs [N_bins]
         """
-
+        
         Ecalc = Ec_HKL.abs().detach().clone()
-        sigmaAs = torch.zeros(*Ecalc.shape[:-1], self.n_bins, dtype=torch.float32, device=self.device)
-        for i in range(self.n_bins):
+        sigmaAs = torch.zeros(self.sfc.n_bins, dtype=torch.float32, device=self.device)
+        for i in range(self.sfc.n_bins):
             index_i = self.sfc.bins == i
             Eobs_i = self.Emean[index_i].square() # [N_subset]
-            Ecalc_i = Ecalc[..., index_i].square() # [N_batch, N_subset] or [N_subset]
+            Ecalc_i = Ecalc[index_i].square() # [N_subset]
             # Compute correlation coefficient
             Eoi_centered = Eobs_i - Eobs_i.mean()
             Eci_centered = Ecalc_i - torch.mean(Ecalc_i, dim=-1, keepdims=True)
             Covi = (Eci_centered @ Eoi_centered) / (Eoi_centered.shape[0] -1)
             Eoi_std = torch.std(Eoi_centered, correction=0)
             Eci_std = torch.std(Eci_centered, dim=-1, correction=0)
-            sigmaAs[..., i] = (Covi / (Eoi_std * Eci_std)).clamp(min=0.001, max=0.999).sqrt()
+            sigmaAs[i] = (Covi / (Eoi_std * Eci_std)).clamp(min=0.001, max=0.999).sqrt()
         return sigmaAs
 
     def freeze_sigmaA(self):
@@ -130,7 +130,7 @@ class LLGloss(torch.nn.Module):
         # We have normalized the Ep above, and the scales are optimized to match Emean, 
         # so we what we got is already Ecalc 
         Ec_HKL = self.sfc.calc_ftotal()
-        self.assign_sigmaAs(Ec_HKL)
+        self.sigmaAs = self.assign_sigmaAs(Ec_HKL)
 
         return Ec_HKL
 
