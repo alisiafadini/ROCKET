@@ -38,14 +38,13 @@ class LLGloss(torch.nn.Module):
         self,
         sfc: SFcalculator,
         mtz_file: str,
-        device: torch.device,
         resol_min=None,
         resol_max=None,
     ) -> None:
         super().__init__()
         self.sfc = sfc
-        self.device = device
-        data_dict = cryo_utils.load_tng_data(mtz_file, device=device)
+        self.device = sfc.device
+        data_dict = cryo_utils.load_tng_data(mtz_file, device=self.device)
 
         self.register_buffer("Emean", data_dict["Emean"])
         self.Emean: torch.Tensor
@@ -65,9 +64,33 @@ class LLGloss(torch.nn.Module):
         )
         self.working_set = resol_bool
 
-    def assign_sigmaAs(self, Ecalc, subset="working", requires_grad=True):
-        # here can call the function from cctbx
-        ...
+    def assign_sigmaAs(self, Ec_HKL):
+        """
+        This function is copied from SFC, compute sigmaA using corr(Eo, Ec)
+
+        # TODO: make sure the correlation works for complex number
+
+        Args:
+            Ec_HKL (torch.tensor) : [N_HKL] or [N_batch, N_HKL]
+        
+        Returns:
+            sigmaAs [N_bins] or [N_batch, N_bins]
+        """
+
+        Ecalc = Ec_HKL.abs().detach().clone()
+        sigmaAs = torch.zeros(*Ecalc.shape[:-1], self.n_bins, dtype=torch.float32, device=self.device)
+        for i in range(self.n_bins):
+            index_i = self.sfc.bins == i
+            Eobs_i = self.Emean[index_i].square() # [N_subset]
+            Ecalc_i = Ecalc[..., index_i].square() # [N_batch, N_subset] or [N_subset]
+            # Compute correlation coefficient
+            Eoi_centered = Eobs_i - Eobs_i.mean()
+            Eci_centered = Ecalc_i - torch.mean(Ecalc_i, dim=-1, keepdims=True)
+            Covi = (Eci_centered @ Eoi_centered) / (Eoi_centered.shape[0] -1)
+            Eoi_std = torch.std(Eoi_centered, correction=0)
+            Eci_std = torch.std(Eci_centered, dim=-1, correction=0)
+            sigmaAs[..., i] = (Covi / (Eoi_std * Eci_std)).clamp(min=0.001, max=0.999).sqrt()
+        return sigmaAs
 
     def freeze_sigmaA(self):
         self.sigmaAs = [sigmaA.requires_grad_(False) for sigmaA in self.sigmaAs]
@@ -78,50 +101,38 @@ class LLGloss(torch.nn.Module):
     def compute_Ecalc(
         self,
         xyz_orth,
-        solvent=True,
-        return_Fc=False,
         update_scales=False,
         scale_steps=10,
         scale_initialize=False,
-        added_chain_HKL=None,
-        added_chain_asu=None,
+        # added_chain_HKL=None,
+        # added_chain_asu=None,
     ) -> torch.Tensor:
+        
         self.sfc.calc_fprotein(atoms_position_tensor=xyz_orth)
+        # replace with its normalized Ep
+        Ep = self.sfc.calc_Ec(self.sfc.Fprotein_HKL)
+        self.sfc.Fprotein_HKL = Ep
 
-        if added_chain_HKL is not None:
-            self.sfc.Fprotein_HKL = self.sfc.Fprotein_HKL + added_chain_HKL
-            self.sfc.Fprotein_asu = self.sfc.Fprotein_asu + added_chain_asu
+        # if added_chain_HKL is not None:
+        #     self.sfc.Fprotein_HKL = self.sfc.Fprotein_HKL + added_chain_HKL
+        #     self.sfc.Fprotein_asu = self.sfc.Fprotein_asu + added_chain_asu
 
-        if solvent:
-            self.sfc.calc_fsolvent()
-            if update_scales:
-                self.sfc.get_scales_adam(
-                    lr=0.01,
-                    n_steps=scale_steps,
-                    sub_ratio=0.7,
-                    initialize=scale_initialize,
-                )
-            Fc = self.sfc.calc_ftotal()
-        else:
-            # MH note: we need scales here, even without solvent contribution
-            self.sfc.Fmask_HKL = torch.zeros_like(self.sfc.Fprotein_HKL)
-            if update_scales:
-                self.sfc.get_scales_adam(
-                    lr=0.01,
-                    n_steps=scale_steps,
-                    sub_ratio=0.7,
-                    initialize=scale_initialize,
-                )
-            Fc = self.sfc.calc_ftotal()
+        if update_scales:
+            # We used Emean to override the Fo attribute in SFC, 
+            # so the scales are optimized to match Ep and Emean
+            self.sfc.get_scales_adam(
+                lr=0.01,
+                n_steps=scale_steps,
+                sub_ratio=0.7,
+                initialize=scale_initialize,
+            )
+        
+        # We have normalized the Ep above, and the scales are optimized to match Emean, 
+        # so we what we got is already Ecalc 
+        Ec_HKL = self.sfc.calc_ftotal()
+        self.assign_sigmaAs(Ec_HKL)
 
-        Fm = cryo_sf.ftotal_amplitudes(Fc, self.sfc.dHKL, sort_by_res=True)
-
-        Ecalc = Fm  ### or do we want to calculate sigmaAs and then return Ecalc from there? # TODO
-
-        if return_Fc:
-            return Ecalc, Fc
-        else:
-            return Ecalc
+        return Ec_HKL
 
     def forward(
         self,
