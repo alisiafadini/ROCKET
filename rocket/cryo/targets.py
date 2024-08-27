@@ -238,6 +238,5 @@ class LLGloss(torch.nn.Module):
                 ).sum()
                 # print("Batch {}".format(j), llg_ij.item())
                 llg = llg + llg_ij
-                print("llg is ", llg)
 
         return llg
