@@ -8,6 +8,7 @@ from SFC_Torch import SFcalculator
 from rocket.cryo import utils as cryo_utils
 from rocket import utils as rk_utils
 from functools import partial
+import math
 
 
 class LLGloss(torch.nn.Module):
@@ -123,6 +124,7 @@ class LLGloss(torch.nn.Module):
             self.sfc,
             oversampling_factor,
             self.sfc.dHKL,
+            plot=True,
         )
 
         return sigmaAs
@@ -164,8 +166,8 @@ class LLGloss(torch.nn.Module):
 
         # We have normalized the Ep above, and the scales are optimized to match Emean,
         # so we what we got is already Ecalc
-        Ec_HKL = self.sfc.calc_ftotal()
-        # Ec_HKL = Ep
+        # Ec_HKL = self.sfc.calc_ftotal()
+        Ec_HKL = Ep
         self.sigmaAs = self.assign_sigmaAs_read(Ec_HKL)
 
         return Ec_HKL
@@ -219,11 +221,10 @@ class LLGloss(torch.nn.Module):
             index_i = self.sfc.bins == label
             # if sum(index_i) == 0:
             #    continue
-            PI_on_180 = 0.017453292519943295
             Ecalc_i = torch.abs(Ecalc[self.working_set][index_i])
-            Ecalc_phi_i = torch.angle(Ecalc[self.working_set][index_i]) / PI_on_180
+            Ecalc_phi_i = torch.angle(Ecalc[self.working_set][index_i])
             Eob_i = self.Emean[self.working_set][index_i]
-            Eob_phi_i = self.PHIEmean[self.working_set][index_i]
+            Eob_phi_i = self.PHIEmean[self.working_set][index_i] * (torch.pi / 180)
             Dobs_i = self.Dobs[self.working_set][index_i]
 
             sigmaA_i = self.sigmaAs[int(i)]
@@ -239,5 +240,6 @@ class LLGloss(torch.nn.Module):
                 ).sum()
                 # print("Batch {}".format(j), llg_ij.item())
                 llg = llg + llg_ij
+                print("llg is ", llg)
 
         return llg

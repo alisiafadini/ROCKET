@@ -193,10 +193,11 @@ def plot_sigmaA(xdat, ydat, linlogsiga, logsiga_combined):
 
 def llgcryo_calculate(E_amp, E_phi, Ec_amp, Ec_phi, sigmaA, dobs):
 
-    cos_phi_diff = torch.cos(E_phi - Ec_phi)
+    cos_phi_diff = torch.cos(Ec_phi - E_phi)
     term1 = (
         2 / (1 - dobs**2 * sigmaA**2) * dobs * sigmaA * E_amp * Ec_amp * cos_phi_diff
     )
+
     term2 = (dobs**2 * sigmaA**2 * (E_amp**2 + Ec_amp**2)) / (1 - dobs**2 * sigmaA**2)
     term3 = torch.log(1 - dobs**2 * sigmaA**2)
 
