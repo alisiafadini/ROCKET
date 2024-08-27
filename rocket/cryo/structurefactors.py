@@ -47,8 +47,9 @@ def initial_cryoSFC(
     sfcalculator.calc_fprotein()
 
     # normalize the Fp, use it to replace the Fp, initialize scales
-    Ep = sfcalculator.calc_Ec(sfcalculator.Fprotein_HKL)
-    sfcalculator.Fprotein_HKL = Ep
+    # note @ Aug 27 by MH: treat Emean as Fmean
+    # Ep = sfcalculator.calc_Ec(sfcalculator.Fprotein_HKL)
+    # sfcalculator.Fprotein_HKL = Ep
     sfcalculator.get_scales_adam()
 
     return sfcalculator
