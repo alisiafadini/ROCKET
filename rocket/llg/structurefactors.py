@@ -30,16 +30,16 @@ def initial_SFC(
         set_experiment=True,
         testset_value=testset_value,
         device=device,
-        n_bins=n_bins
+        n_bins=n_bins,
     )
     sfcalculator.inspect_data(verbose=False, spacing=spacing)
     sfcalculator.calc_fprotein()
-    
+
     if added_chain_HKL is not None:
         sfcalculator.Fprotein_HKL = sfcalculator.Fprotein_HKL + added_chain_HKL
         sfcalculator.Fprotein_asu = sfcalculator.Fprotein_asu + added_chain_asu
-        sfcalculator.solventpct = 1 - (1 - sfcalculator.solventpct)*2
-    
+        sfcalculator.solventpct = 1 - (1 - sfcalculator.solventpct) * 2
+
     if solvent:
         sfcalculator.calc_fsolvent()
     else:
@@ -50,11 +50,13 @@ def initial_SFC(
 
 def ftotal_amplitudes(Ftotal, dHKL, sort_by_res=True):
     F_mag = torch.abs(Ftotal)
-    dHKL_tensor = torch.from_numpy(dHKL)
+
     if sort_by_res:
+        dHKL_tensor = torch.from_numpy(dHKL)
         sorted_indices = torch.argsort(dHKL_tensor, descending=True)
-        F_out_mag = F_mag[sorted_indices]
-    return F_out_mag
+        return F_mag[sorted_indices]
+
+    return F_mag
 
 
 def ftotal_phis(Fc, dHKL, sort_by_res=True):
