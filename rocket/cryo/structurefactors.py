@@ -1,37 +1,21 @@
-"""
-Functions relating model structure factor manipulation and normalization
-"""
-
 import torch
 import numpy as np
 from SFC_Torch import SFcalculator
 import SFC_Torch as SFC
 
 
-def ftotal_amplitudes(Ftotal, dHKL, sort_by_res=True):
-    F_mag = torch.abs(Ftotal)
-    dHKL_tensor = torch.from_numpy(dHKL)
-    if sort_by_res:
-        sorted_indices = torch.argsort(dHKL_tensor, descending=True)
-        F_out_mag = F_mag[sorted_indices]
-    return F_out_mag
-
-
 def initial_cryoSFC(
-        pdb_file,
-        mtz_file,
-        Elabel,
-        PHIElabel,
-        device,
-        n_bins=15,
-    ):
+    pdb_file,
+    mtz_file,
+    Elabel,
+    PHIElabel,
+    device,
+    n_bins=15,
+):
     """
     Initialize a SFC for docking target in cryoEM problem.
-
     Note, we override the attribute .Fo to store Emean, to easily compute scales
-
     Also no freeflag is needed for cryoEM cases
-
     Args:
         pdb_file  : path to initial dock model
         mtz_file  : path to map.mtz file
@@ -39,7 +23,6 @@ def initial_cryoSFC(
         PHIElabel : column name for PHIEmean
         device    : torch device
         n_bins    : number of bins in the resolution binning
-
     Return:
         SFcalculator with attributes
         .Fo is Emean from map.mtz
@@ -63,12 +46,9 @@ def initial_cryoSFC(
     # calculate fprotein from default pdb file, no solvent is needed
     sfcalculator.calc_fprotein()
 
-    # normalize the Fp, use it to replace the Fp, initialize scales 
+    # normalize the Fp, use it to replace the Fp, initialize scales
     Ep = sfcalculator.calc_Ec(sfcalculator.Fprotein_HKL)
     sfcalculator.Fprotein_HKL = Ep
     sfcalculator.get_scales_adam()
 
     return sfcalculator
-
-
-

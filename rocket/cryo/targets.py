@@ -2,13 +2,11 @@
 LLG targets for cryoEM data
 """
 
-import time
 import torch
 import numpy as np
 from SFC_Torch import SFcalculator
 from rocket.cryo import utils as cryo_utils
-from rocket.cryo import structurefactors as cryo_sf
-from rocket import utils
+from rocket import utils as rk_utils
 from functools import partial
 
 
@@ -64,7 +62,7 @@ class LLGloss(torch.nn.Module):
         )
         self.working_set = resol_bool
 
-    def assign_sigmaAs(self, Ec_HKL):
+    def assign_sigmaAs_sfc(self, Ec_HKL):
         """
         This function is copied from SFC, compute sigmaA using corr(Eo, Ec)
 
@@ -72,24 +70,61 @@ class LLGloss(torch.nn.Module):
 
         Args:
             Ec_HKL (torch.tensor) : [N_HKL]
-        
+
         Returns:
             sigmaAs [N_bins]
         """
-        
+
         Ecalc = Ec_HKL.abs().detach().clone()
         sigmaAs = torch.zeros(self.sfc.n_bins, dtype=torch.float32, device=self.device)
         for i in range(self.sfc.n_bins):
             index_i = self.sfc.bins == i
-            Eobs_i = self.Emean[index_i].square() # [N_subset]
-            Ecalc_i = Ecalc[index_i].square() # [N_subset]
+            Eobs_i = self.Emean[index_i].square()  # [N_subset]
+            Ecalc_i = Ecalc[index_i].square()  # [N_subset]
             # Compute correlation coefficient
             Eoi_centered = Eobs_i - Eobs_i.mean()
             Eci_centered = Ecalc_i - torch.mean(Ecalc_i, dim=-1, keepdims=True)
-            Covi = (Eci_centered @ Eoi_centered) / (Eoi_centered.shape[0] -1)
+            Covi = (Eci_centered @ Eoi_centered) / (Eoi_centered.shape[0] - 1)
             Eoi_std = torch.std(Eoi_centered, correction=0)
             Eci_std = torch.std(Eci_centered, dim=-1, correction=0)
             sigmaAs[i] = (Covi / (Eoi_std * Eci_std)).clamp(min=0.001, max=0.999).sqrt()
+        return sigmaAs
+
+    def assign_sigmaAs_read(self, Ec_HKL):
+        """
+        This function is copied from SFC, compute sigmaA using corr(Eo, Ec)
+
+        # TODO: make sure the correlation works for complex number
+
+        Args:
+            Ec_HKL (torch.tensor) : [N_HKL]
+
+        Returns:
+            sigmaAs [N_bins]
+        """
+
+        # Ecalc = Ec_HKL.abs().detach().clone()
+        Ecalc = Ec_HKL.detach().clone()
+
+        oversampling_factor = 4
+        Eobs_amp = self.Emean
+        Eobs_phi = self.PHIEmean
+
+        PI_on_180 = 0.017453292519943295
+        Ecalc_amp = torch.abs(Ecalc)
+        Ecalc_phi = torch.angle(Ecalc) / PI_on_180
+
+        sigmaAs = cryo_utils.sigmaA_from_model_in_map(
+            rk_utils.assert_numpy(Eobs_amp),
+            rk_utils.assert_numpy(Eobs_phi),
+            rk_utils.assert_numpy(self.Dobs),
+            rk_utils.assert_numpy(Ecalc_amp),
+            rk_utils.assert_numpy(Ecalc_phi),
+            self.sfc,
+            oversampling_factor,
+            self.sfc.dHKL,
+        )
+
         return sigmaAs
 
     def freeze_sigmaA(self):
@@ -107,7 +142,7 @@ class LLGloss(torch.nn.Module):
         # added_chain_HKL=None,
         # added_chain_asu=None,
     ) -> torch.Tensor:
-        
+
         self.sfc.calc_fprotein(atoms_position_tensor=xyz_orth)
         # replace with its normalized Ep
         Ep = self.sfc.calc_Ec(self.sfc.Fprotein_HKL)
@@ -118,7 +153,7 @@ class LLGloss(torch.nn.Module):
         #     self.sfc.Fprotein_asu = self.sfc.Fprotein_asu + added_chain_asu
 
         if update_scales:
-            # We used Emean to override the Fo attribute in SFC, 
+            # We used Emean to override the Fo attribute in SFC,
             # so the scales are optimized to match Ep and Emean
             self.sfc.get_scales_adam(
                 lr=0.01,
@@ -126,11 +161,12 @@ class LLGloss(torch.nn.Module):
                 sub_ratio=0.7,
                 initialize=scale_initialize,
             )
-        
-        # We have normalized the Ep above, and the scales are optimized to match Emean, 
-        # so we what we got is already Ecalc 
+
+        # We have normalized the Ep above, and the scales are optimized to match Emean,
+        # so we what we got is already Ecalc
         Ec_HKL = self.sfc.calc_ftotal()
-        self.sigmaAs = self.assign_sigmaAs(Ec_HKL)
+        # Ec_HKL = Ep
+        self.sigmaAs = self.assign_sigmaAs_read(Ec_HKL)
 
         return Ec_HKL
 
@@ -166,34 +202,40 @@ class LLGloss(torch.nn.Module):
 
         Ecalc = self.compute_Ecalc(
             xyz_ort,
-            solvent=solvent,
+            # solvent=solvent,
             update_scales=update_scales,
-            added_chain_HKL=added_chain_HKL,
-            added_chain_asu=added_chain_asu,
+            # added_chain_HKL=added_chain_HKL,
+            # added_chain_asu=added_chain_asu,
         )
         llg = 0.0
 
         if bin_labels is None:
-            bin_labels = self.unique_bins
+            # bin_labels = self.unique_bins
+            bin_labels = self.sfc.n_bins
 
-        for i, label in enumerate(bin_labels):
-            index_i = self.bin_labels[self.working_set] == label
+        # for i, label in enumerate(bin_labels):
+        for i, label in enumerate(range(bin_labels)):
+            # index_i = self.bin_labels[self.working_set] == label
+            index_i = self.sfc.bins == label
             # if sum(index_i) == 0:
             #    continue
-            Ecalc_i = Ecalc[self.working_set][index_i]
-            Eob_i = self.Eobs[self.working_set][index_i]
-            Centric_i = self.Centric[self.working_set][index_i]
+            PI_on_180 = 0.017453292519943295
+            Ecalc_i = torch.abs(Ecalc[self.working_set][index_i])
+            Ecalc_phi_i = torch.angle(Ecalc[self.working_set][index_i]) / PI_on_180
+            Eob_i = self.Emean[self.working_set][index_i]
+            Eob_phi_i = self.PHIEmean[self.working_set][index_i]
             Dobs_i = self.Dobs[self.working_set][index_i]
 
             sigmaA_i = self.sigmaAs[int(i)]
             for j in range(num_batch):
                 sub_boolean_mask = np.random.rand(len(Eob_i)) < sub_ratio
-                llg_ij = cryo_utils.llgItot_calculate(
+                llg_ij = cryo_utils.llgcryo_calculate(
+                    Eob_i[sub_boolean_mask],
+                    Eob_phi_i[sub_boolean_mask],
+                    Ecalc_i[sub_boolean_mask],
+                    Ecalc_phi_i[sub_boolean_mask],
                     sigmaA_i,
                     Dobs_i[sub_boolean_mask],
-                    Eob_i[sub_boolean_mask],
-                    Ecalc_i[sub_boolean_mask],
-                    Centric_i[sub_boolean_mask],
                 ).sum()
                 # print("Batch {}".format(j), llg_ij.item())
                 llg = llg + llg_ij
