@@ -216,7 +216,7 @@ class LLGloss(torch.nn.Module):
         # for i, label in enumerate(bin_labels):
         for i, label in enumerate(range(bin_labels)):
             # index_i = self.bin_labels[self.working_set] == label
-            index_i = self.sfc.bins == label
+            index_i = self.sfc.bins[self.working_set] == label
             # if sum(index_i) == 0:
             #    continue
             Ecalc_i = torch.abs(Ecalc[self.working_set][index_i])

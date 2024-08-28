@@ -118,7 +118,7 @@ def sigmaA_from_model_in_map(
     plot=False,
 ):
     n_bins = sfc.n_bins
-    model_sigmaA = np.zeros_like(expectE_amp, dtype=np.float64)
+    model_sigmaA = np.zeros_like(expectE_amp, dtype=np.float32)
     xdat = []
     ydat = []
     wdat = []
