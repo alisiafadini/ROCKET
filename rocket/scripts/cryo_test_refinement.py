@@ -21,7 +21,8 @@ PRESET = "model_1"
 EXCLUDING_RES = None
 
 target_id = "8ybe"
-path = "/n/hekstra_lab/people/minhuan/projects/AF2_refine/cryoEM_dev/test_systems"
+# path = "/n/hekstra_lab/people/minhuan/projects/AF2_refine/cryoEM_dev/test_systems"
+path = "/net/cci/alisia/cryo_rocket"
 mtz_file = f"{path}/{target_id}/{target_id}-Edata.mtz"
 input_pdb = f"{path}/{target_id}/{target_id}-pred-aligned.pdb"
 note = "__"
@@ -125,7 +126,11 @@ for n in range(num_of_runs):
         # Avoid passing through graph a second time
         device_processed_features[feature_key] = features_at_it_start.detach().clone()
 
-        print(f"{iteration} A ", f"{torch.cuda.max_memory_allocated()/1024**3:.1f}G", flush=True)
+        print(
+            f"{iteration} A ",
+            f"{torch.cuda.max_memory_allocated()/1024**3:.1f}G",
+            flush=True,
+        )
 
         # AF pass
         if iteration == 0:
@@ -143,7 +148,11 @@ for n in range(num_of_runs):
             device_processed_features, deep_copied_prevs, num_iters=1, bias=True
         )
 
-        print(f"{iteration} B ", f"{torch.cuda.max_memory_allocated()/1024**3:.1f}G", flush=True)
+        print(
+            f"{iteration} B ",
+            f"{torch.cuda.max_memory_allocated()/1024**3:.1f}G",
+            flush=True,
+        )
 
         # Position Kabsch Alignment
         aligned_xyz, plddts_res, pseudo_Bs = rkrf_utils.position_alignment(
@@ -154,27 +163,39 @@ for n in range(num_of_runs):
             exclude_res=EXCLUDING_RES,
         )
 
-        print(f"{iteration} C ", f"{torch.cuda.max_memory_allocated()/1024**3:.1f}G", flush=True)
         cryo_llgloss.sfc.atom_b_iso = pseudo_Bs.detach()
         all_pldtts.append(plddts_res)
         mean_it_plddts.append(np.mean(plddts_res))
+        print(
+            f"{iteration} C ",
+            f"{torch.cuda.max_memory_allocated()/1024**3:.1f}G",
+            flush=True,
+        )
 
         # Calculate (or refine) sigmaA
-        test_Ec = cryo_llgloss.compute_Ecalc(aligned_xyz)
-        sigmas = cryo_llgloss.sigmaAs
-
         cryo_llgloss.sfc.atom_pos_orth = aligned_xyz.detach().clone()
         cryo_llgloss.sfc.savePDB(
             f"{output_directory_path!s}/{run_id}_{iteration}_preRBR.pdb"
+        )
+
+        print(
+            f"{iteration} D ",
+            f"{torch.cuda.max_memory_allocated()/1024**3:.1f}G",
+            flush=True,
         )
 
         # LLG loss
         L_llg = -cryo_llgloss(
             aligned_xyz,  # TODO add RBR step
         )
-        llg_losses.append(L_llg.clone().item())
 
-        print(f"{iteration} D ", f"{torch.cuda.max_memory_allocated()/1024**3:.1f}G", flush=True)
+        print(
+            f"{iteration} E ",
+            f"{torch.cuda.max_memory_allocated()/1024**3:.1f}G",
+            flush=True,
+        )
+        sigmas = cryo_llgloss.sigmaAs
+        llg_losses.append(L_llg.clone().item())
 
         # check if current loss is the best so far
         if llg_losses[-1] < best_loss:
@@ -189,12 +210,6 @@ for n in range(num_of_runs):
             best_iter = iteration
             best_pos = aligned_xyz.detach().clone()  # TODO should be optimized
 
-        # llgloss.sfc.atom_pos_orth = optimized_xyz
-        # Save postRBR PDB
-        #    llgloss.sfc.savePDB(
-        #        f"{output_directory_path!s}/{run_id}_{iteration}_postRBR.pdb"
-        #    )
-
         progress_bar.set_postfix(
             LLG=f"{L_llg.clone().item():.2f}",
             memory=f"{torch.cuda.max_memory_allocated()/1024**3:.1f}G",
@@ -208,7 +223,11 @@ for n in range(num_of_runs):
 
         L_llg.backward()
         optimizer.step()
-        print(f"{iteration} F ", f"{torch.cuda.max_memory_allocated()/1024**3:.1f}G", flush=True)
+        print(
+            f"{iteration} F ",
+            f"{torch.cuda.max_memory_allocated()/1024**3:.1f}G",
+            flush=True,
+        )
 
         time_by_epoch.append(time.time() - start_time)
         memory_by_epoch.append(torch.cuda.max_memory_allocated() / 1024**3)

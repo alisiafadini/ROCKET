@@ -165,7 +165,7 @@ class LLGloss(torch.nn.Module):
         # Note @ Aug 26 by MH, do scaling first, then normalizationg
         Fc_HKL = self.sfc.calc_ftotal()
         # replace with its normalized Ep
-        Ec_HKL = self.sfc.calc_Ec(Fc_HKL)
+        Ec_HKL = Fc_HKL  # self.sfc.calc_Ec(Fc_HKL)
         self.sigmaAs = self.assign_sigmaAs_read(Ec_HKL)
 
         return Ec_HKL
