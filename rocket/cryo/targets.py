@@ -146,6 +146,7 @@ class LLGloss(torch.nn.Module):
     ) -> torch.Tensor:
 
         self.sfc.calc_fprotein(atoms_position_tensor=xyz_orth)
+
         # if added_chain_HKL is not None:
         #     self.sfc.Fprotein_HKL = self.sfc.Fprotein_HKL + added_chain_HKL
         #     self.sfc.Fprotein_asu = self.sfc.Fprotein_asu + added_chain_asu
@@ -163,10 +164,20 @@ class LLGloss(torch.nn.Module):
         # We have normalized the Ep above, and the scales are optimized to match Emean,
         # so we what we got is already Ecalc
         # Note @ Aug 26 by MH, do scaling first, then normalizationg
-        Fc_HKL = self.sfc.calc_ftotal()
+        # Fc_HKL = self.sfc.calc_ftotal()
         # replace with its normalized Ep
-        Ec_HKL = Fc_HKL  # self.sfc.calc_Ec(Fc_HKL)
-        self.sigmaAs = self.assign_sigmaAs_read(Ec_HKL)
+        # Ec_HKL = self.sfc.calc_Ec(Fc_HKL)
+
+        ## testing
+        Ep = self.sfc.calc_Ec(self.sfc.Fprotein_HKL)
+        self.sfc.Fprotein_HKL = Ep
+        Fc_HKL = self.sfc.calc_ftotal()
+        Ec_HKL = self.sfc.calc_Ec(Fc_HKL)
+        ###
+
+        self.sigmaAs = self.assign_sigmaAs_read(
+            Ec_HKL
+        )  # torch.full((111471,), 0.15)  #
 
         return Ec_HKL
 
@@ -238,5 +249,4 @@ class LLGloss(torch.nn.Module):
                 ).sum()
                 # print("Batch {}".format(j), llg_ij.item())
                 llg = llg + llg_ij
-
         return llg
