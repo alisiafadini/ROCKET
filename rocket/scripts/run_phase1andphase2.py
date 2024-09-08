@@ -101,6 +101,13 @@ def parse_arguments():
     )
 
     parser.add_argument(
+        "--smooth_stage_epochs",
+        default=50,
+        type=int,
+        help=("number of smooth stages in phase1"),
+    )
+
+    parser.add_argument(
         "--phase1_min_resol",
         default=3.0,
         type=float,
@@ -151,6 +158,8 @@ def generate_phase1_config(
     init_recycling: int = 20,
     phase1_min_resol: float = 4.0,
     phase1_w_l2: float = 1e-11,
+    phase2_final_lr: float = 1e-3,
+    smooth_stage_epochs: int = 50,
     domain_segs: Union[List[int], None] = None,
     note: str = "",
     mse_uuid: Union[str, None] = None,
@@ -190,10 +199,12 @@ def generate_phase1_config(
         refine_sigmaA=True,
         additive_learning_rate=additive_learning_rate,
         multiplicative_learning_rate=multiplicative_learning_rate,
+        phase2_final_lr=phase2_final_lr,
+        smooth_stage_epochs=smooth_stage_epochs,
         free_flag=free_flag,
         testset_value=testset_value,
         l2_weight=phase1_w_l2,
-        b_threshold=10.0,
+        # b_threshold=10.0,
         min_resolution=phase1_min_resol,
         note="phase1" + note,
         uuid_hex=mse_uuid,
@@ -280,7 +291,7 @@ def generate_phase2_config(
 
 
 def run_both_phases_single_dataset(
-    *, working_path, file_root, note, free_flag, testset_value, additional_chain, phase1_add_lr, phase1_mul_lr, phase1_w_l2, w_plddt, phase2_final_lr, init_recycling, phase1_min_resol, domain_segs, mse_uuid, voxel_spacing,
+    *, working_path, file_root, note, free_flag, testset_value, additional_chain, phase1_add_lr, phase1_mul_lr, phase1_w_l2, w_plddt, phase2_final_lr, smooth_stage_epochs, init_recycling, phase1_min_resol, domain_segs, mse_uuid, voxel_spacing,
 ) -> None:
 
     phase1_config = generate_phase1_config(
@@ -294,6 +305,8 @@ def run_both_phases_single_dataset(
         multiplicative_learning_rate=phase1_mul_lr,
         phase1_w_l2=phase1_w_l2,
         init_recycling=init_recycling,
+        phase2_final_lr=phase2_final_lr,
+        smooth_stage_epochs=smooth_stage_epochs,
         phase1_min_resol=phase1_min_resol,
         domain_segs=domain_segs,
         mse_uuid=mse_uuid,
@@ -338,6 +351,8 @@ def run_both_phases_all_datasets() -> None:
                 additive_learning_rate=args.phase1_add_lr,
                 multiplicative_learning_rate=args.phase1_mul_lr,
                 phase1_w_l2=args.phase1_w_l2,
+                phase2_final_lr=args.phase2_final_lr,
+                smooth_stage_epochs=args.smooth_stage_epochs,
                 init_recycling=args.init_recycling,
                 phase1_min_resol=args.phase1_min_resol,
                 domain_segs=args.domain_segs,
