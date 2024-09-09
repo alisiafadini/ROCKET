@@ -285,6 +285,8 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
         all_pldtts = []
         mean_it_plddts = []
         absolute_feats_changes = []
+        bias_gradient_scales = []
+        weights_gradient_scales = []
 
         progress_bar = tqdm(
             range(config.iterations),
@@ -353,6 +355,13 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
 
             # pLDDT loss
             L_plddt = - torch.mean(af2_output["plddt"])
+            
+            # get plddt loss gradient scales
+            L_plddt.backward(retain_graph=True)
+            grad_bias_plddt_scale = optimizer.param_groups[0]["params"][0].grad.square().mean().sqrt().item()
+            grad_weights_plddt_scale = optimizer.param_groups[1]["params"][0].grad.square().mean().sqrt().item()
+            # optimizer.zero_grad()
+            
 
             # Position Kabsch Alignment
             aligned_xyz, plddts_res, pseudo_Bs = rkrf_utils.position_alignment(
@@ -444,6 +453,13 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
                 added_chain_asu=constant_fp_added_asu,
             )
 
+            # get llg loss gradient scale
+            L_llg.backward(retain_graph=True)
+            bias_llg_grad = optimizer.param_groups[0]["params"][0].grad.clone()
+            weights_llg_grad = optimizer.param_groups[1]["params"][0].grad.clone()
+            grad_bias_llg_scale = bias_llg_grad.square().mean().sqrt().item()
+            grad_weights_llg_scale = weights_llg_grad.square().mean().sqrt().item()
+
             llg_estimate = L_llg.clone().item() / (
                 config.batch_sub_ratio * config.number_of_batches
             )
@@ -499,18 +515,33 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
             #### add an L2 loss to constrain confident atoms ###
             if w_L2 > 0.0:
                 # use
-                L2_loss = torch.sum(
+                L2_loss = w_L2 * torch.sum(
                     bfactor_weights.unsqueeze(-1) * (optimized_xyz - reference_pos) ** 2
                 )  # / conf_best.shape[0]
                 loss = L_llg + w_L2 * L2_loss + config.w_plddt * L_plddt
-                loss.backward()
+                # loss.backward()
+
+                # get L2 loss gradient scale
+                L2_loss.backward(retain_graph=True)
+                bias_L2_grad = optimizer.param_groups[0]["params"][0].grad.clone() - bias_llg_grad
+                weights_L2_grad = optimizer.param_groups[1]["params"][0].grad.clone() - weights_llg_grad
+                grad_bias_L2_scale = bias_L2_grad.square().mean().sqrt().item()
+                grad_weights_L2_scale = weights_L2_grad.square().mean().sqrt().item()
+
             else:
+                pass
                 loss = L_llg + config.w_plddt * L_plddt
-                loss.backward()
+                grad_bias_L2_scale = 0.0
+                grad_weights_L2_scale = 0.0
+                # loss.backward()
 
                 if early_stopper.early_stop(loss.item()):
                     break
-
+            
+            # record the gradient scales
+            bias_gradient_scales.append([grad_bias_plddt_scale, grad_bias_llg_scale, grad_bias_L2_scale])
+            weights_gradient_scales.append([grad_weights_plddt_scale, grad_weights_llg_scale, grad_weights_L2_scale])
+            
             # Do smooth in last several iterations of phase 1 instead of beginning of phase 2 
             if "phase1" in config.note:
                 if iteration > (config.iterations - smooth_stage_epochs):
@@ -597,11 +628,11 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
             rk_utils.assert_numpy(memory_by_epoch),
         )
 
-        # Absolute MSA change per column per iteration
-        np.save(
-            f"{output_directory_path!s}/MSA_changes_it_{run_id}.npy",
-            rk_utils.assert_numpy(absolute_feats_changes),
-        )
+        # # Absolute MSA change per column per iteration
+        # np.save(
+        #     f"{output_directory_path!s}/MSA_changes_it_{run_id}.npy",
+        #     rk_utils.assert_numpy(absolute_feats_changes),
+        # )
 
         # Mean plddt per residue (over iterations)
         np.save(
@@ -609,19 +640,29 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
             np.array(all_pldtts),
         )
 
-        # Iteration sigmaA dictionary
-        with open(
-            f"{output_directory_path!s}/sigmas_by_epoch_{run_id}.pkl",
-            "wb",
-        ) as file:
-            pickle.dump(sigmas_by_epoch, file)
+        # # Iteration sigmaA dictionary
+        # with open(
+        #     f"{output_directory_path!s}/sigmas_by_epoch_{run_id}.pkl",
+        #     "wb",
+        # ) as file:
+        #     pickle.dump(sigmas_by_epoch, file)
 
-        if SIGMA_TRUE:
-            with open(
-                f"{output_directory_path!s}/true_sigmas_by_epoch_{run_id}.pkl",
-                "wb",
-            ) as file:
-                pickle.dump(true_sigmas_by_epoch, file)
+        # if SIGMA_TRUE:
+        #     with open(
+        #         f"{output_directory_path!s}/true_sigmas_by_epoch_{run_id}.pkl",
+        #         "wb",
+        #     ) as file:
+        #         pickle.dump(true_sigmas_by_epoch, file)
+
+        np.save(
+            f"{output_directory_path!s}/bias_grad_scales_{run_id}.npy",
+            np.array(bias_gradient_scales),
+        )
+
+        np.save(
+            f"{output_directory_path!s}/weights_grad_scales_{run_id}.npy",
+            np.array(weights_gradient_scales),
+        )
 
     # Save the best msa_bias and feat_weights
     torch.save(
