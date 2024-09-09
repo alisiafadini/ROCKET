@@ -522,7 +522,7 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
                 # loss.backward()
 
                 # get L2 loss gradient scale
-                L2_loss.backward(retain_graph=True)
+                L2_loss.backward()
                 bias_L2_grad = optimizer.param_groups[0]["params"][0].grad.clone() - bias_llg_grad
                 weights_L2_grad = optimizer.param_groups[1]["params"][0].grad.clone() - weights_llg_grad
                 grad_bias_L2_scale = bias_L2_grad.square().mean().sqrt().item()
