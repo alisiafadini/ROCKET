@@ -1,7 +1,15 @@
-import argparse, os
+import argparse, os, glob
 from rocket.refinement import RocketRefinmentConfig, run_refinement
-from typing import Union
+from typing import Union, List
 
+
+def int_or_none(value):
+    if value.lower() == 'none':
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"Invalid value: {value}. Must be an integer or 'None'.")
 
 def parse_arguments():
     """Parse commandline arguments"""
@@ -22,6 +30,28 @@ def parse_arguments():
         "--systems",
         nargs='+',
         help=("PDB codes or filename roots for the dataset"),
+    )
+
+    parser.add_argument(
+        "--domain_segs",
+        type=int,
+        nargs="*",
+        default=None,
+        help=("A list of resid as domain boundaries"),
+    )
+
+    parser.add_argument(
+        "--free_flag",
+        default="R-free-flags",
+        type=str,
+        help=("Column name of free flag"),
+    )
+
+    parser.add_argument(
+        "--testset_value",
+        default=1,
+        type=int,
+        help=("Value for test set"),
     )
 
     parser.add_argument(
@@ -59,15 +89,32 @@ def parse_arguments():
     )
 
     parser.add_argument(
+        "--mse_uuid", default=None, help=("uuid for mse run")
+    )
+
+    parser.add_argument(
+        "--phase2_final_lr",
+        default=1e-3,
+        type=float,
+        help=("phase 2 final learning rate"),
+    )
+
+    parser.add_argument(
+        "--smooth_stage_epochs",
+        default=50,
+        type=int_or_none,
+        help=("number of smooth stages in phase1"),
+    )
+    parser.add_argument(
         "--num_of_runs",
-        default=1,
+        default=3,
         type=int,
         help=("number of trials"),
     )
 
     parser.add_argument(
         "--n_step",
-        default=50,
+        default=100,
         type=int,
         help=("number of steps"),
     )
@@ -86,11 +133,25 @@ def parse_arguments():
     )
 
     parser.add_argument(
+        "--init_recycling",
+        default=20,
+        type=int,
+        help=("number of initial recycling"),
+    )
+
+    parser.add_argument(
         "--note",
         default="",
         help=("note"),
     )
 
+    parser.add_argument(
+        "--voxel_spacing",
+        default=4.5,
+        type=float,
+        help=("Voxel spacing for solvent percentage estimation"),
+    )
+    
     return parser.parse_args()
 
 
@@ -106,22 +167,42 @@ def generate_phase1_config(
     num_of_runs: int = 1,
     sub_ratio: float = 0.7, 
     n_step: int = 50,
+    init_recycling: int = 20,
     min_resol: float = 3.0,
     note: str = "",
     refine_sigmaA: bool = True,
+    domain_segs: Union[List[int], None] = None,
     add_lr: float = 0.05,
     mul_lr: float = 1.0,
+    phase2_final_lr: float = 1e-3,
+    smooth_stage_epochs: int = 50,
+    mse_uuid: Union[str, None] = None,
+    voxel_spacing: float = 4.5,
 ) -> RocketRefinmentConfig:
 
+    if mse_uuid is None:
+        starting_bias_path = None
+        starting_weights_path = None
+    else:
+        output_directory_path = f"{working_path}/{file_root}/outputs/{mse_uuid}"
+        mse_path = glob.glob(f"{output_directory_path}/mse*/")[0]
+        starting_bias_path = glob.glob(os.path.join(mse_path, "best_msa_bias*.pt"))[
+            0
+        ]
+        starting_weights_path = glob.glob(
+            os.path.join(mse_path, "best_feat_weights*.pt")
+        )[0]
+    
     phase1_config = RocketRefinmentConfig(
         file_root=file_root,
         path=working_path,
-        init_recycling=4,
+        init_recycling=init_recycling,
         batch_sub_ratio=sub_ratio,
         number_of_batches=1,
         rbr_opt_algorithm="lbfgs",
         rbr_lbfgs_learning_rate=150.0,
         additional_chain=additional_chain,
+        domain_segs=domain_segs,
         verbose=False,
         bias_version=3,
         num_of_runs=num_of_runs,
@@ -133,12 +214,16 @@ def generate_phase1_config(
         refine_sigmaA=refine_sigmaA,
         additive_learning_rate=add_lr,
         multiplicative_learning_rate=mul_lr,
+        phase2_final_lr=phase2_final_lr,
+        smooth_stage_epochs=smooth_stage_epochs,
         free_flag=free_flag,
         testset_value=testset_value,
         l2_weight=w_l2,
-        b_threshold=10.0,
         min_resolution=min_resol,
+        starting_bias=starting_bias_path,
+        starting_weights=starting_weights_path,
         note="phase1"+note,
+        voxel_spacing=voxel_spacing
     )
 
     return phase1_config
@@ -151,8 +236,12 @@ def run_phase1_all_datasets() -> None:
     for file_root in datasets:
         phase1_config = generate_phase1_config(working_path=args.path, 
                                                file_root=file_root, 
-                                               note=args.note, 
+                                               note=args.note,
+                                               free_flag=args.free_flag,
+                                               testset_value=args.testset_value, 
                                                additional_chain=args.additional_chain,
+                                               domain_segs=args.domain_segs,
+                                               init_recycling=args.init_recycling,
                                                w_l2=args.w_l2,
                                                sub_ratio=args.sub_ratio,
                                                add_lr=args.add_lr,
@@ -160,7 +249,12 @@ def run_phase1_all_datasets() -> None:
                                                num_of_runs=args.num_of_runs,
                                                n_step=args.n_step,
                                                refine_sigmaA=args.refine_sigmaA,
-                                               min_resol=args.min_resolution)
+                                               min_resol=args.min_resolution,
+                                               phase2_final_lr=args.phase2_final_lr,
+                                               smooth_stage_epochs=args.smooth_stage_epochs,
+                                               mse_uuid=args.mse_uuid,
+                                               voxel_spacing=args.voxel_spacing,
+                                               )
         phase1_uuid = run_refinement(config=phase1_config)
 
 if __name__ == "__main__":
