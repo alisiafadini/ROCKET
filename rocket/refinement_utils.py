@@ -308,7 +308,12 @@ def position_alignment(
     plddts_res = rk_utils.assert_numpy(af2_output["plddt"])
     pseudo_Bs = rk_coordinates.update_bfactors(plddts)
 
+    # MH @ Sep 10 2024, temp edits to convert weighted kabsch to cutoff kabsch
     weights = rk_utils.weighting(rk_utils.assert_numpy(pseudo_Bs))
+    # plddts_np = rk_utils.assert_numpy(plddts)
+    # weights = np.ones_like(plddts_np)
+    # weights[plddts_np < 85.0] = 1e-5
+
     aligned_xyz = rk_coordinates.weighted_kabsch(
         xyz_orth_sfc,
         best_pos,
