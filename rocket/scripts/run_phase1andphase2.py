@@ -1,6 +1,6 @@
 import argparse, os, glob
 from rocket.refinement import RocketRefinmentConfig, run_refinement
-from typing import Union
+from typing import Union, List
 
 # WORKING_DIRECTORY = Path("/net/cci/alisia/openfold_tests/run_openfold/test_cases")
 # ALL_DATASETS = ["6lzm"]
@@ -34,6 +34,14 @@ def parse_arguments():
     )
 
     parser.add_argument(
+        "--domain_segs",
+        type=int,
+        nargs="*",
+        default=None,
+        help=("A list of resid as domain boundaries"),
+    )
+
+    parser.add_argument(
         "--additional_chain", action="store_true", help=("Additional Chain in ASU")
     )
 
@@ -50,7 +58,11 @@ def parse_arguments():
     )
 
     parser.add_argument(
-        "--phase1_uuid", default=None, help=("uuid for phase 1 running")
+        "--phase1_uuid", default=None, help=("uuid for phase 1 run")
+    )
+
+    parser.add_argument(
+        "--mse_uuid", default=None, help=("uuid for mse run")
     )
 
     parser.add_argument(
@@ -89,6 +101,13 @@ def parse_arguments():
     )
 
     parser.add_argument(
+        "--smooth_stage_epochs",
+        default=50,
+        type=int,
+        help=("number of smooth stages in phase1"),
+    )
+
+    parser.add_argument(
         "--phase1_min_resol",
         default=3.0,
         type=float,
@@ -109,6 +128,20 @@ def parse_arguments():
         help=("Value for test set"),
     )
 
+    parser.add_argument(
+        "--voxel_spacing",
+        default=4.5,
+        type=float,
+        help=("Voxel spacing for solvent percentage estimation"),
+    )
+
+    parser.add_argument(
+        "--w_plddt",
+        default=0.0,
+        type=float,
+        help=("Weights for plddt loss"),
+    ) 
+
     return parser.parse_args()
 
 
@@ -125,9 +158,27 @@ def generate_phase1_config(
     init_recycling: int = 20,
     phase1_min_resol: float = 4.0,
     phase1_w_l2: float = 1e-11,
+    phase2_final_lr: float = 1e-3,
+    smooth_stage_epochs: int = 50,
+    domain_segs: Union[List[int], None] = None,
     note: str = "",
+    mse_uuid: Union[str, None] = None,
+    voxel_spacing: float = 4.5
 ) -> RocketRefinmentConfig:
 
+    if mse_uuid is None:
+        starting_bias_path = None
+        starting_weights_path = None
+    else:
+        output_directory_path = f"{working_path}/{file_root}/outputs/{mse_uuid}"
+        mse_path = glob.glob(f"{output_directory_path}/mse*/")[0]
+        starting_bias_path = glob.glob(os.path.join(mse_path, "best_msa_bias*.pt"))[
+            0
+        ]
+        starting_weights_path = glob.glob(
+            os.path.join(mse_path, "best_feat_weights*.pt")
+        )[0]
+    
     phase1_config = RocketRefinmentConfig(
         file_root=file_root,
         path=working_path,
@@ -137,6 +188,7 @@ def generate_phase1_config(
         rbr_opt_algorithm="lbfgs",
         rbr_lbfgs_learning_rate=150.0,
         additional_chain=additional_chain,
+        domain_segs=domain_segs,
         verbose=False,
         bias_version=3,
         num_of_runs=3,
@@ -147,12 +199,18 @@ def generate_phase1_config(
         refine_sigmaA=True,
         additive_learning_rate=additive_learning_rate,
         multiplicative_learning_rate=multiplicative_learning_rate,
+        phase2_final_lr=phase2_final_lr,
+        smooth_stage_epochs=smooth_stage_epochs,
         free_flag=free_flag,
         testset_value=testset_value,
         l2_weight=phase1_w_l2,
-        b_threshold=10.0,
+        # b_threshold=10.0,
         min_resolution=phase1_min_resol,
         note="phase1" + note,
+        uuid_hex=mse_uuid,
+        starting_bias=starting_bias_path,
+        starting_weights=starting_weights_path,
+        voxel_spacing=voxel_spacing,
     )
 
     return phase1_config
@@ -171,8 +229,11 @@ def generate_phase2_config(
     phase1_mul_lr: float = 1.0,
     phase1_w_l2: float = 1e-11,
     phase2_final_lr: float = 1e-3,
+    domain_segs: Union[List[int], None] = None,
+    voxel_spacing: float = 4.5,
     init_recycling: int = 20,
     note: str = "",
+    w_plddt: float = 0.0,
 ) -> RocketRefinmentConfig:
 
     if phase1_uuid is None:
@@ -202,9 +263,10 @@ def generate_phase2_config(
         rbr_lbfgs_learning_rate=150.0,
         smooth_stage_epochs=50,
         additional_chain=additional_chain,
+        domain_segs=domain_segs,
         verbose=False,
         bias_version=3,
-        iterations=500,
+        iterations=250,
         cuda_device=cuda_device,
         solvent=True,
         sfc_scale=True,
@@ -216,18 +278,20 @@ def generate_phase2_config(
         free_flag=free_flag,
         testset_value=testset_value,
         l2_weight=phase1_w_l2,
+        w_plddt=w_plddt,
         b_threshold=10.0,
         note="phase2" + note,
         uuid_hex=phase1_uuid,
         starting_bias=starting_bias_path,
         starting_weights=starting_weights_path,
+        voxel_spacing=voxel_spacing,
     )
 
     return phase2_config
 
 
 def run_both_phases_single_dataset(
-    *, working_path, file_root, note, free_flag, testset_value, additional_chain, phase1_add_lr, phase1_mul_lr, phase1_w_l2, phase2_final_lr, init_recycling, phase1_min_resol,
+    *, working_path, file_root, note, free_flag, testset_value, additional_chain, phase1_add_lr, phase1_mul_lr, phase1_w_l2, w_plddt, phase2_final_lr, smooth_stage_epochs, init_recycling, phase1_min_resol, domain_segs, mse_uuid, voxel_spacing,
 ) -> None:
 
     phase1_config = generate_phase1_config(
@@ -241,7 +305,12 @@ def run_both_phases_single_dataset(
         multiplicative_learning_rate=phase1_mul_lr,
         phase1_w_l2=phase1_w_l2,
         init_recycling=init_recycling,
-        phase1_min_resol=phase1_min_resol
+        phase2_final_lr=phase2_final_lr,
+        smooth_stage_epochs=smooth_stage_epochs,
+        phase1_min_resol=phase1_min_resol,
+        domain_segs=domain_segs,
+        mse_uuid=mse_uuid,
+        voxel_spacing=voxel_spacing,
     )
     phase1_uuid = run_refinement(config=phase1_config)
 
@@ -256,8 +325,11 @@ def run_both_phases_single_dataset(
         phase1_add_lr=phase1_add_lr,
         phase1_mul_lr=phase1_mul_lr,
         phase1_w_l2=phase1_w_l2,
+        w_plddt=w_plddt,
         phase2_final_lr=phase2_final_lr,
-        init_recycling=init_recycling
+        init_recycling=init_recycling,
+        domain_segs=domain_segs,
+        voxel_spacing=voxel_spacing,
     )
     phase2_uuid = run_refinement(config=phase2_config)
 
@@ -279,8 +351,13 @@ def run_both_phases_all_datasets() -> None:
                 additive_learning_rate=args.phase1_add_lr,
                 multiplicative_learning_rate=args.phase1_mul_lr,
                 phase1_w_l2=args.phase1_w_l2,
+                phase2_final_lr=args.phase2_final_lr,
+                smooth_stage_epochs=args.smooth_stage_epochs,
                 init_recycling=args.init_recycling,
                 phase1_min_resol=args.phase1_min_resol,
+                domain_segs=args.domain_segs,
+                mse_uuid=args.mse_uuid,
+                voxel_spacing=args.voxel_spacing,
             )
             phase1_uuid = run_refinement(config=phase1_config)
 
@@ -296,8 +373,11 @@ def run_both_phases_all_datasets() -> None:
                 phase1_add_lr=args.phase1_add_lr,
                 phase1_mul_lr=args.phase1_mul_lr,
                 phase1_w_l2=args.phase1_w_l2,
+                w_plddt=args.w_plddt,
                 phase2_final_lr=args.phase2_final_lr,
                 init_recycling=args.init_recycling,
+                domain_segs=args.domain_segs,
+                voxel_spacing=args.voxel_spacing,
             )
             phase2_uuid = run_refinement(config=phase2_config)
 
@@ -312,9 +392,13 @@ def run_both_phases_all_datasets() -> None:
                 phase1_add_lr=args.phase1_add_lr,
                 phase1_mul_lr=args.phase1_mul_lr,
                 phase1_w_l2=args.phase1_w_l2,
+                w_plddt=args.w_plddt,
                 phase2_final_lr=args.phase2_final_lr,
                 init_recycling=args.init_recycling,
                 phase1_min_resol=args.phase1_min_resol,
+                domain_segs=args.domain_segs,
+                mse_uuid=args.mse_uuid,
+                voxel_spacing=args.voxel_spacing,
             )
 
 if __name__ == "__main__":

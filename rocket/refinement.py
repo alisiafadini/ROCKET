@@ -15,7 +15,7 @@ from rocket import utils as rk_utils
 from rocket import refinement_utils as rkrf_utils
 from rocket.llg import structurefactors as llg_sf
 from openfold.config import model_config
-from typing import Union
+from typing import Union, List
 from pydantic import BaseModel
 
 
@@ -33,6 +33,7 @@ class RocketRefinmentConfig(BaseModel):
     template_pdb: Union[str, None] = None
     cuda_device: int = (0,)
     init_recycling: int = (1,)
+    domain_segs: Union[List[int], None] = None
     solvent: bool
     sfc_scale: bool
     refine_sigmaA: bool
@@ -43,7 +44,7 @@ class RocketRefinmentConfig(BaseModel):
     number_of_batches: int
     rbr_opt_algorithm: str
     rbr_lbfgs_learning_rate: float
-    smooth_stage_epochs: int = 50
+    smooth_stage_epochs: Union[int, None] = 50
     phase2_final_lr: float = 1e-3
     note: str = ""
     free_flag: str
@@ -51,12 +52,14 @@ class RocketRefinmentConfig(BaseModel):
     additional_chain: bool
     verbose: bool
     l2_weight: float
+    w_plddt: float = 0.0
     # b_threshold: float
     min_resolution: Union[float, None] = None
     max_resolution: Union[float, None] = None
     starting_bias: Union[str, None] = None
     starting_weights: Union[str, None] = None
     uuid_hex: Union[str, None] = None
+    voxel_spacing: float = 4.5
 
     # intercept them upload load/save and cast to string as appropriate
     def to_yaml_file(self, file_path: str) -> None:
@@ -173,11 +176,13 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
         testset_value=config.testset_value,
         added_chain_HKL=constant_fp_added_HKL,
         added_chain_asu=constant_fp_added_asu,
+        spacing=config.voxel_spacing,
     )
     reference_pos = sfc.atom_pos_orth.clone()
     # CA mask and residue numbers for track
     cra_calphas_list, calphas_mask = rk_coordinates.select_CA_from_craname(sfc.cra_name)
     residue_numbers = [int(name.split("-")[1]) for name in cra_calphas_list]
+    
     # Use initial pos B factor instead of best pos B factor for weighted L2
     init_pos_bfactor = sfc.atom_b_iso.clone()
     bfactor_weights = rk_utils.weighting_torch(
@@ -195,6 +200,7 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
         testset_value=config.testset_value,
         added_chain_HKL=constant_fp_added_HKL,
         added_chain_asu=constant_fp_added_asu,
+        spacing=config.voxel_spacing,
     )
 
     if REFPDB:
@@ -223,8 +229,13 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
     af_bias.freeze()  # Free all AF2 parameters to save time
 
     # Optimizer settings and initialization
-    lr_a = config.additive_learning_rate
-    lr_m = config.multiplicative_learning_rate
+    # Run smooth stage in phase 1 instead
+    if "phase1" in config.note:
+        lr_a = config.additive_learning_rate
+        lr_m = config.multiplicative_learning_rate
+    elif "phase2" in config.note:
+        lr_a = config.phase2_final_lr
+        lr_m = config.phase2_final_lr
 
     # Initialize best Rfree weights and bias for Phase 1
     best_rfree = float("inf")
@@ -279,21 +290,27 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
             range(config.iterations),
             desc=f"{config.file_root}, uuid: {refinement_run_uuid[:4]}, run: {run_id}",
         )
-        loss_weight = config.l2_weight
-
+        
+        # Run smooth stage in phase 1
+        if "phase1" in config.note:
+            w_L2 = config.l2_weight
+        elif "phase2" in config.note:
+            w_L2 = 0.0
+            
         ######
         early_stopper = rkrf_utils.EarlyStopper(patience=200, min_delta=0.1)
 
-        #### Phase 2 scheduling ######
-        lr_a_initial = lr_a
-        lr_m_initial = lr_m
-        loss_weight_initial = loss_weight
-        lr_stage1_final = config.phase2_final_lr
-        smooth_stage_epochs = config.smooth_stage_epochs
+        #### Phase 1 smooth scheduling ######
+        if config.smooth_stage_epochs is not None:
+            lr_a_initial = lr_a
+            lr_m_initial = lr_m
+            w_L2_initial = w_L2
+            lr_stage1_final = config.phase2_final_lr
+            smooth_stage_epochs = config.smooth_stage_epochs
 
-        # Decay rates for each stage
-        decay_rate_stage1_add = (lr_stage1_final / lr_a) ** (1 / smooth_stage_epochs)
-        decay_rate_stage1_mul = (lr_stage1_final / lr_m) ** (1 / smooth_stage_epochs)
+            # Decay rates for each stage
+            decay_rate_stage1_add = (lr_stage1_final / lr_a) ** (1 / smooth_stage_epochs)
+            decay_rate_stage1_mul = (lr_stage1_final / lr_m) ** (1 / smooth_stage_epochs)
 
         ############ 3. Run Refinement ############
         for iteration in progress_bar:
@@ -318,22 +335,25 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
                 )
                 prevs = [tensor.detach() for tensor in prevs]
 
-                # MH @ June 19: Fix the iteration 0 for phase 2 running
-                if (config.starting_bias is not None) or (
-                    config.starting_weights is not None
-                ):
-                    deep_copied_prevs = [tensor.clone().detach() for tensor in prevs]
-                    af2_output, __ = af_bias(
-                        device_processed_features,
-                        deep_copied_prevs,
-                        num_iters=1,
-                        bias=True,
-                    )
-            else:
-                deep_copied_prevs = [tensor.clone().detach() for tensor in prevs]
-                af2_output, __ = af_bias(
-                    device_processed_features, deep_copied_prevs, num_iters=1, bias=True
-                )
+                # # MH @ June 19: Fix the iteration 0 for phase 2 running
+                # print("config.starting_bias", config.starting_bias)
+                # if (config.starting_bias is not None) or (
+                #     config.starting_weights is not None
+                # ):
+                #     deep_copied_prevs = [tensor.clone().detach() for tensor in prevs]
+                #     af2_output, __ = af_bias(
+                #         device_processed_features,
+                #         deep_copied_prevs,
+                #         num_iters=1,
+                #         bias=True,
+                #     )
+            deep_copied_prevs = [tensor.clone().detach() for tensor in prevs]
+            af2_output, __ = af_bias(
+                device_processed_features, deep_copied_prevs, num_iters=1, bias=True
+            )
+
+            # pLDDT loss
+            L_plddt = - torch.mean(af2_output["plddt"])
 
             # Position Kabsch Alignment
             aligned_xyz, plddts_res, pseudo_Bs = rkrf_utils.position_alignment(
@@ -342,6 +362,7 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
                 cra_name=sfc.cra_name,
                 best_pos=best_pos,
                 exclude_res=EXCLUDING_RES,
+                domain_segs=config.domain_segs,
             )
             llgloss.sfc.atom_b_iso = pseudo_Bs.detach()
             all_pldtts.append(plddts_res)
@@ -382,15 +403,15 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
                     )
 
             # For record
-            if SIGMA_TRUE:
-                true_sigmas = llg_utils.sigmaA_from_model(
-                    Etrue,
-                    phitrue,
-                    Ecalc,
-                    Fc,
-                    llgloss.sfc.dHKL,
-                    llgloss.bin_labels,
-                )
+            # if SIGMA_TRUE:
+            #     true_sigmas = llg_utils.sigmaA_from_model(
+            #         Etrue,
+            #         phitrue,
+            #         Ecalc,
+            #         Fc,
+            #         llgloss.sfc.dHKL,
+            #         llgloss.bin_labels,
+            #     )
 
             # Update SFC and save
             llgloss.sfc.atom_pos_orth = aligned_xyz.detach().clone()
@@ -402,6 +423,8 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
             optimized_xyz, loss_track_pose = rk_coordinates.rigidbody_refine_quat(
                 aligned_xyz,
                 llgloss_rbr,
+                sfc.cra_name,
+                domain_segs=config.domain_segs,
                 lbfgs=RBR_LBFGS,
                 added_chain_HKL=constant_fp_added_HKL,
                 added_chain_asu=constant_fp_added_asu,
@@ -411,7 +434,7 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
             rbr_loss_by_epoch.append(loss_track_pose)
 
             # LLG loss
-            loss = -llgloss(
+            L_llg = -llgloss(
                 optimized_xyz,
                 bin_labels=None,
                 num_batch=config.number_of_batches,
@@ -422,7 +445,7 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
                 added_chain_asu=constant_fp_added_asu,
             )
 
-            llg_estimate = loss.clone().item() / (
+            llg_estimate = L_llg.clone().item() / (
                 config.batch_sub_ratio * config.number_of_batches
             )
             llg_losses.append(llg_estimate)
@@ -461,43 +484,43 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
             #         best_loss = loss
 
             # Save sigmaA values for further processing
-            sigmas_dict = {
-                f"sigma_{i + 1}": sigma_value.item()
-                for i, sigma_value in enumerate(sigmas)
-            }
-            sigmas_by_epoch.append(sigmas_dict)
+            # sigmas_dict = {
+            #     f"sigma_{i + 1}": sigma_value.item()
+            #     for i, sigma_value in enumerate(sigmas)
+            # }
+            # sigmas_by_epoch.append(sigmas_dict)
 
-            if SIGMA_TRUE:
-                true_sigmas_dict = {
-                    f"sigma_{i + 1}": sigma_value.item()
-                    for i, sigma_value in enumerate(true_sigmas)
-                }
-                true_sigmas_by_epoch.append(true_sigmas_dict)
+            # if SIGMA_TRUE:
+            #     true_sigmas_dict = {
+            #         f"sigma_{i + 1}": sigma_value.item()
+            #         for i, sigma_value in enumerate(true_sigmas)
+            #     }
+            #     true_sigmas_by_epoch.append(true_sigmas_dict)
 
             #### add an L2 loss to constrain confident atoms ###
-            if loss_weight > 0.0:
+            if w_L2 > 0.0:
                 # use
                 L2_loss = torch.sum(
                     bfactor_weights.unsqueeze(-1) * (optimized_xyz - reference_pos) ** 2
                 )  # / conf_best.shape[0]
-                corrected_loss = loss + loss_weight * L2_loss
-                corrected_loss.backward()
+                loss = L_llg + w_L2 * L2_loss + config.w_plddt * L_plddt
+                loss.backward()
             else:
+                loss = L_llg + config.w_plddt * L_plddt
                 loss.backward()
 
                 if early_stopper.early_stop(loss.item()):
                     break
 
-            if "phase2" in config.note:
-                if iteration < smooth_stage_epochs:
+            # Do smooth in last several iterations of phase 1 instead of beginning of phase 2 
+            if ("phase1" in config.note) and (config.smooth_stage_epochs is not None):
+                if iteration > (config.iterations - smooth_stage_epochs):
                     lr_a = lr_a_initial * (decay_rate_stage1_add**iteration)
                     lr_m = lr_m_initial * (decay_rate_stage1_mul**iteration)
-                    loss_weight = loss_weight_initial * (
+                    w_L2 = w_L2_initial * (
                         1 - (iteration / smooth_stage_epochs)
                     )
-                else:
-                    loss_weight = 0.0
-
+                
                 # Update the learning rates in the optimizer
                 optimizer.param_groups[0]["lr"] = lr_a
                 optimizer.param_groups[1]["lr"] = lr_m
@@ -583,23 +606,23 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
 
         # Mean plddt per residue (over iterations)
         np.save(
-            f"{output_directory_path!s}/mean_plddt_res_{run_id}.npy",
-            np.mean(np.array(all_pldtts), axis=0),
+            f"{output_directory_path!s}/plddt_res_{run_id}.npy",
+            np.array(all_pldtts),
         )
 
         # Iteration sigmaA dictionary
-        with open(
-            f"{output_directory_path!s}/sigmas_by_epoch_{run_id}.pkl",
-            "wb",
-        ) as file:
-            pickle.dump(sigmas_by_epoch, file)
+        # with open(
+        #     f"{output_directory_path!s}/sigmas_by_epoch_{run_id}.pkl",
+        #     "wb",
+        # ) as file:
+        #     pickle.dump(sigmas_by_epoch, file)
 
-        if SIGMA_TRUE:
-            with open(
-                f"{output_directory_path!s}/true_sigmas_by_epoch_{run_id}.pkl",
-                "wb",
-            ) as file:
-                pickle.dump(true_sigmas_by_epoch, file)
+        # if SIGMA_TRUE:
+        #     with open(
+        #         f"{output_directory_path!s}/true_sigmas_by_epoch_{run_id}.pkl",
+        #         "wb",
+        #     ) as file:
+        #         pickle.dump(true_sigmas_by_epoch, file)
 
     # Save the best msa_bias and feat_weights
     torch.save(
