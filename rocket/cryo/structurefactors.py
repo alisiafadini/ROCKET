@@ -46,6 +46,9 @@ def initial_cryoSFC(
     # calculate fprotein from default pdb file, no solvent is needed
     sfcalculator.calc_fprotein()
 
+    Ep = sfcalculator.calc_Ec(sfcalculator.Fprotein_HKL)
+    sfcalculator.Fprotein_HKL = Ep
+
     # normalize the Fp, use it to replace the Fp, initialize scales
     # note @ Aug 27 by MH: treat Emean as Fmean
     # Ep = sfcalculator.calc_Ec(sfcalculator.Fprotein_HKL)
