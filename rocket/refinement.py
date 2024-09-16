@@ -44,7 +44,7 @@ class RocketRefinmentConfig(BaseModel):
     number_of_batches: int
     rbr_opt_algorithm: str
     rbr_lbfgs_learning_rate: float
-    smooth_stage_epochs: int = 50
+    smooth_stage_epochs: Union[int, None] = 50
     phase2_final_lr: float = 1e-3
     note: str = ""
     free_flag: str
@@ -302,16 +302,17 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
         ######
         early_stopper = rkrf_utils.EarlyStopper(patience=200, min_delta=0.1)
 
-        #### Phase 1 scheduling ######
-        lr_a_initial = lr_a
-        lr_m_initial = lr_m
-        w_L2_initial = w_L2
-        lr_stage1_final = config.phase2_final_lr
-        smooth_stage_epochs = config.smooth_stage_epochs
+        if config.smooth_stage_epochs is not None:
+            #### Phase 1 scheduling ######
+            lr_a_initial = lr_a
+            lr_m_initial = lr_m
+            w_L2_initial = w_L2
+            lr_stage1_final = config.phase2_final_lr
+            smooth_stage_epochs = config.smooth_stage_epochs
 
-        # Decay rates for each stage
-        decay_rate_stage1_add = (lr_stage1_final / lr_a) ** (1 / smooth_stage_epochs)
-        decay_rate_stage1_mul = (lr_stage1_final / lr_m) ** (1 / smooth_stage_epochs)
+            # Decay rates for each stage
+            decay_rate_stage1_add = (lr_stage1_final / lr_a) ** (1 / smooth_stage_epochs)
+            decay_rate_stage1_mul = (lr_stage1_final / lr_m) ** (1 / smooth_stage_epochs)
 
         ############ 3. Run Refinement ############
         for iteration in progress_bar:
@@ -499,18 +500,18 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
             #         best_loss = loss
 
             # Save sigmaA values for further processing
-            sigmas_dict = {
-                f"sigma_{i + 1}": sigma_value.item()
-                for i, sigma_value in enumerate(sigmas)
-            }
-            sigmas_by_epoch.append(sigmas_dict)
+            # sigmas_dict = {
+            #     f"sigma_{i + 1}": sigma_value.item()
+            #     for i, sigma_value in enumerate(sigmas)
+            # }
+            # sigmas_by_epoch.append(sigmas_dict)
 
-            if SIGMA_TRUE:
-                true_sigmas_dict = {
-                    f"sigma_{i + 1}": sigma_value.item()
-                    for i, sigma_value in enumerate(true_sigmas)
-                }
-                true_sigmas_by_epoch.append(true_sigmas_dict)
+            # if SIGMA_TRUE:
+            #     true_sigmas_dict = {
+            #         f"sigma_{i + 1}": sigma_value.item()
+            #         for i, sigma_value in enumerate(true_sigmas)
+            #     }
+            #     true_sigmas_by_epoch.append(true_sigmas_dict)
 
             #### add an L2 loss to constrain confident atoms ###
             if w_L2 > 0.0:
@@ -543,7 +544,7 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
             weights_gradient_scales.append([grad_weights_plddt_scale, grad_weights_llg_scale, grad_weights_L2_scale])
             
             # Do smooth in last several iterations of phase 1 instead of beginning of phase 2 
-            if "phase1" in config.note:
+            if "phase1" in config.note and config.smooth_stage_epochs is not None:
                 if iteration > (config.iterations - smooth_stage_epochs):
                     lr_a = lr_a_initial * (decay_rate_stage1_add**iteration)
                     lr_m = lr_m_initial * (decay_rate_stage1_mul**iteration)
@@ -664,16 +665,16 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
             np.array(weights_gradient_scales),
         )
 
-    # Save the best msa_bias and feat_weights
-    torch.save(
-        best_msa_bias,
-        f"{output_directory_path!s}/best_msa_bias_{best_run}_{best_iter}.pt",
-    )
+    # # Save the best msa_bias and feat_weights
+    # torch.save(
+    #     best_msa_bias,
+    #     f"{output_directory_path!s}/best_msa_bias_{best_run}_{best_iter}.pt",
+    # )
 
-    torch.save(
-        best_feat_weights,
-        f"{output_directory_path!s}/best_feat_weights_{best_run}_{best_iter}.pt",
-    )
+    # torch.save(
+    #     best_feat_weights,
+    #     f"{output_directory_path!s}/best_feat_weights_{best_run}_{best_iter}.pt",
+    # )
 
     config.to_yaml_file(f"{output_directory_path!s}/config.yaml")
 

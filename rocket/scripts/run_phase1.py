@@ -2,6 +2,14 @@ import argparse, os, glob
 from rocket.refinement import RocketRefinmentConfig, run_refinement
 from typing import Union, List
 
+def int_or_none(value):
+    if value.lower() == 'none':
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"Invalid value: {value}. Must be an integer or 'None'.")
+
 
 def parse_arguments():
     """Parse commandline arguments"""
@@ -94,7 +102,7 @@ def parse_arguments():
     parser.add_argument(
         "--smooth_stage_epochs",
         default=50,
-        type=int,
+        type=int_or_none,
         help=("number of smooth stages in phase1"),
     )
     parser.add_argument(
