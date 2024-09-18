@@ -528,7 +528,7 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
                 weights_L2_grad = optimizer.param_groups[1]["params"][0].grad.clone() - weights_llg_grad
                 grad_bias_L2_scale = bias_L2_grad.square().mean().sqrt().item()
                 grad_weights_L2_scale = weights_L2_grad.square().mean().sqrt().item()
-
+                
             else:
                 pass
                 loss = L_llg + config.w_plddt * L_plddt
