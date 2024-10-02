@@ -112,7 +112,7 @@ class EarlyStopper:
 
 
 def init_processed_dict(
-    bias_version, path, file_root, device, template_pdb=None, PRESET="model_1"
+    bias_version, path, file_root, device, template_pdb=None, PRESET="model_1", postfix="processed_feats.pickle"
 ):
     if bias_version == 4:
         device_processed_features = rocket.make_processed_dict_from_template(
@@ -129,7 +129,7 @@ def init_processed_dict(
         feature_key = "template_torsion_angles_sin_cos"
     else:
         with open(
-            "{p}/{r}/{r}_processed_feats.pickle".format(p=path, r=file_root),
+            "{p}/{r}/{r}_{f}".format(p=path, r=file_root, f=postfix),
             "rb",
         ) as file:
             # Load the data from the pickle file
