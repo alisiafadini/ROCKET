@@ -4,6 +4,13 @@ from typing import Union, List
 
 # WORKING_DIRECTORY = Path("/net/cci/alisia/openfold_tests/run_openfold/test_cases")
 # ALL_DATASETS = ["6lzm"]
+def int_or_none(value):
+    if value.lower() == 'none':
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"Invalid value: {value}. Must be an integer or 'None'.")
 
 
 def parse_arguments():
@@ -109,7 +116,7 @@ def parse_arguments():
     parser.add_argument(
         "--smooth_stage_epochs",
         default=50,
-        type=int,
+        type=int_or_none,
         help=("number of smooth stages in phase1"),
     )
 
@@ -282,7 +289,7 @@ def generate_phase2_config(
         domain_segs=domain_segs,
         verbose=False,
         bias_version=3,
-        iterations=250,
+        iterations=500,
         cuda_device=cuda_device,
         solvent=True,
         sfc_scale=True,
@@ -413,6 +420,7 @@ def run_both_phases_all_datasets() -> None:
                 phase1_mul_lr=args.phase1_mul_lr,
                 phase1_w_l2=args.phase1_w_l2,
                 w_plddt=args.w_plddt,
+                smooth_stage_epochs=args.smooth_stage_epochs,
                 phase2_final_lr=args.phase2_final_lr,
                 init_recycling=args.init_recycling,
                 phase1_min_resol=args.phase1_min_resol,

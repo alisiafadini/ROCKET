@@ -276,7 +276,7 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
 
         # MH edit @ Oct 2nd, 2024: Support optional template input 
         if config.template_pdb is not None:
-            for key in device_processed_features.keys():
+            for key in device_processed_features_template.keys():
                 if key.startswith("template_"):
                     device_processed_features[key] = device_processed_features_template[key]
         
