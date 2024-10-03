@@ -179,6 +179,7 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
         spacing=config.voxel_spacing,
     )
     reference_pos = sfc.atom_pos_orth.clone()
+    target_seq = sfc._pdb.sequence
     # CA mask and residue numbers for track
     cra_calphas_list, calphas_mask = rk_coordinates.select_CA_from_craname(sfc.cra_name)
     residue_numbers = [int(name.split("-")[1]) for name in cra_calphas_list]
@@ -245,6 +246,17 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
     best_iter = None
     best_pos = reference_pos
 
+    # MH edit @ Oct 2nd, 2024: Support optional template input 
+    if config.template_pdb is not None:
+        device_processed_features_template = rocket.make_processed_dict_from_template(
+            config.template_pdb, 
+            target_seq, 
+            device=device, 
+            mask_sidechains_add_cb=False, 
+            mask_sidechains=False, 
+            max_recycling_iters=config.init_recycling
+        )
+
     for n in range(config.num_of_runs):
 
         run_id = rkrf_utils.number_to_letter(n)
@@ -257,9 +269,17 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
                 file_root=config.file_root,
                 device=device,
                 template_pdb=config.template_pdb,
+                target_seq=target_seq,
                 PRESET=PRESET,
             )
         )
+
+        # MH edit @ Oct 2nd, 2024: Support optional template input 
+        if config.template_pdb is not None:
+            for key in device_processed_features.keys():
+                if key.startswith("template_"):
+                    device_processed_features[key] = device_processed_features_template[key]
+        
         # Initialize bias
         device_processed_features, optimizer, bias_names = rkrf_utils.init_bias(
             device_processed_features=device_processed_features,

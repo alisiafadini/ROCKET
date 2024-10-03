@@ -112,11 +112,12 @@ class EarlyStopper:
 
 
 def init_processed_dict(
-    bias_version, path, file_root, device, template_pdb=None, PRESET="model_1", postfix="processed_feats.pickle"
+    bias_version, path, file_root, device, template_pdb=None, target_seq=None, PRESET="model_1", postfix="processed_feats.pickle"
 ):
     if bias_version == 4:
         device_processed_features = rocket.make_processed_dict_from_template(
             template_pdb="{p}/{r}/{t}".format(p=path, r=file_root, t=template_pdb),
+            target_seq=target_seq,
             config_preset=PRESET,
             device=device,
             msa_dict=None,

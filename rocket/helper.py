@@ -10,7 +10,31 @@ from openfold.utils.tensor_utils import tensor_tree_map
 from rocket import utils as rk_utils
 
 
+def make_decoy_seq(target_seq, template_resid, decoy_seq_ori):
+    decoy_seq = ""
+    j = 0
+    for i in range(len(target_seq)):
+        if i in template_resid:
+            decoy_seq += decoy_seq_ori[j]
+            j += 1
+        else:
+            decoy_seq += "-"
+    return decoy_seq
+
+def check_sequence(decoy_seqence, target_sequence):
+    assert len(decoy_seqence) == len(target_sequence)
+    for m, n in zip(decoy_seqence, target_sequence):
+        if m==n:
+            pass
+        elif m=="-":
+            pass
+        else:
+            print(m, n, "do not match!", flush=True)
+            return False
+    return True
+
 def make_processed_dict_from_template(template_pdb,
+                                      target_seq=None,
                                       config_preset='model_1',
                                       msa_dict=None, 
                                       device='cpu',
@@ -30,13 +54,19 @@ def make_processed_dict_from_template(template_pdb,
     deterministic          :  make all data processing deterministic (no masking, etc.)
     """
     decoy_prot = protein.from_pdb_string(pdb_to_string(template_pdb))
-    target_seq = "".join([residue_constants.restypes[x] for x in decoy_prot.aatype])
-    template_idxs = np.arange(len(decoy_prot.residue_index))
+    decoy_seq_ori =  "".join([residue_constants.restypes[x] for x in decoy_prot.aatype])
+    if target_seq is None:
+        target_seq = decoy_seq_ori
+        template_idxs = np.arange(len(decoy_prot.residue_index))
+        decoy_seq = seq_replacement*len(target_seq) if len(seq_replacement) == 1 else target_seq
+    else:
+        template_idxs = decoy_prot.residue_index - 1
+        decoy_seq = make_decoy_seq(target_seq, template_idxs, decoy_seq_ori)
+        assert check_sequence(decoy_seq, target_seq)
     template_idx_set = set(template_idxs)
-    decoy_seq = seq_replacement*len(target_seq) if len(seq_replacement) == 1 else target_seq
-    
-    pos = np.zeros([1,len(decoy_seq), 37, 3])
-    atom_mask = np.zeros([1, len(decoy_seq), 37])
+
+    pos = np.zeros([1,len(target_seq), 37, 3])
+    atom_mask = np.zeros([1, len(target_seq), 37])
     if mask_sidechains_add_cb:
         pos[0, template_idxs, :5] = decoy_prot.atom_positions[:,:5]
         backbone_modelled = np.asarray(np.all(decoy_prot.atom_mask[:,[0,1,2]] == 1, axis=1))
@@ -67,10 +97,9 @@ def make_processed_dict_from_template(template_pdb,
     feature_dict.update(data_pipeline.make_sequence_features(target_seq, "test", len(target_seq)))
     feature_dict.update(template)
     if msa_dict is None:
-        # Make null msa features
-        msa = [[target_seq]]
-        deletion_matrix = [[[0 for _ in target_seq]]]
-        msa_dict = data_pipeline.make_msa_features(msa, deletion_matrix)
+        # Make dummy msa features
+        msa = [data_pipeline.make_dummy_msa_obj(target_seq)]
+        msa_dict = data_pipeline.make_msa_features(msa)
 
     feature_dict.update(msa_dict)
 

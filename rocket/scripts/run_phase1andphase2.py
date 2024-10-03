@@ -34,6 +34,12 @@ def parse_arguments():
     )
 
     parser.add_argument(
+        "--template_pdb",
+        default=None,
+        help=("template model name in the path"),
+    )
+
+    parser.add_argument(
         "--domain_segs",
         type=int,
         nargs="*",
@@ -152,6 +158,7 @@ def generate_phase1_config(
     cuda_device: int = 0,
     free_flag: str = "R-free-flags",
     testset_value: int = 1,
+    template_pdb: Union[str, None] = None,
     additional_chain: bool = False,
     additive_learning_rate: float = 0.05,
     multiplicative_learning_rate: float = 1.0,
@@ -179,6 +186,9 @@ def generate_phase1_config(
             os.path.join(mse_path, "best_feat_weights*.pt")
         )[0]
     
+    if template_pdb is not None:
+        template_pdb = f"{working_path}/{file_root}/{template_pdb}"
+    
     phase1_config = RocketRefinmentConfig(
         file_root=file_root,
         path=working_path,
@@ -188,6 +198,7 @@ def generate_phase1_config(
         rbr_opt_algorithm="lbfgs",
         rbr_lbfgs_learning_rate=150.0,
         additional_chain=additional_chain,
+        template_pdb=template_pdb,
         domain_segs=domain_segs,
         verbose=False,
         bias_version=3,
@@ -229,6 +240,7 @@ def generate_phase2_config(
     phase1_mul_lr: float = 1.0,
     phase1_w_l2: float = 1e-11,
     phase2_final_lr: float = 1e-3,
+    template_pdb: Union[str, None] = None,
     domain_segs: Union[List[int], None] = None,
     voxel_spacing: float = 4.5,
     init_recycling: int = 20,
@@ -252,6 +264,9 @@ def generate_phase2_config(
     for p in [starting_bias_path, starting_weights_path]:
         if not os.path.exists(p):
             raise IOError(f"no: {p}")
+    
+    if template_pdb is not None:
+        template_pdb = f"{working_path}/{file_root}/{template_pdb}"
 
     phase2_config = RocketRefinmentConfig(
         file_root=file_root,
@@ -263,6 +278,7 @@ def generate_phase2_config(
         rbr_lbfgs_learning_rate=150.0,
         smooth_stage_epochs=50,
         additional_chain=additional_chain,
+        template_pdb=template_pdb,
         domain_segs=domain_segs,
         verbose=False,
         bias_version=3,
@@ -291,7 +307,7 @@ def generate_phase2_config(
 
 
 def run_both_phases_single_dataset(
-    *, working_path, file_root, note, free_flag, testset_value, additional_chain, phase1_add_lr, phase1_mul_lr, phase1_w_l2, w_plddt, phase2_final_lr, smooth_stage_epochs, init_recycling, phase1_min_resol, domain_segs, mse_uuid, voxel_spacing,
+    *, working_path, file_root, note, free_flag, testset_value, additional_chain, phase1_add_lr, phase1_mul_lr, phase1_w_l2, w_plddt, phase2_final_lr, smooth_stage_epochs, init_recycling, phase1_min_resol, domain_segs, mse_uuid, voxel_spacing, template_pdb,
 ) -> None:
 
     phase1_config = generate_phase1_config(
@@ -308,6 +324,7 @@ def run_both_phases_single_dataset(
         phase2_final_lr=phase2_final_lr,
         smooth_stage_epochs=smooth_stage_epochs,
         phase1_min_resol=phase1_min_resol,
+        template_pdb=template_pdb,
         domain_segs=domain_segs,
         mse_uuid=mse_uuid,
         voxel_spacing=voxel_spacing,
@@ -328,6 +345,7 @@ def run_both_phases_single_dataset(
         w_plddt=w_plddt,
         phase2_final_lr=phase2_final_lr,
         init_recycling=init_recycling,
+        template_pdb=template_pdb,
         domain_segs=domain_segs,
         voxel_spacing=voxel_spacing,
     )
@@ -355,6 +373,7 @@ def run_both_phases_all_datasets() -> None:
                 smooth_stage_epochs=args.smooth_stage_epochs,
                 init_recycling=args.init_recycling,
                 phase1_min_resol=args.phase1_min_resol,
+                template_pdb=args.template_pdb,
                 domain_segs=args.domain_segs,
                 mse_uuid=args.mse_uuid,
                 voxel_spacing=args.voxel_spacing,
@@ -376,6 +395,7 @@ def run_both_phases_all_datasets() -> None:
                 w_plddt=args.w_plddt,
                 phase2_final_lr=args.phase2_final_lr,
                 init_recycling=args.init_recycling,
+                template_pdb=args.template_pdb,
                 domain_segs=args.domain_segs,
                 voxel_spacing=args.voxel_spacing,
             )
@@ -396,6 +416,7 @@ def run_both_phases_all_datasets() -> None:
                 phase2_final_lr=args.phase2_final_lr,
                 init_recycling=args.init_recycling,
                 phase1_min_resol=args.phase1_min_resol,
+                template_pdb=args.template_pdb,
                 domain_segs=args.domain_segs,
                 mse_uuid=args.mse_uuid,
                 voxel_spacing=args.voxel_spacing,
