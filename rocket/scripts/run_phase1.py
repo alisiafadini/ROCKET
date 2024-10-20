@@ -33,6 +33,12 @@ def parse_arguments():
     )
 
     parser.add_argument(
+        "--template_pdb",
+        default=None,
+        help=("template model name in the path"),
+    )
+
+    parser.add_argument(
         "--domain_segs",
         type=int,
         nargs="*",
@@ -171,6 +177,7 @@ def generate_phase1_config(
     min_resol: float = 3.0,
     note: str = "",
     refine_sigmaA: bool = True,
+    template_pdb: Union[str, None] = None,
     domain_segs: Union[List[int], None] = None,
     add_lr: float = 0.05,
     mul_lr: float = 1.0,
@@ -193,6 +200,9 @@ def generate_phase1_config(
             os.path.join(mse_path, "best_feat_weights*.pt")
         )[0]
     
+    if template_pdb is not None:
+        template_pdb = f"{working_path}/{file_root}/{template_pdb}"
+
     phase1_config = RocketRefinmentConfig(
         file_root=file_root,
         path=working_path,
@@ -208,6 +218,7 @@ def generate_phase1_config(
         num_of_runs=num_of_runs,
         iterations=n_step,
         # iterations=2,
+        template_pdb=template_pdb,
         cuda_device=cuda_device,
         solvent=True,
         sfc_scale=True,
@@ -248,6 +259,7 @@ def run_phase1_all_datasets() -> None:
                                                mul_lr=args.mul_lr,
                                                num_of_runs=args.num_of_runs,
                                                n_step=args.n_step,
+                                               template_pdb=args.template_pdb,
                                                refine_sigmaA=args.refine_sigmaA,
                                                min_resol=args.min_resolution,
                                                phase2_final_lr=args.phase2_final_lr,
