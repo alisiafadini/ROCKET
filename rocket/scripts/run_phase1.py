@@ -10,6 +10,15 @@ def int_or_none(value):
         return int(value)
     except ValueError:
         raise argparse.ArgumentTypeError(f"Invalid value: {value}. Must be an integer or 'None'.")
+    
+
+def float_or_none(value):
+    if value.lower() == 'none':
+        return None
+    try:
+        return float(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"Invalid value: {value}. Must be an float or 'None'.")
 
 def parse_arguments():
     """Parse commandline arguments"""
@@ -157,6 +166,13 @@ def parse_arguments():
         type=float,
         help=("Voxel spacing for solvent percentage estimation"),
     )
+
+    parser.add_argument(
+        "--msa_subratio",
+        default=None,
+        type=float_or_none,
+        help=("MSA subsampling ratio, between 0.0 and 1.0. Default None, no subsampling."),
+    ) 
     
     return parser.parse_args()
 
@@ -185,6 +201,7 @@ def generate_phase1_config(
     smooth_stage_epochs: int = 50,
     mse_uuid: Union[str, None] = None,
     voxel_spacing: float = 4.5,
+    msa_subratio: Union[float, None] = None,
 ) -> RocketRefinmentConfig:
 
     if mse_uuid is None:
@@ -234,7 +251,8 @@ def generate_phase1_config(
         starting_bias=starting_bias_path,
         starting_weights=starting_weights_path,
         note="phase1"+note,
-        voxel_spacing=voxel_spacing
+        voxel_spacing=voxel_spacing,
+        msa_subratio=msa_subratio,
     )
 
     return phase1_config
@@ -266,6 +284,7 @@ def run_phase1_all_datasets() -> None:
                                                smooth_stage_epochs=args.smooth_stage_epochs,
                                                mse_uuid=args.mse_uuid,
                                                voxel_spacing=args.voxel_spacing,
+                                               msa_subratio=args.msa_subratio,
                                                )
         phase1_uuid = run_refinement(config=phase1_config)
 

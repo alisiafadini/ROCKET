@@ -8,6 +8,19 @@ from rocket.llg import utils as llg_utils
 import skbio, re
 
 
+def generate_feature_dict(
+    fasta_path,
+    alignment_dir,
+    data_processor,
+):
+    feature_dict = data_processor.process_fasta(
+        fasta_path=fasta_path,
+        alignment_dir=alignment_dir,
+        seqemb_mode=False,
+    )
+    return feature_dict
+
+
 def number_to_letter(n):
     if 0 <= n <= 25:
         return chr(n + 65)

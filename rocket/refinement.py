@@ -6,7 +6,7 @@ import pickle
 import numpy as np
 from tqdm import tqdm
 import rocket
-import os
+import os, glob
 import time
 import yaml
 from rocket.llg import utils as llg_utils
@@ -15,6 +15,7 @@ from rocket import utils as rk_utils
 from rocket import refinement_utils as rkrf_utils
 from rocket.llg import structurefactors as llg_sf
 from openfold.config import model_config
+from openfold.data import feature_pipeline, data_pipeline
 from typing import Union, List
 from pydantic import BaseModel
 
@@ -60,6 +61,9 @@ class RocketRefinmentConfig(BaseModel):
     starting_weights: Union[str, None] = None
     uuid_hex: Union[str, None] = None
     voxel_spacing: float = 4.5
+    msa_subratio: Union[float, None] = None
+    sub_msa_path: Union[str, None] = None
+    sub_delmat_path: Union[str, None] = None 
 
     # intercept them upload load/save and cast to string as appropriate
     def to_yaml_file(self, file_path: str) -> None:
@@ -239,7 +243,7 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
         lr_m = config.phase2_final_lr
 
     # Initialize best Rfree weights and bias for Phase 1
-    best_rfree = float("inf")
+    best_llg = float("inf")
     best_msa_bias = None
     best_feat_weights = None
     best_run = None
@@ -261,18 +265,62 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
 
         run_id = rkrf_utils.number_to_letter(n)
 
-        # Initialize the processed dict space
-        device_processed_features, feature_key, features_at_it_start = (
-            rkrf_utils.init_processed_dict(
-                bias_version=config.bias_version,
-                path=config.path,
-                file_root=config.file_root,
-                device=device,
-                template_pdb=config.template_pdb,
-                target_seq=target_seq,
-                PRESET=PRESET,
+        # MH edits @ Oct 19, 2024, support MSA subsampling at the beginning
+        if config.msa_subratio is not None:
+            assert config.msa_subratio > 0.0 and config.msa_subratio < 1.0, "msa_subratio should be None or between 0.0 and 1.0!"
+            fasta_path = [f for ext in ('*.fa', '*.fasta') for f in glob.glob(os.path.join(config.path, config.file_root, ext))][0]
+            data_processor = data_pipeline.DataPipeline(template_featurizer=None)
+            alignment_dir = os.path.join(config.path, config.file_root, "alignments")
+            feature_dict = rkrf_utils.generate_feature_dict(
+                fasta_path,
+                alignment_dir,
+                data_processor,
             )
-        )
+            # Do subsampling of msa, keep the first sequence
+            if config.sub_msa_path is None:
+                idx = np.arange(feature_dict["msa"].shape[0] - 1) + 1
+                sub_idx = np.concatenate((np.array([0]), np.random.choice(idx, size=int(config.msa_subratio*len(idx)), replace=False)))
+                feature_dict['msa'] = feature_dict["msa"][sub_idx]
+                feature_dict['deletion_matrix_int'] = feature_dict['deletion_matrix_int'][sub_idx]
+                # Save out the subsampled msa
+                np.save(
+                    f"{output_directory_path!s}/sub_msa_{run_id}.npy",
+                    feature_dict['msa'],
+                )
+                np.save(
+                    f"{output_directory_path!s}/sub_delmat_{run_id}.npy",
+                    feature_dict['deletion_matrix_int'],
+                )
+            else:
+                feature_dict['msa'] = np.load(config.sub_msa_path, allow_pickle=True)
+                feature_dict['deletion_matrix_int'] = np.load(config.sub_delmat_path, allow_pickle=True)
+            
+            # Do featurization
+            afconfig = model_config(PRESET)
+            afconfig.data.common.max_recycling_iters = config.init_recycling
+            feature_processor = feature_pipeline.FeaturePipeline(afconfig.data)
+            processed_feature_dict = feature_processor.process_features(
+                feature_dict, mode='predict'
+            )
+            device_processed_features = rk_utils.move_tensors_to_device(
+                processed_feature_dict, device=device
+            )
+            feature_key = "msa_feat"
+            features_at_it_start = device_processed_features["msa_feat"].detach().clone()
+        
+        else:
+            # Initialize the processed dict space
+            device_processed_features, feature_key, features_at_it_start = (
+                rkrf_utils.init_processed_dict(
+                    bias_version=config.bias_version,
+                    path=config.path,
+                    file_root=config.file_root,
+                    device=device,
+                    template_pdb=config.template_pdb,
+                    target_seq=target_seq,
+                    PRESET=PRESET,
+                )
+            )
 
         # MH edit @ Oct 2nd, 2024: Support optional template input 
         if config.template_pdb is not None:
@@ -473,8 +521,8 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
             rfree_by_epoch.append(llgloss.sfc.r_free.item())
 
             # check if current Rfree is the best so far
-            if rfree_by_epoch[-1] < best_rfree:
-                best_rfree = rfree_by_epoch[-1]
+            if llg_losses[-1] < best_llg:
+                best_rfree = llg_losses[-1]
                 best_msa_bias = (
                     device_processed_features["msa_feat_bias"].detach().cpu().clone()
                 )
