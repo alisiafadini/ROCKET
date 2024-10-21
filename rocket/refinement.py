@@ -522,7 +522,7 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
 
             # check if current Rfree is the best so far
             if llg_losses[-1] < best_llg:
-                best_rfree = llg_losses[-1]
+                best_llg = llg_losses[-1]
                 best_msa_bias = (
                     device_processed_features["msa_feat_bias"].detach().cpu().clone()
                 )
