@@ -248,7 +248,6 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
     best_feat_weights = None
     best_run = None
     best_iter = None
-    best_pos = reference_pos
 
     # MH edit @ Oct 2nd, 2024: Support optional template input 
     if config.template_pdb is not None:
@@ -264,6 +263,7 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
     for n in range(config.num_of_runs):
 
         run_id = rkrf_utils.number_to_letter(n)
+        best_pos = reference_pos
 
         # MH edits @ Oct 19, 2024, support MSA subsampling at the beginning
         if config.msa_subratio is not None:
