@@ -263,7 +263,7 @@ def generate_phase2_config(
     additional_chain: bool = False,
     phase1_add_lr: float = 0.05,
     phase1_mul_lr: float = 1.0,
-    phase1_w_l2: float = 1e-11,
+    phase1_w_l2: float = 1e-3,
     phase2_final_lr: float = 1e-3,
     template_pdb: Union[str, None] = None,
     domain_segs: Union[List[int], None] = None,
@@ -290,6 +290,9 @@ def generate_phase2_config(
         if msa_subratio is not None:
             sub_msa_path = glob.glob(os.path.join(phase1_path, f"sub_msa_{best_runid}.npy"))[0]
             sub_delmat_path = glob.glob(os.path.join(phase1_path, f"sub_delmat_{best_runid}.npy"))[0]
+        else:
+            sub_msa_path = None
+            sub_delmat_path = None
     
     if template_pdb is not None:
         template_pdb = f"{working_path}/{file_root}/{template_pdb}"
@@ -327,6 +330,7 @@ def generate_phase2_config(
         starting_bias=starting_bias_path,
         starting_weights=starting_weights_path,
         voxel_spacing=voxel_spacing,
+        msa_subratio=msa_subratio,
         sub_msa_path=sub_msa_path,
         sub_delmat_path=sub_delmat_path,
     )
