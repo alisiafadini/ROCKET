@@ -345,14 +345,24 @@ def update_sigmaA(
     aligned_xyz,
     constant_fp_added_HKL=None,
     constant_fp_added_asu=None,
+    bb_index=None,
 ):
-    Ecalc, Fc = llgloss.compute_Ecalc(
-        aligned_xyz.detach(),
-        return_Fc=True,
-        update_scales=True,
-        added_chain_HKL=constant_fp_added_HKL,
-        added_chain_asu=constant_fp_added_asu,
-    )
+    if bb_index is None:
+        Ecalc, Fc = llgloss.compute_Ecalc(
+            aligned_xyz.detach(),
+            return_Fc=True,
+            update_scales=True,
+            added_chain_HKL=constant_fp_added_HKL,
+            added_chain_asu=constant_fp_added_asu,
+        )
+    else:
+        Ecalc, Fc = llgloss.compute_Ecalc(
+            aligned_xyz.detach()[bb_index],
+            return_Fc=True,
+            update_scales=True,
+            added_chain_HKL=constant_fp_added_HKL,
+            added_chain_asu=constant_fp_added_asu,
+        )
     Ecalc_rbr, _ = llgloss_rbr.compute_Ecalc(
         aligned_xyz.detach(),
         return_Fc=True,

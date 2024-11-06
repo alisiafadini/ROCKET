@@ -64,6 +64,7 @@ class RocketRefinmentConfig(BaseModel):
     msa_subratio: Union[float, None] = None
     sub_msa_path: Union[str, None] = None
     sub_delmat_path: Union[str, None] = None 
+    backbone_alone: bool = False
 
     # intercept them upload load/save and cast to string as appropriate
     def to_yaml_file(self, file_path: str) -> None:
@@ -182,6 +183,26 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
         added_chain_asu=constant_fp_added_asu,
         spacing=config.voxel_spacing,
     )
+    if config.backbone_alone:
+        input_pdb_obj = rk_utils.load_pdb(input_pdb)
+        input_pdb_bb_obj = input_pdb_obj.selection("//A//CA,C,N,O")
+        bb_index = np.array(
+            [input_pdb_obj.cra_name.index(cra) for cra in input_pdb_bb_obj.cra_name]
+        )
+        sfc_bb = llg_sf.initial_SFC(
+            input_pdb_bb_obj,
+            tng_file,
+            "FP",
+            "SIGFP",
+            Freelabel=config.free_flag,
+            device=device,
+            testset_value=config.testset_value,
+            added_chain_HKL=constant_fp_added_HKL,
+            added_chain_asu=constant_fp_added_asu,
+            spacing=config.voxel_spacing,
+        )
+    else:
+        bb_index = None
     reference_pos = sfc.atom_pos_orth.clone()
     target_seq = sfc._pdb.sequence
     # CA mask and residue numbers for track
@@ -214,9 +235,14 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
         true_pos = rk_utils.assert_tensor(true_pdb_model.atom_pos)
 
     # LLG initialization with resol cut
-    llgloss = rkrf_utils.init_llgloss(
-        sfc, tng_file, config.min_resolution, config.max_resolution
-    )
+    if config.backbone_alone:
+        llgloss = rkrf_utils.init_llgloss(
+            sfc_bb, tng_file, config.min_resolution, config.max_resolution
+        )
+    else:  
+        llgloss = rkrf_utils.init_llgloss(
+            sfc, tng_file, config.min_resolution, config.max_resolution
+        )
     llgloss_rbr = rkrf_utils.init_llgloss(
         sfc_rbr, tng_file, config.min_resolution, config.max_resolution
     )
@@ -366,7 +392,7 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
             w_L2 = 0.0
             
         ######
-        early_stopper = rkrf_utils.EarlyStopper(patience=200, min_delta=0.1)
+        early_stopper = rkrf_utils.EarlyStopper(patience=200, min_delta=1.0)
 
         #### Phase 1 smooth scheduling ######
         if config.smooth_stage_epochs is not None:
@@ -432,7 +458,7 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
                 exclude_res=EXCLUDING_RES,
                 domain_segs=config.domain_segs,
             )
-            llgloss.sfc.atom_b_iso = pseudo_Bs.detach()
+            sfc.atom_b_iso = pseudo_Bs.detach()
             all_pldtts.append(plddts_res)
             mean_it_plddts.append(np.mean(plddts_res))
 
@@ -452,6 +478,7 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
                     aligned_xyz=aligned_xyz,
                     constant_fp_added_HKL=constant_fp_added_HKL,
                     constant_fp_added_asu=constant_fp_added_asu,
+                    bb_index=bb_index
                 )
                 sigmas = llgloss.sigmaAs
             else:
@@ -482,12 +509,13 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
             #     )
 
             # Update SFC and save
-            llgloss.sfc.atom_pos_orth = aligned_xyz.detach().clone()
-            llgloss.sfc.savePDB(
+            sfc.atom_pos_orth = aligned_xyz.detach().clone()
+            sfc.savePDB(
                 f"{output_directory_path!s}/{run_id}_{iteration}_preRBR.pdb"
             )
 
             # Rigid body refinement (RBR) step
+            llgloss_rbr.sfc.atom_b_iso = pseudo_Bs.detach()
             optimized_xyz, loss_track_pose = rk_coordinates.rigidbody_refine_quat(
                 aligned_xyz,
                 llgloss_rbr,
@@ -502,16 +530,30 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
             rbr_loss_by_epoch.append(loss_track_pose)
 
             # LLG loss
-            L_llg = -llgloss(
-                optimized_xyz,
-                bin_labels=None,
-                num_batch=config.number_of_batches,
-                sub_ratio=config.batch_sub_ratio,
-                solvent=config.solvent,
-                update_scales=config.sfc_scale,
-                added_chain_HKL=constant_fp_added_HKL,
-                added_chain_asu=constant_fp_added_asu,
-            )
+            if bb_index is None:
+                llgloss.sfc.atom_b_iso = pseudo_Bs.detach()
+                L_llg = -llgloss(
+                    optimized_xyz,
+                    bin_labels=None,
+                    num_batch=config.number_of_batches,
+                    sub_ratio=config.batch_sub_ratio,
+                    solvent=config.solvent,
+                    update_scales=config.sfc_scale,
+                    added_chain_HKL=constant_fp_added_HKL,
+                    added_chain_asu=constant_fp_added_asu,
+                )
+            else:
+                llgloss.sfc.atom_b_iso = pseudo_Bs.detach()[bb_index]
+                L_llg = -llgloss(
+                    optimized_xyz[bb_index],
+                    bin_labels=None,
+                    num_batch=config.number_of_batches,
+                    sub_ratio=config.batch_sub_ratio,
+                    solvent=config.solvent,
+                    update_scales=config.sfc_scale,
+                    added_chain_HKL=constant_fp_added_HKL,
+                    added_chain_asu=constant_fp_added_asu,
+                )
 
             llg_estimate = L_llg.clone().item() / (
                 config.batch_sub_ratio * config.number_of_batches
@@ -534,9 +576,9 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
                 best_pos = optimized_xyz.detach().clone()
                 # best_pos_bfactor = llgloss.sfc.atom_b_iso.detach().clone()
 
-            llgloss.sfc.atom_pos_orth = optimized_xyz
+            sfc.atom_pos_orth = optimized_xyz
             # Save postRBR PDB
-            llgloss.sfc.savePDB(
+            sfc.savePDB(
                 f"{output_directory_path!s}/{run_id}_{iteration}_postRBR.pdb"
             )
 
@@ -567,10 +609,14 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
 
             #### add an L2 loss to constrain confident atoms ###
             if w_L2 > 0.0:
-                # use
-                L2_loss = torch.sum(
-                    bfactor_weights.unsqueeze(-1) * (optimized_xyz - reference_pos) ** 2
-                )  # / conf_best.shape[0]
+                if bb_index is None:
+                    L2_loss = torch.sum(
+                        bfactor_weights.unsqueeze(-1) * (optimized_xyz - reference_pos) ** 2
+                    )  # / conf_best.shape[0]
+                else:
+                    L2_loss = torch.sum(
+                        bfactor_weights.unsqueeze(-1)[bb_index] * (optimized_xyz - reference_pos)[bb_index] ** 2
+                    )  # / conf_best.shape[0]
                 loss = L_llg + w_L2 * L2_loss + config.w_plddt * L_plddt
                 loss.backward()
             else:

@@ -247,6 +247,7 @@ def generate_phase1_config(
         starting_weights=starting_weights_path,
         voxel_spacing=voxel_spacing,
         msa_subratio=msa_subratio,
+        backbone_alone=True,
     )
 
     return phase1_config
