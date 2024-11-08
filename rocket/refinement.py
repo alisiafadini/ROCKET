@@ -266,7 +266,7 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
         config.input_msa = "alignments" # default dir for alignment
     
     if config.input_msa is not None:
-        fasta_path = [f for ext in ('*.fa', '*.fasta') for f in glob.glob(os.path.join(config.path, config.system, ext))][0]
+        fasta_path = [f for ext in ('*.fa', '*.fasta') for f in glob.glob(os.path.join(config.path, config.file_root, ext))][0]
         a3m_path = os.path.join(config.path, config.file_root, config.input_msa)
         if os.path.isfile(a3m_path):
             msa_name, ext = os.path.splitext(os.path.basename(a3m_path))
