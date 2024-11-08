@@ -187,7 +187,7 @@ def main():
         prevs = [tensor.detach() for tensor in prevs]
         deep_copied_prevs = [tensor.clone().detach() for tensor in prevs]
         af2_output, __ = af_bias(
-            device_processed_features, deep_copied_prevs, num_iters=1, bias=True
+            device_processed_features, deep_copied_prevs, num_iters=1, bias=False
         )
         plddt = torch.mean(af2_output["plddt"])
         # Position Kabsch Alignment
@@ -252,7 +252,7 @@ def main():
                 "rwork": [rwork_i],
             }
         )
-        df_tmp.to_csv(os.path.join(output_directory_path, "msa_scoring.csv"), mode="a", index=False)
+        df_tmp.to_csv(os.path.join(output_directory_path, "msa_scoring.csv"), mode="a", header=False, index=False)
 
         # delete the tmp alignment
         shutil.rmtree(temp_alignment_dir)
