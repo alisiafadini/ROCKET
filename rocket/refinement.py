@@ -6,7 +6,7 @@ import pickle
 import numpy as np
 from tqdm import tqdm
 import rocket
-import os, glob
+import os, glob, shutil
 import time
 import yaml
 from rocket.llg import utils as llg_utils
@@ -32,6 +32,7 @@ class RocketRefinmentConfig(BaseModel):
     iterations: int
     num_of_runs: int = 1
     template_pdb: Union[str, None] = None
+    input_msa: Union[str, None] = None
     cuda_device: int = (0,)
     init_recycling: int = (1,)
     domain_segs: Union[List[int], None] = None
@@ -260,6 +261,35 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
             max_recycling_iters=config.init_recycling
         )
 
+    # MH edit @ Nov 8th, 2024: Support to use msa as input 
+    if config.msa_subratio is not None and config.input_msa is None:
+        config.input_msa = "alignments" # default dir for alignment
+    
+    if config.input_msa is not None:
+        fasta_path = [f for ext in ('*.fa', '*.fasta') for f in glob.glob(os.path.join(config.path, config.system, ext))][0]
+        a3m_path = os.path.join(config.path, config.file_root, config.input_msa)
+        if os.path.isfile(a3m_path):
+            msa_name, ext = os.path.splitext(os.path.basename(a3m_path))
+            alignment_dir = os.path.join(os.path.dirname(a3m_path), "tmp_align")
+            os.makedirs(alignment_dir, exist_ok=True)
+            shutil.copy(a3m_path, os.path.join(alignment_dir, msa_name+".a3m"))
+            tmp_align = True
+        elif os.path.isdir(a3m_path):
+            alignment_dir = a3m_path
+            tmp_align = False
+        data_processor = data_pipeline.DataPipeline(template_featurizer=None)
+        feature_dict = rkrf_utils.generate_feature_dict(
+            fasta_path,
+            alignment_dir,
+            data_processor,
+            )
+        # prepare featuerizer
+        afconfig = model_config(PRESET)
+        afconfig.data.common.max_recycling_iters = config.init_recycling
+        feature_processor = feature_pipeline.FeaturePipeline(afconfig.data)
+        if tmp_align:
+            shutil.rmtree(alignment_dir)
+
     for n in range(config.num_of_runs):
 
         run_id = rkrf_utils.number_to_letter(n)
@@ -268,14 +298,6 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
         # MH edits @ Oct 19, 2024, support MSA subsampling at the beginning
         if config.msa_subratio is not None:
             assert config.msa_subratio > 0.0 and config.msa_subratio < 1.0, "msa_subratio should be None or between 0.0 and 1.0!"
-            fasta_path = [f for ext in ('*.fa', '*.fasta') for f in glob.glob(os.path.join(config.path, config.file_root, ext))][0]
-            data_processor = data_pipeline.DataPipeline(template_featurizer=None)
-            alignment_dir = os.path.join(config.path, config.file_root, "alignments")
-            feature_dict = rkrf_utils.generate_feature_dict(
-                fasta_path,
-                alignment_dir,
-                data_processor,
-            )
             # Do subsampling of msa, keep the first sequence
             if config.sub_msa_path is None:
                 idx = np.arange(feature_dict["msa"].shape[0] - 1) + 1
@@ -295,10 +317,8 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
                 feature_dict['msa'] = np.load(config.sub_msa_path, allow_pickle=True)
                 feature_dict['deletion_matrix_int'] = np.load(config.sub_delmat_path, allow_pickle=True)
             
-            # Do featurization
-            afconfig = model_config(PRESET)
-            afconfig.data.common.max_recycling_iters = config.init_recycling
-            feature_processor = feature_pipeline.FeaturePipeline(afconfig.data)
+        # Do featurization
+        if config.input_msa is not None:
             processed_feature_dict = feature_processor.process_features(
                 feature_dict, mode='predict'
             )
