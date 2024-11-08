@@ -1,6 +1,8 @@
 """
 Cluster sequences in a MSA using DBSCAN algorithm and write .a3m file for each cluster. Assumes first sequence in fasta is the query sequence.
 
+rk.msacluster v1 -i alignments/ -o msaclusters --run_TSNE
+
 This script is modified from AF_cluster repo: https://github.com/HWaymentSteele/AF_Cluster/blob/main/scripts/ClusterMSA.py
 """
 
