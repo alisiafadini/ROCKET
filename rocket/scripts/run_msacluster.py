@@ -37,7 +37,7 @@ def main():
     p.add_argument('--min_eps', action='store',default=3, help='Min epsilon value to scan for DBSCAN (Default 3).')
     p.add_argument('--max_eps', action='store',default=20, help='Max epsilon value to scan for DBSCAN (Default 20).')
     p.add_argument('--eps_step', action='store',default=.5, help='step for epsilon scan for DBSCAN (Default 0.5).')
-    p.add_argument('--min_samples', action='store',default=3, help='Default min_samples for DBSCAN (Default 3, recommended no lower than that).')
+    p.add_argument('--min_samples', action='store',default=10, help='Default min_samples for DBSCAN (Default 3, recommended no lower than that).')
 
     p.add_argument('--run_PCA', action='store_true', help='Run PCA on one-hot embedding of sequences and store in output_cluster_metadata.tsv')
     p.add_argument('--run_TSNE', action='store_true', help='Run TSNE on one-hot embedding of sequences and store in output_cluster_metadata.tsv')
@@ -153,13 +153,13 @@ def main():
     for i in range(args.n_controls):
        tmp = df.sample(n=10)
        tmp = pd.concat([query_, tmp], axis=0)
-       write_fasta(tmp.SequenceName.tolist(), tmp.sequence.tolist(), outfile=args.o+'/'+args.keyword+'_U10-'+"%03d" % i +'.a3m') 
+       write_fasta(tmp.SequenceName.tolist(), tmp.sequence.tolist(), outfile=args.o+'/'+'U10-'+args.keyword+"_"+"%03d" % i +'.a3m') 
     if len(df)>100:
         print('writing 10 size-100 uniformly sampled clusters')
         for i in range(args.n_controls):
             tmp = df.sample(n=100)
             tmp = pd.concat([query_, tmp], axis=0)
-            write_fasta(tmp.SequenceName.tolist(), tmp.sequence.tolist(), outfile=args.o+'/'+args.keyword+'_U100-'+"%03d" % i +'.a3m')
+            write_fasta(tmp.SequenceName.tolist(), tmp.sequence.tolist(), outfile=args.o+'/'+'U100-'+args.keyword+'_'+"%03d" % i +'.a3m')
 
     if args.run_PCA:
         lprint('Running PCA ...',f)
