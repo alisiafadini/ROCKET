@@ -156,6 +156,7 @@ def load_mtz(mtz: str) -> rs.DataSet:
     dataset.compute_dHKL(inplace=True)
     return dataset
 
+
 def load_pdb(pdb: str) -> PDBParser:
     model = PDBParser(pdb)
     return model
