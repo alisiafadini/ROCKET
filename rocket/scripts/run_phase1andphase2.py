@@ -325,7 +325,6 @@ def generate_phase2_config(
         additional_chain=additional_chain,
         input_msa=input_msa,
         template_pdb=template_pdb,
-        input_msa=None,
         domain_segs=domain_segs,
         verbose=False,
         bias_version=3,
