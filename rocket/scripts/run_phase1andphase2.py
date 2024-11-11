@@ -273,6 +273,7 @@ def generate_phase2_config(
     phase1_mul_lr: float = 1.0,
     phase1_w_l2: float = 1e-3,
     phase2_final_lr: float = 1e-3,
+    input_msa: Union[str, None] = None,
     template_pdb: Union[str, None] = None,
     domain_segs: Union[List[int], None] = None,
     voxel_spacing: float = 4.5,
@@ -294,6 +295,13 @@ def generate_phase2_config(
         starting_weights_path = glob.glob(
             os.path.join(phase1_path, "best_feat_weights*.pt")
         )[0]
+    
+    if input_msa is not None:
+        msa_feat_init_path = glob.glob(
+            os.path.join(phase1_path, "msa_feat_start.npy")
+        )[0]
+    else:
+        msa_feat_init_path = None
         # best_runid = os.path.basename(starting_bias_path).split("_")[-2]
         # if msa_subratio is not None:
         #     sub_msa_path = glob.glob(os.path.join(phase1_path, f"sub_msa_{best_runid}.npy"))[0]
@@ -315,6 +323,7 @@ def generate_phase2_config(
         rbr_lbfgs_learning_rate=150.0,
         smooth_stage_epochs=50,
         additional_chain=additional_chain,
+        input_msa=input_msa,
         template_pdb=template_pdb,
         input_msa=None,
         domain_segs=domain_segs,
@@ -340,6 +349,7 @@ def generate_phase2_config(
         starting_weights=starting_weights_path,
         voxel_spacing=voxel_spacing,
         msa_subratio=None,
+        msa_feat_init_path=msa_feat_init_path,
         # sub_msa_path=sub_msa_path,
         # sub_delmat_path=sub_delmat_path,
     )
@@ -388,6 +398,7 @@ def run_both_phases_single_dataset(
         w_plddt=w_plddt,
         phase2_final_lr=phase2_final_lr,
         init_recycling=init_recycling,
+        input_msa=input_msa,
         template_pdb=template_pdb,
         domain_segs=domain_segs,
         voxel_spacing=voxel_spacing,
@@ -440,6 +451,7 @@ def run_both_phases_all_datasets() -> None:
                 w_plddt=args.w_plddt,
                 phase2_final_lr=args.phase2_final_lr,
                 init_recycling=args.init_recycling,
+                input_msa=arg.input_msa,
                 template_pdb=args.template_pdb,
                 domain_segs=args.domain_segs,
                 voxel_spacing=args.voxel_spacing,

@@ -65,6 +65,7 @@ class RocketRefinmentConfig(BaseModel):
     msa_subratio: Union[float, None] = None
     sub_msa_path: Union[str, None] = None
     sub_delmat_path: Union[str, None] = None 
+    msa_feat_init_path: Union[str, None] = None
 
     # intercept them upload load/save and cast to string as appropriate
     def to_yaml_file(self, file_path: str) -> None:
@@ -248,18 +249,7 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
     best_msa_bias = None
     best_feat_weights = None
     best_run = None
-    best_iter = None
-
-    # MH edit @ Oct 2nd, 2024: Support optional template input 
-    if config.template_pdb is not None:
-        device_processed_features_template = rocket.make_processed_dict_from_template(
-            config.template_pdb, 
-            target_seq, 
-            device=device, 
-            mask_sidechains_add_cb=False, 
-            mask_sidechains=False, 
-            max_recycling_iters=config.init_recycling
-        )
+    best_iter = None       
 
     # MH edit @ Nov 8th, 2024: Support to use msa as input 
     if config.msa_subratio is not None and config.input_msa is None:
@@ -286,15 +276,12 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
         # prepare featuerizer
         afconfig = model_config(PRESET)
         afconfig.data.common.max_recycling_iters = config.init_recycling
+        del afconfig.data.common.masked_msa
+        afconfig.data.common.resample_msa_in_recycling = False  
         feature_processor = feature_pipeline.FeaturePipeline(afconfig.data)
         if tmp_align:
             shutil.rmtree(alignment_dir)
-
-    for n in range(config.num_of_runs):
-
-        run_id = rkrf_utils.number_to_letter(n)
-        best_pos = reference_pos
-
+        
         # MH edits @ Oct 19, 2024, support MSA subsampling at the beginning
         if config.msa_subratio is not None:
             assert config.msa_subratio > 0.0 and config.msa_subratio < 1.0, "msa_subratio should be None or between 0.0 and 1.0!"
@@ -306,48 +293,69 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
                 feature_dict['deletion_matrix_int'] = feature_dict['deletion_matrix_int'][sub_idx]
                 # Save out the subsampled msa
                 np.save(
-                    f"{output_directory_path!s}/sub_msa_{run_id}.npy",
+                    f"{output_directory_path!s}/sub_msa.npy",
                     feature_dict['msa'],
                 )
                 np.save(
-                    f"{output_directory_path!s}/sub_delmat_{run_id}.npy",
+                    f"{output_directory_path!s}/sub_delmat.npy",
                     feature_dict['deletion_matrix_int'],
                 )
             else:
                 feature_dict['msa'] = np.load(config.sub_msa_path, allow_pickle=True)
                 feature_dict['deletion_matrix_int'] = np.load(config.sub_delmat_path, allow_pickle=True)
-            
-        # Do featurization
-        if config.input_msa is not None:
-            processed_feature_dict = feature_processor.process_features(
-                feature_dict, mode='predict'
-            )
-            device_processed_features = rk_utils.move_tensors_to_device(
-                processed_feature_dict, device=device
-            )
-            feature_key = "msa_feat"
-            features_at_it_start = device_processed_features["msa_feat"].detach().clone()
+        processed_feature_dict = feature_processor.process_features(
+            feature_dict, mode='predict'
+        )
+        device_processed_features = rk_utils.move_tensors_to_device(
+            processed_feature_dict, device=device
+        )
+        feature_key = "msa_feat"
         
+        if config.msa_feat_init_path is None:
+            features_at_it_start = device_processed_features[feature_key].detach().clone()
+            np.save(
+                f"{output_directory_path!s}/msa_feat_start.npy",
+                rk_utils.assert_numpy(features_at_it_start[...,0]),
+            )
         else:
-            # Initialize the processed dict space
-            device_processed_features, feature_key, features_at_it_start = (
-                rkrf_utils.init_processed_dict(
-                    bias_version=config.bias_version,
-                    path=config.path,
-                    file_root=config.file_root,
-                    device=device,
-                    template_pdb=config.template_pdb,
-                    target_seq=target_seq,
-                    PRESET=PRESET,
-                )
-            )
+            msa_feat_init_np = np.load(config.msa_feat_init_path, allow_pickle=True)
+            features_at_it_start_np = np.repeat(np.expand_dims(msa_feat_init_np, -1), config.init_recycling+1, -1)
+            features_at_it_start = torch.tensor(features_at_it_start_np).to(device_processed_features[feature_key])
+            device_processed_features[feature_key] = features_at_it_start.detach().clone()
 
-        # MH edit @ Oct 2nd, 2024: Support optional template input 
-        if config.template_pdb is not None:
-            for key in device_processed_features_template.keys():
-                if key.startswith("template_"):
-                    device_processed_features[key] = device_processed_features_template[key]
-        
+    else:
+        # Initialize the processed dict space
+        device_processed_features, feature_key, features_at_it_start = (
+            rkrf_utils.init_processed_dict(
+                bias_version=config.bias_version,
+                path=config.path,
+                file_root=config.file_root,
+                device=device,
+                template_pdb=config.template_pdb,
+                target_seq=target_seq,
+                PRESET=PRESET,
+            )
+        )
+    
+    # MH edit @ Oct 2nd, 2024: Support optional template input 
+    if config.template_pdb is not None:
+        device_processed_features_template = rocket.make_processed_dict_from_template(
+            config.template_pdb, 
+            target_seq, 
+            device=device, 
+            mask_sidechains_add_cb=False, 
+            mask_sidechains=False, 
+            max_recycling_iters=config.init_recycling
+        )
+        for key in device_processed_features_template.keys():
+            if key.startswith("template_"):
+                device_processed_features[key] = device_processed_features_template[key]
+
+    for n in range(config.num_of_runs):
+
+        run_id = rkrf_utils.number_to_letter(n)
+        best_pos = reference_pos
+            
         # Initialize bias
         device_processed_features, optimizer, bias_names = rkrf_utils.init_bias(
             device_processed_features=device_processed_features,
@@ -386,7 +394,7 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
             w_L2 = 0.0
             
         ######
-        early_stopper = rkrf_utils.EarlyStopper(patience=200, min_delta=0.1)
+        early_stopper = rkrf_utils.EarlyStopper(patience=200, min_delta=10.0)
 
         #### Phase 1 smooth scheduling ######
         if config.smooth_stage_epochs is not None:

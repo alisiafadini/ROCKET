@@ -172,6 +172,12 @@ def parse_arguments():
         default=None,
         type=float_or_none,
         help=("MSA subsampling ratio, between 0.0 and 1.0. Default None, no subsampling."),
+    )
+
+    parser.add_argument(
+        "--input_msa",
+        default=None,
+        help=("path to msa file .a3m/.fasta for use, working path and system will prepend"),
     ) 
     
     return parser.parse_args()
@@ -193,6 +199,7 @@ def generate_phase1_config(
     min_resol: float = 3.0,
     note: str = "",
     refine_sigmaA: bool = True,
+    input_msa: Union[str, None] = None,
     template_pdb: Union[str, None] = None,
     domain_segs: Union[List[int], None] = None,
     add_lr: float = 0.05,
@@ -235,6 +242,7 @@ def generate_phase1_config(
         num_of_runs=num_of_runs,
         iterations=n_step,
         # iterations=2,
+        input_msa=input_msa,
         template_pdb=template_pdb,
         cuda_device=cuda_device,
         solvent=True,
@@ -277,6 +285,7 @@ def run_phase1_all_datasets() -> None:
                                                mul_lr=args.mul_lr,
                                                num_of_runs=args.num_of_runs,
                                                n_step=args.n_step,
+                                               input_msa=args.input_msa,
                                                template_pdb=args.template_pdb,
                                                refine_sigmaA=args.refine_sigmaA,
                                                min_resol=args.min_resolution,

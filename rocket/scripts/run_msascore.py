@@ -169,6 +169,8 @@ def main():
         # Do featurization
         afconfig = model_config(PRESET)
         afconfig.data.common.max_recycling_iters = config.init_recycling
+        del afconfig.data.common.masked_msa
+        afconfig.data.common.resample_msa_in_recycling = False  
         feature_processor = feature_pipeline.FeaturePipeline(afconfig.data)
         processed_feature_dict = feature_processor.process_features(
             feature_dict, mode='predict'
