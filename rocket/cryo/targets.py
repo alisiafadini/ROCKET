@@ -124,7 +124,7 @@ class LLGloss(torch.nn.Module):
             self.sfc,
             oversampling_factor,
             self.sfc.dHKL,
-            plot=True,
+            plot=False,
         )
 
         return sigmaAs
