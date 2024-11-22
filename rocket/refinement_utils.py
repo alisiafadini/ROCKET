@@ -182,6 +182,7 @@ def init_bias(
     weight_decay=None,
     starting_bias=None,
     starting_weights=None,
+    recombination_bias=None,
 ):
     num_res = device_processed_features["aatype"].shape[0]
     device_processed_features["msa_feat_bias"] = torch.zeros(
@@ -234,7 +235,14 @@ def init_bias(
                 (512, num_res, 23), requires_grad=True, device=device
             )
 
-        if starting_bias is not None:
+        if recombination_bias is not None:
+            device_processed_features["msa_feat_bias"] = (
+                recombination_bias
+                .detach()
+                .to(device=device)
+                .requires_grad_(True)
+            )
+        elif starting_bias is not None:
             device_processed_features["msa_feat_bias"] = (
                 torch.load(starting_bias)
                 .detach()

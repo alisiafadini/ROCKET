@@ -178,6 +178,12 @@ def parse_arguments():
         "--input_msa",
         default=None,
         help=("path to msa file .a3m/.fasta for use, working path and system will prepend"),
+    )
+
+    parser.add_argument(
+        "--bias_from_fullmsa", 
+        action="store_true",
+        help=("Generate initial profile via biasing from full msa profile")
     ) 
     
     return parser.parse_args()
@@ -200,6 +206,7 @@ def generate_phase1_config(
     note: str = "",
     refine_sigmaA: bool = True,
     input_msa: Union[str, None] = None,
+    bias_from_fullmsa: bool = False,
     template_pdb: Union[str, None] = None,
     domain_segs: Union[List[int], None] = None,
     add_lr: float = 0.05,
@@ -243,6 +250,7 @@ def generate_phase1_config(
         iterations=n_step,
         # iterations=2,
         input_msa=input_msa,
+        bias_from_fullmsa=bias_from_fullmsa,
         template_pdb=template_pdb,
         cuda_device=cuda_device,
         solvent=True,
@@ -286,6 +294,7 @@ def run_phase1_all_datasets() -> None:
                                                num_of_runs=args.num_of_runs,
                                                n_step=args.n_step,
                                                input_msa=args.input_msa,
+                                               bias_from_fullmsa=args.bias_from_fullmsa,
                                                template_pdb=args.template_pdb,
                                                refine_sigmaA=args.refine_sigmaA,
                                                min_resol=args.min_resolution,

@@ -144,7 +144,26 @@ def main():
     af_bias.freeze()
 
     fasta_path = [f for ext in ('*.fa', '*.fasta') for f in glob.glob(os.path.join(config.path, config.system, ext))][0]
-    
+
+    # Edit by MH @ Nov 15, 2024, recombination of full msa and subset msa
+    fullmsa_dir =  "{p}/{r}/alignments".format(p=config.path, r=config.system)
+    data_processor = data_pipeline.DataPipeline(template_featurizer=None)
+    fullmsa_feature_dict = rkrf_utils.generate_feature_dict(
+        fasta_path,
+        fullmsa_dir,
+        data_processor,
+        )
+    # Do featurization
+    afconfig = model_config(PRESET)
+    afconfig.data.common.max_recycling_iters = config.init_recycling
+    del afconfig.data.common.masked_msa
+    afconfig.data.common.resample_msa_in_recycling = False  
+    feature_processor = feature_pipeline.FeaturePipeline(afconfig.data)
+    fullmsa_processed_feature_dict = feature_processor.process_features(
+        fullmsa_feature_dict, mode='predict'
+    )
+    full_profile = fullmsa_processed_feature_dict["msa_feat"][:, :, 25:48].clone()
+
     # Get available msas
     a3m_paths = glob.glob(os.path.join(config.path, config.system, config.i+"*.a3m"))
     print(f"{len(a3m_paths)} msa files available...", flush=True)
@@ -175,10 +194,22 @@ def main():
         processed_feature_dict = feature_processor.process_features(
             feature_dict, mode='predict'
         )
+
+        # # Edit by MH @ Nov 15, 2024, recombination of full msa and subset msa
+        # recomb_feature_dict = fullmsa_processed_feature_dict.copy()
+        # recomb_feature_dict["msa_feat"][:, :, 25:48] =  processed_feature_dict["msa_feat"][:, :, 25:48]
+        # device_processed_features = rk_utils.move_tensors_to_device(
+        #     recomb_feature_dict, device=device
+        # )
+
+        # Edit by MH @ Nov 20, 2024, try the chimera profile idea from Alisia
+        chimera_feature_dict = processed_feature_dict.copy()
+        sub_profile = processed_feature_dict["msa_feat"][:, :, 25:48].clone()
+        chimera_feature_dict["msa_feat"][:, :, 25:48] =  torch.where(sub_profile == 0.0, full_profile.clone(), sub_profile.clone())
         device_processed_features = rk_utils.move_tensors_to_device(
-            processed_feature_dict, device=device
+            chimera_feature_dict, device=device
         )
-        
+
         # Run the AF2 prediction
         af2_output, prevs = af_bias(
             device_processed_features,

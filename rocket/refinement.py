@@ -66,6 +66,7 @@ class RocketRefinmentConfig(BaseModel):
     sub_msa_path: Union[str, None] = None
     sub_delmat_path: Union[str, None] = None 
     msa_feat_init_path: Union[str, None] = None
+    bias_from_fullmsa: bool = False
 
     # intercept them upload load/save and cast to string as appropriate
     def to_yaml_file(self, file_path: str) -> None:
@@ -255,6 +256,7 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
     if config.msa_subratio is not None and config.input_msa is None:
         config.input_msa = "alignments" # default dir for alignment
     
+    recombination_bias = None
     if config.input_msa is not None:
         fasta_path = [f for ext in ('*.fa', '*.fasta') for f in glob.glob(os.path.join(config.path, config.file_root, ext))][0]
         a3m_path = os.path.join(config.path, config.file_root, config.input_msa)
@@ -284,7 +286,7 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
         
         # MH edits @ Oct 19, 2024, support MSA subsampling at the beginning
         if config.msa_subratio is not None:
-            assert config.msa_subratio > 0.0 and config.msa_subratio < 1.0, "msa_subratio should be None or between 0.0 and 1.0!"
+            assert config.msa_subratio > 0.0 and config.msa_subratio <= 1.0, "msa_subratio should be None or between 0.0 and 1.0!"
             # Do subsampling of msa, keep the first sequence
             if config.sub_msa_path is None:
                 idx = np.arange(feature_dict["msa"].shape[0] - 1) + 1
@@ -306,11 +308,28 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
         processed_feature_dict = feature_processor.process_features(
             feature_dict, mode='predict'
         )
+        
+        # Edit by MH @ Nov 18, 2024, use bias of fullmsa to realize the cluster msa
+        if config.bias_from_fullmsa:
+            fullmsa_dir = os.path.join(config.path, config.file_root, "alignments")
+            fullmsa_feature_dict = rkrf_utils.generate_feature_dict(
+                fasta_path,
+                fullmsa_dir,
+                data_processor,
+                )
+            fullmsa_processed_feature_dict = feature_processor.process_features(
+                fullmsa_feature_dict, mode='predict'
+            )
+            fullmsa_profile = fullmsa_processed_feature_dict["msa_feat"][:, :, 25:48].clone()
+            submsa_profile = processed_feature_dict["msa_feat"][:, :, 25:48].clone()
+            processed_feature_dict["msa_feat"][:, :, 25:48] = fullmsa_profile.clone() # Use full msa's profile as basis for linear space -- higher rank (?)
+            recombination_bias = submsa_profile[..., 0] - fullmsa_profile[..., 0] # Use the difference as the initial bias, so we could start from the desired profile
+
         device_processed_features = rk_utils.move_tensors_to_device(
             processed_feature_dict, device=device
         )
         feature_key = "msa_feat"
-        
+
         if config.msa_feat_init_path is None:
             features_at_it_start = device_processed_features[feature_key].detach().clone()
             np.save(
@@ -323,6 +342,7 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
             features_at_it_start = torch.tensor(features_at_it_start_np).to(device_processed_features[feature_key])
             device_processed_features[feature_key] = features_at_it_start.detach().clone()
 
+        
     else:
         # Initialize the processed dict space
         device_processed_features, feature_key, features_at_it_start = (
@@ -366,6 +386,7 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
             weight_decay=config.weight_decay,
             starting_bias=config.starting_bias,
             starting_weights=config.starting_weights,
+            recombination_bias=recombination_bias,
         )
 
         # List initialization for saving values
