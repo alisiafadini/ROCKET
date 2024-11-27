@@ -67,6 +67,7 @@ class RocketRefinmentConfig(BaseModel):
     sub_delmat_path: Union[str, None] = None 
     msa_feat_init_path: Union[str, None] = None
     bias_from_fullmsa: bool = False
+    chimera_profile: bool = False
 
     # intercept them upload load/save and cast to string as appropriate
     def to_yaml_file(self, file_path: str) -> None:
@@ -324,6 +325,19 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
             submsa_profile = processed_feature_dict["msa_feat"][:, :, 25:48].clone()
             processed_feature_dict["msa_feat"][:, :, 25:48] = fullmsa_profile.clone() # Use full msa's profile as basis for linear space -- higher rank (?)
             recombination_bias = submsa_profile[..., 0] - fullmsa_profile[..., 0] # Use the difference as the initial bias, so we could start from the desired profile
+        elif config.chimera_profile:
+            fullmsa_dir = os.path.join(config.path, config.file_root, "alignments")
+            fullmsa_feature_dict = rkrf_utils.generate_feature_dict(
+                fasta_path,
+                fullmsa_dir,
+                data_processor,
+                )
+            fullmsa_processed_feature_dict = feature_processor.process_features(
+                fullmsa_feature_dict, mode='predict'
+            )
+            full_profile = fullmsa_processed_feature_dict["msa_feat"][:, :, 25:48].clone()
+            sub_profile = processed_feature_dict["msa_feat"][:, :, 25:48].clone()
+            processed_feature_dict["msa_feat"][:, :, 25:48] =  torch.where(sub_profile == 0.0, full_profile.clone(), sub_profile.clone())
 
         device_processed_features = rk_utils.move_tensors_to_device(
             processed_feature_dict, device=device
@@ -363,8 +377,8 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
             config.template_pdb, 
             target_seq, 
             device=device, 
-            mask_sidechains_add_cb=False, 
-            mask_sidechains=False, 
+            mask_sidechains_add_cb=True, 
+            mask_sidechains=True, 
             max_recycling_iters=config.init_recycling
         )
         for key in device_processed_features_template.keys():
