@@ -184,7 +184,13 @@ def parse_arguments():
         "--bias_from_fullmsa", 
         action="store_true",
         help=("Generate initial profile via biasing from full msa profile")
-    ) 
+    )
+
+    parser.add_argument(
+        "--chimera_profile", 
+        action="store_true",
+        help=("Use chimera profile")
+    )  
     
     return parser.parse_args()
 
@@ -207,6 +213,7 @@ def generate_phase1_config(
     refine_sigmaA: bool = True,
     input_msa: Union[str, None] = None,
     bias_from_fullmsa: bool = False,
+    chimera_profile: bool = False,
     template_pdb: Union[str, None] = None,
     domain_segs: Union[List[int], None] = None,
     add_lr: float = 0.05,
@@ -251,6 +258,7 @@ def generate_phase1_config(
         # iterations=2,
         input_msa=input_msa,
         bias_from_fullmsa=bias_from_fullmsa,
+        chimera_profile=chimera_profile,
         template_pdb=template_pdb,
         cuda_device=cuda_device,
         solvent=True,
@@ -295,6 +303,7 @@ def run_phase1_all_datasets() -> None:
                                                n_step=args.n_step,
                                                input_msa=args.input_msa,
                                                bias_from_fullmsa=args.bias_from_fullmsa,
+                                               chimera_profile=args.chimera_profile,
                                                template_pdb=args.template_pdb,
                                                refine_sigmaA=args.refine_sigmaA,
                                                min_resol=args.min_resolution,

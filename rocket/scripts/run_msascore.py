@@ -70,6 +70,18 @@ def main():
         type=float,
         help=("min resolution cut"),
     )
+    p.add_argument(
+        "--chimera_profile", 
+        action="store_true",
+        help=("Use chimera profile")
+    )
+
+    p.add_argument(
+        "--score_fullmsa", 
+        action="store_true",
+        help=("Use chimera profile")
+    )
+
 
     config = p.parse_args()
     device = rk_utils.try_gpu()
@@ -164,15 +176,100 @@ def main():
     )
     full_profile = fullmsa_processed_feature_dict["msa_feat"][:, :, 25:48].clone()
 
-    # Get available msas
-    a3m_paths = glob.glob(os.path.join(config.path, config.system, config.i+"*.a3m"))
-    print(f"{len(a3m_paths)} msa files available...", flush=True)
+    
     
     # Save out the scoring statistics
     df = pd.DataFrame(
         columns = ["msa_name", "mean_plddt", "llg", "rfree", "rwork"]
     )
     df.to_csv(os.path.join(output_directory_path, "msa_scoring.csv"), index=False)
+    
+    
+    if config.score_fullmsa:
+        msa_name = "fullmsa"
+        device_processed_features = rk_utils.move_tensors_to_device(
+            fullmsa_processed_feature_dict, device=device
+        )
+        # Run the AF2 prediction
+        af2_output, prevs = af_bias(
+            device_processed_features,
+            [None, None, None],
+            num_iters=config.init_recycling,
+            bias=False,
+        )
+        prevs = [tensor.detach() for tensor in prevs]
+        deep_copied_prevs = [tensor.clone().detach() for tensor in prevs]
+        af2_output, __ = af_bias(
+            device_processed_features, deep_copied_prevs, num_iters=1, bias=False
+        )
+        plddt = torch.mean(af2_output["plddt"])
+        # Position Kabsch Alignment
+        aligned_xyz, plddts_res, pseudo_Bs = rkrf_utils.position_alignment(
+            af2_output=af2_output,
+            device_processed_features=device_processed_features,
+            cra_name=sfc.cra_name,
+            best_pos=reference_pos,
+            exclude_res=None,
+            domain_segs=config.domain_segs,
+        )
+        llgloss.sfc.atom_b_iso = pseudo_Bs.detach()
+
+        # refine_sigmaA:
+        llgloss, llgloss_rbr, Ecalc, Fc = rkrf_utils.update_sigmaA(
+            llgloss=llgloss,
+            llgloss_rbr=llgloss_rbr,
+            aligned_xyz=aligned_xyz,
+            constant_fp_added_HKL=constant_fp_added_HKL,
+            constant_fp_added_asu=constant_fp_added_asu,
+        )
+
+        # Rigid body refinement (RBR) step
+        optimized_xyz, loss_track_pose = rk_coordinates.rigidbody_refine_quat(
+            aligned_xyz,
+            llgloss_rbr,
+            sfc.cra_name,
+            domain_segs=config.domain_segs,
+            lbfgs=RBR_LBFGS,
+            added_chain_HKL=constant_fp_added_HKL,
+            added_chain_asu=constant_fp_added_asu,
+            lbfgs_lr=150.0,
+            verbose=False,
+        )
+
+        # LLG value
+        llg = llgloss(
+            optimized_xyz,
+            bin_labels=None,
+            num_batch=1,
+            sub_ratio=1.0,
+            solvent=True,
+            update_scales=True,
+            added_chain_HKL=constant_fp_added_HKL,
+            added_chain_asu=constant_fp_added_asu,
+            )
+
+        # Save postRBR PDB
+        llgloss.sfc.atom_pos_orth = optimized_xyz
+        llgloss.sfc.savePDB(
+            f"{output_directory_path!s}/{msa_name}_postRBR.pdb"
+        )
+        plddt_i, llg_i, rfree_i, rwork_i = plddt.item(), llg.item(), llgloss.sfc.r_free.item(), llgloss.sfc.r_work.item()
+        
+        # Save out scoring
+        df_tmp = pd.DataFrame(
+            {
+                "msa_name": [msa_name],
+                "mean_plddt": [plddt_i],
+                "llg": [llg_i],
+                "rfree": [rfree_i],
+                "rwork": [rwork_i],
+            }
+        )
+        df_tmp.to_csv(os.path.join(output_directory_path, "msa_scoring.csv"), mode="a", header=False, index=False)
+
+    # Get available msas
+    a3m_paths = glob.glob(os.path.join(config.path, config.system, config.i+"*.a3m"))
+    print(f"{len(a3m_paths)} msa files available...", flush=True)
     
     for a3m_path in tqdm(a3m_paths):
         msa_name, ext = os.path.splitext(os.path.basename(a3m_path))
@@ -203,11 +300,12 @@ def main():
         # )
 
         # Edit by MH @ Nov 20, 2024, try the chimera profile idea from Alisia
-        chimera_feature_dict = processed_feature_dict.copy()
-        sub_profile = processed_feature_dict["msa_feat"][:, :, 25:48].clone()
-        chimera_feature_dict["msa_feat"][:, :, 25:48] =  torch.where(sub_profile == 0.0, full_profile.clone(), sub_profile.clone())
+        if config.chimera_profile:
+            sub_profile = processed_feature_dict["msa_feat"][:, :, 25:48].clone()
+            processed_feature_dict["msa_feat"][:, :, 25:48] =  torch.where(sub_profile == 0.0, full_profile.clone(), sub_profile.clone())
+        
         device_processed_features = rk_utils.move_tensors_to_device(
-            chimera_feature_dict, device=device
+            processed_feature_dict, device=device
         )
 
         # Run the AF2 prediction
