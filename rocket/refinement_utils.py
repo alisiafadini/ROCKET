@@ -322,7 +322,7 @@ def init_bias(
 
 
 def position_alignment(
-    af2_output, device_processed_features, cra_name, best_pos, exclude_res, domain_segs=None
+    af2_output, device_processed_features, cra_name, best_pos, exclude_res, domain_segs=None, reference_bfactor=None
 ):
     xyz_orth_sfc, plddts = rk_coordinates.extract_allatoms(
         af2_output, device_processed_features, cra_name
@@ -331,11 +331,15 @@ def position_alignment(
     pseudo_Bs = rk_coordinates.update_bfactors(plddts)
 
     # MH @ Sep 10 2024, temp edits to convert weighted kabsch to cutoff kabsch
-    weights = rk_utils.weighting(rk_utils.assert_numpy(pseudo_Bs))
+    if reference_bfactor is None:
+        weights = rk_utils.weighting(rk_utils.assert_numpy(pseudo_Bs))
+    else:
+        assert reference_bfactor.shape == pseudo_Bs.shape, "Reference bfactor should have same shape as model bfactor!"
+        weights = rk_utils.weighting(rk_utils.assert_numpy(reference_bfactor))
     # plddts_np = rk_utils.assert_numpy(plddts)
     # weights = np.ones_like(plddts_np)
     # weights[plddts_np < 85.0] = 1e-5
-
+        
     aligned_xyz = rk_coordinates.weighted_kabsch(
         xyz_orth_sfc,
         best_pos,

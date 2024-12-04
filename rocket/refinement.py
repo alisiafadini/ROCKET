@@ -494,8 +494,10 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
                 best_pos=best_pos,
                 exclude_res=EXCLUDING_RES,
                 domain_segs=config.domain_segs,
+                reference_bfactor=init_pos_bfactor,
             )
-            llgloss.sfc.atom_b_iso = pseudo_Bs.detach()
+            llgloss.sfc.atom_b_iso = pseudo_Bs.detach().clone()
+            llgloss_rbr.sfc.atom_b_iso = pseudo_Bs.detach().clone()
             all_pldtts.append(plddts_res)
             mean_it_plddts.append(np.mean(plddts_res))
 
