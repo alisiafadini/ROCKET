@@ -125,7 +125,8 @@ def main():
         added_chain_asu=constant_fp_added_asu,
         spacing=config.voxel_spacing,
     )
-
+    
+    init_pos_bfactor = sfc.atom_b_iso.clone()
     reference_pos = sfc.atom_pos_orth.clone()
 
     sfc_rbr = llg_sf.initial_SFC(
@@ -211,8 +212,10 @@ def main():
             best_pos=reference_pos,
             exclude_res=None,
             domain_segs=config.domain_segs,
+            reference_bfactor=init_pos_bfactor,
         )
         llgloss.sfc.atom_b_iso = pseudo_Bs.detach()
+        llgloss_rbr.sfc.atom_b_iso = pseudo_Bs.detach()
 
         # refine_sigmaA:
         llgloss, llgloss_rbr, Ecalc, Fc = rkrf_utils.update_sigmaA(
@@ -235,7 +238,7 @@ def main():
             lbfgs_lr=150.0,
             verbose=False,
         )
-
+        
         # LLG value
         llg = llgloss(
             optimized_xyz,
