@@ -181,7 +181,7 @@ def main():
     
     # Save out the scoring statistics
     df = pd.DataFrame(
-        columns = ["msa_name", "mean_plddt", "llg", "rfree", "rwork"]
+        columns = ["msa_name", "depth", "mean_plddt", "llg", "rfree", "rwork"]
     )
     df.to_csv(os.path.join(output_directory_path, "msa_scoring.csv"), index=False)
     
@@ -238,7 +238,7 @@ def main():
             lbfgs_lr=150.0,
             verbose=False,
         )
-        
+
         # LLG value
         llg = llgloss(
             optimized_xyz,
@@ -262,6 +262,7 @@ def main():
         df_tmp = pd.DataFrame(
             {
                 "msa_name": [msa_name],
+                "depth": [fullmsa_feature_dict["msa"].shape[0]],
                 "mean_plddt": [plddt_i],
                 "llg": [llg_i],
                 "rfree": [rfree_i],
@@ -332,8 +333,10 @@ def main():
             best_pos=reference_pos,
             exclude_res=None,
             domain_segs=config.domain_segs,
+            reference_bfactor=init_pos_bfactor,
         )
         llgloss.sfc.atom_b_iso = pseudo_Bs.detach()
+        llgloss_rbr.sfc.atom_b_iso = pseudo_Bs.detach()
 
         # refine_sigmaA:
         llgloss, llgloss_rbr, Ecalc, Fc = rkrf_utils.update_sigmaA(
@@ -380,6 +383,7 @@ def main():
         df_tmp = pd.DataFrame(
             {
                 "msa_name": [msa_name],
+                "depth":[feature_dict["msa"].shape[0]],
                 "mean_plddt": [plddt_i],
                 "llg": [llg_i],
                 "rfree": [rfree_i],
