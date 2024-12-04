@@ -20,17 +20,18 @@ device = "cuda:0"
 PRESET = "model_1"
 EXCLUDING_RES = None
 
-target_id = "8ybe"
+target_id = "8p4p_short"
 # path = "/n/hekstra_lab/people/minhuan/projects/AF2_refine/cryoEM_dev/test_systems"
 path = "/net/cci/alisia/cryo_rocket"
-mtz_file = f"{path}/{target_id}/{target_id}-Edata-ressorted.mtz"
+# mtz_file = f"{path}/{target_id}/{target_id}-Edata_below6.mtz"
+mtz_file = f"{path}/{target_id}/{target_id}-Edata.mtz"
 input_pdb = f"{path}/{target_id}/{target_id}-pred-aligned.pdb"
 note = "__"
-n_bins = 40
-lr_a = 1e-4
-lr_m = 1e-4
+n_bins = 20
+lr_a = 0.01
+lr_m = 0.1
 bias_version = 3
-iterations = 100
+iterations = 500
 num_of_runs = 1
 
 
@@ -54,6 +55,10 @@ cryo_sfc = cryo_sf.initial_cryoSFC(
     input_pdb, mtz_file, "Emean", "PHIEmean", device, n_bins
 )
 
+sfc_rbr = cryo_sf.initial_cryoSFC(
+    input_pdb, mtz_file, "Emean", "PHIEmean", device, n_bins
+)
+
 reference_pos = cryo_sfc.atom_pos_orth.clone()
 cra_calphas_list, calphas_mask = rk_coordinates.select_CA_from_craname(
     cryo_sfc.cra_name
@@ -62,6 +67,8 @@ residue_numbers = [int(name.split("-")[1]) for name in cra_calphas_list]
 
 # LLG initialization
 cryo_llgloss = cryo_targets.LLGloss(cryo_sfc, mtz_file)
+cryo_llgloss_rbr = cryo_targets.LLGloss(cryo_sfc, mtz_file)
+
 
 # Model initialization
 version_to_class = {
@@ -138,9 +145,11 @@ for n in range(num_of_runs):
             prevs = [tensor.detach() for tensor in prevs]
 
         deep_copied_prevs = [tensor.clone().detach() for tensor in prevs]
+
         af2_output, __ = af_bias(
             device_processed_features, deep_copied_prevs, num_iters=1, bias=True
         )
+        L_plddt = -torch.mean(af2_output["plddt"])
 
         # Position Kabsch Alignment
         aligned_xyz, plddts_res, pseudo_Bs = rkrf_utils.position_alignment(
@@ -150,21 +159,27 @@ for n in range(num_of_runs):
             best_pos=best_pos,
             exclude_res=EXCLUDING_RES,
         )
+        # Rigid body refinement (RBR) step
+        optimized_xyz, loss_track_pose = rk_coordinates.rigidbody_refine_quat(
+            aligned_xyz, cryo_llgloss_rbr, sfc_rbr.cra_name, lbfgs=True
+        )
 
         cryo_llgloss.sfc.atom_b_iso = pseudo_Bs.detach()
         all_pldtts.append(plddts_res)
         mean_it_plddts.append(np.mean(plddts_res))
 
         # Calculate (or refine) sigmaA
-        cryo_llgloss.sfc.atom_pos_orth = aligned_xyz.detach().clone()
+        cryo_llgloss.sfc.atom_pos_orth = optimized_xyz.detach().clone()
         cryo_llgloss.sfc.savePDB(
             f"{output_directory_path!s}/{run_id}_{iteration}_preRBR.pdb"
         )
 
         # LLG loss
         L_llg = -cryo_llgloss(
-            aligned_xyz,  # TODO add RBR step
+            optimized_xyz,  # TODO add RBR step
         )
+
+        L_llg = L_llg  # + 30 * L_plddt
 
         sigmas = cryo_llgloss.sigmaAs
         print("mean sigmaA", np.mean(rk_utils.assert_numpy(sigmas)))
