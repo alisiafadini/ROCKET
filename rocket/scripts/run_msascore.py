@@ -274,6 +274,7 @@ def main():
     # Get available msas
     a3m_paths = glob.glob(os.path.join(config.path, config.system, config.i+"*.a3m"))
     print(f"{len(a3m_paths)} msa files available...", flush=True)
+    a3m_paths.sort()
     
     for a3m_path in tqdm(a3m_paths):
         msa_name, ext = os.path.splitext(os.path.basename(a3m_path))
