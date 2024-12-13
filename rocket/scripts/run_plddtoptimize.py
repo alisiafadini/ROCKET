@@ -64,6 +64,14 @@ def parse_arguments():
     )
 
     parser.add_argument(
+        "--domain_segs",
+        type=int,
+        nargs="*",
+        default=None,
+        help=("A list of resid as domain boundaries"),
+    )
+
+    parser.add_argument(
         "--init_recycling",
         default=20,
         type=int,
@@ -123,6 +131,7 @@ def run_plddt_optim(
         starting_bias = None,
         starting_weights = None,
         uuid_hex = None,
+        domain_segs = None
         ):
     device = "cuda:{}".format(cuda_device)
     input_pdb = "{p}/{r}/{r}-pred-aligned.pdb".format(p=working_path, r=file_root)
@@ -195,7 +204,7 @@ def run_plddt_optim(
     
     # Run smooth stage in phase 1
     w_L2 = l2_weight
-    early_stopper = rkrf_utils.EarlyStopper(patience=200, min_delta=1.0)
+    early_stopper = rkrf_utils.EarlyStopper(patience=100, min_delta=1.0)
 
     if smooth_stage_epochs is not None:
         lr_a_initial = lr_a
@@ -256,7 +265,7 @@ def run_plddt_optim(
             cra_name=initial_model.cra_name,
             best_pos=reference_pos,
             exclude_res=None,
-            domain_segs=None,
+            domain_segs=domain_segs,
             reference_bfactor=init_pos_bfactor,
         )
         all_pldtts.append(plddts_res)
@@ -314,25 +323,25 @@ def run_plddt_optim(
             memory=f"{torch.cuda.max_memory_allocated()/1024**3:.1f}G",
         )
 
-        np.save(
-            f"{output_directory_path!s}/mean_it_plddt.npy",
-            np.array(L_plddt_it),
-        )
+    np.save(
+        f"{output_directory_path!s}/mean_it_plddt.npy",
+        np.array(L_plddt_it),
+    )
 
-        np.save(
-            f"{output_directory_path!s}/plddt_res.npy",
-            np.array(all_pldtts),
-        )
+    np.save(
+        f"{output_directory_path!s}/plddt_res.npy",
+        np.array(all_pldtts),
+    )
 
-        np.save(
-            f"{output_directory_path!s}/time_it.npy",
-            rk_utils.assert_numpy(time_by_epoch),
-        )
+    np.save(
+        f"{output_directory_path!s}/time_it.npy",
+        rk_utils.assert_numpy(time_by_epoch),
+    )
 
-        np.save(
-            f"{output_directory_path!s}/memory_it.npy",
-            rk_utils.assert_numpy(memory_by_epoch),
-        )
+    np.save(
+        f"{output_directory_path!s}/memory_it.npy",
+        rk_utils.assert_numpy(memory_by_epoch),
+    )
 
     # Save the best msa_bias and feat_weights
     torch.save(
@@ -354,7 +363,7 @@ def main():
 
     for file_root in datasets:
         phase1_uuid = run_plddt_optim(
-            working_path=args.working_path,
+            working_path=args.path,
             file_root = file_root,
             note = "phase1" + args.note,
             iterations = 100,
@@ -369,9 +378,10 @@ def main():
             starting_bias=None,
             starting_weights=None,
             uuid_hex=None,
+            domain_segs=args.domain_segs,
         )
 
-        output_directory_path = f"{args.working_path}/{file_root}/outputs/{phase1_uuid}"
+        output_directory_path = f"{args.path}/{file_root}/outputs/{phase1_uuid}"
         phase1_path = glob.glob(f"{output_directory_path}/phase1*/")[0]
         starting_bias_path = glob.glob(os.path.join(phase1_path, "best_msa_bias*.pt"))[
             0
@@ -381,7 +391,7 @@ def main():
         )[0]
 
         phase2_uuid = run_plddt_optim(
-            working_path=args.working_path,
+            working_path=args.path,
             file_root = file_root,
             note = "phase2" + args.note,
             iterations = 500,
@@ -396,4 +406,5 @@ def main():
             starting_bias=starting_bias_path,
             starting_weights=starting_weights_path,
             uuid_hex=phase1_uuid,
+            domain_segs=args.domain_segs,
         )
