@@ -24,6 +24,7 @@ setup(
             "rk.mse=rocket.scripts.run_mse:run_mse_all_datasets",
             "rk.msacluster=rocket.scripts.run_msacluster:main",
             "rk.score=rocket.scripts.run_msascore:main",
+            "rk.plddt=rocket.scripts.run_plddtoptimize:main"
         ]
     },
 )
