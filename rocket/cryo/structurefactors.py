@@ -38,6 +38,7 @@ def initial_cryoSFC(
         testset_value=0,
         device=device,
         n_bins=n_bins,
+        mode="cryoem",
     )
 
     # SigF is actually PHIEmean, don't need it here
