@@ -17,6 +17,10 @@ setup(
     url="https://github.com/alisiafadini/ROCKET",
     packages=find_packages(),
     include_package_data=True,
+    install_requires=[
+        "scikit-bio",
+        "SFcalculator-torch==0.2.1",
+    ],
     entry_points={
         "console_scripts": [
             "rk.multiphaserefine=rocket.scripts.run_phase1andphase2:run_both_phases_all_datasets",
