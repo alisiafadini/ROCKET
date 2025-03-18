@@ -55,13 +55,27 @@ To ensure the usability, we forked and fix the openfold repo, and polish the ins
  
     So everytime you activate this env, the prepend will happen automatically.
 
-5. Download AlphaFold2 weights
+5. Download AlphaFold2 weights, add **the resources path to system environment** (we need this for ROCKET)
    
     ```
     ./scripts/download_alphafold_params.sh ./openfold/resources
     ```
  
     Note: You can download openfold weights if you want to try
+
+    Append the following line to `<path_to_your_conda_env>/etc/conda/activate.d/env_vars.sh`, you should have created it from the previous step
+
+    ```
+    export OPENFOLD_RESOURCES="<ABSOLUTE_PATH_TO_OPENFOLD_FOLDER>/openfold/resources"
+    ```
+
+    `<ABSOLUTE_PATH_TO_OPENFOLD_FOLDER>` should be the output of `pwd -P` you get from the openfold repo path.
+
+    Deactivate and reactivate your python environment, you should be able to run and see the path:
+    
+    ```
+    echo $OPENFOLD_RESOURCES 
+    ```
 
 6. Check your openfold build with unit tests:
 

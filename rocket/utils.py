@@ -1,3 +1,5 @@
+import os
+
 import torch
 import numpy as np
 import reciprocalspaceship as rs
@@ -160,3 +162,13 @@ def load_mtz(mtz: str) -> rs.DataSet:
 def load_pdb(pdb: str) -> PDBParser:
     model = PDBParser(pdb)
     return model
+
+
+def get_params_path():
+    resources_path = os.environ.get("OPENFOLD_RESOURCES", None)
+    if resources_path is None:
+        raise ValueError("Please set OPENFOLD_RESOURCES environment variable")
+    params_path = os.path.join(resources_path,  "params")
+    return params_path
+
+
