@@ -1,5 +1,7 @@
 # *R*efining *O*penfold predictions with *C*rystallographic Li*KE*lihood *T*argets (ROCKET)
 
+This is the code repo for [AlphaFold as a Prior: Experimental Structure Determination Conditioned on a Pretrained Neural Network](https://www.biorxiv.org/content/10.1101/2025.02.18.638828v2)
+
 
 ## Installation
 
@@ -77,11 +79,41 @@ To ensure the usability, we forked and fix the openfold repo, and polish the ins
     Ran 117 tests in 275.889s
  
     OK (skipped=41)
-    ```
-   
+    ```   
+
+### 2. Install ROCKET
+
+Install ROCKET. First move to the parent folder, clone the ROCKET repo (so you don't mix the ROCKET repo with the openfold one), then install it with `pip`
+
+```
+git clone git@github.com:alisiafadini/ROCKET.git
+cd ROCKET
+pip install .
+```
+
+It will automatically install dependencies like `SFcalculator` and `reciprocalspaceship`.
+
+Note: If you get errors about incompatibility of `prompt_toolkit`, ignore it.
+
+For develop mode, run
+
+```
+pip install -e .
+```
+
+Run `rk.score --help` after installation, if you saw normal doc strings without error, you are good to go.
 
 
+### Citing
 
+```
+@article{fadini2025alphafold,
+  title={AlphaFold as a Prior: Experimental Structure Determination Conditioned on a Pretrained Neural Network},
+  author={Fadini, Alisia and Li, Minhuan and McCoy, Airlie J and Terwilliger, Thomas C and Read, Randy J and Hekstra, Doeke and AlQuraishi, Mohammed},
+  journal={bioRxiv},
+  year={2025}
+}
+```
 
    
 
