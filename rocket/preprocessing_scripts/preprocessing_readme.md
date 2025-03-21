@@ -32,12 +32,16 @@ This script performs the preprocessing of predicted protein structures for **ROC
 | `--predocked_model` | Path to an already docked model (default: `None`). |
 | `--fixed_model` | Optional fixed model contribution (default: `None`). |
 
+## Expected Data Input
+
+Expects to find `file_id_data` and `file_id_fasta` directories containing the experimental data (reflection file or half maps) and sequence file for chain to model respectively.
+
 ## Expected Outputs
 After execution, results will be structured in the `--output_dir` directory:
 
 ```
 output_dir/
-│── predictions/                   # OpenFold structure predictions
+│── predictions/                   # OpenFold structure predictions and pkl files
 │── processed_predicted_files/     # Processed predictions from Phenix (including trimmed confidence loops)
 │── docking_outputs/               # Cryo-EM docking results
 │── phaser_files/                  # X-ray molecular replacement results
@@ -65,7 +69,9 @@ python3 rocket_preprocessing.py \
     --method cryo-em \
     --map1 path/to/halfmap1.mrc \
     --map2 path/to/halfmap2.mrc \
-    --full_composition path/to/composition.txt \
+    --full_composition path/to/composition.fasta \
+    --predocked_model path/to/thechain/torefine \
+    --fixed_model /path/to/otherchains/indata \
     --output_dir results_cryoem
 ```
 
