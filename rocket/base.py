@@ -10,7 +10,6 @@ from rocket.utils import tensor_tree_map, get_params_path
 from openfold.utils.import_weights import import_jax_weights_
 from openfold.utils.script_utils import get_model_basename
 
-
 import torch
 
 
@@ -24,6 +23,7 @@ class MSABiasAFv1(AlphaFold):
         config,
         preset,
         params_root=get_params_path(),
+        use_deepspeed_evo_attention=True,
     ):
         super(MSABiasAFv1, self).__init__(config)
 
@@ -32,7 +32,7 @@ class MSABiasAFv1(AlphaFold):
         model_basename = get_model_basename(params_path)
         model_version = "_".join(model_basename.split("_")[1:])
         import_jax_weights_(self, params_path, version=model_version)
-        config.globals.use_deepspeed_evo_attention = True
+        config.globals.use_deepspeed_evo_attention = use_deepspeed_evo_attention
         # print("DEEPSPEED IS ", config.globals.use_deepspeed_evo_attention)
         self.eval()  # without this, dropout enabled
 
@@ -76,7 +76,6 @@ class MSABiasAFv1(AlphaFold):
             feats = self._bias(feats)
         return super(MSABiasAFv1, self).iteration(feats, prevs, _recycle)
 
-
     def forward(self, batch, prevs=[None, None, None], num_iters=1, bias=True):
 
         is_grad_enabled = torch.is_grad_enabled()
@@ -115,6 +114,7 @@ class MSABiasAFv2(MSABiasAFv1):
     """
     AlphaFold with trainable bias + trainable linear combination in MSA space
     """
+
     def _bias(self, feats):
         feats["msa_feat"][:, :, 25:48] = (
             torch.einsum(
