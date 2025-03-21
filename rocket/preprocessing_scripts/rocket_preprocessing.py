@@ -190,9 +190,13 @@ def parse_args():
         parser.error("--xray_data_label is required when --method is x-ray.")
 
     if args.method == "cryo-em":
-        missing = [arg for arg in ["map1", "map2", "full_composition"] if getattr(args, arg) is None]
+        missing = [arg for arg in ["map1", "map2"] if getattr(args, arg) is None]
         if missing:
             parser.error(f"The following arguments are required for 'cryo-em' method: {', '.join(missing)}")
+
+        # Require full_composition only if predocked_model is not provided
+        if not args.predocked_model and args.full_composition is None:
+            parser.error("--full_composition is required for cryo-em when --predocked_model is not provided.")
 
     return args
 
