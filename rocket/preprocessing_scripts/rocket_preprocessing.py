@@ -52,11 +52,18 @@ def run_process_predicted_model(file_id, input_dir, predicted_model):
     """Processes the predicted model using Phenix."""
     print("Looking for", predicted_model)
 
+
     process_cmd = [
         "phenix.process_predicted_model",
         "output_files.mark_atoms_to_keep_with_occ_one=True",
         f"{predicted_model}",
-        "b_value_field_is=plddt"
+        "minimum_domain_length=20",
+        "b_value_field_is=plddt",
+        "minimum_sequential_residues=10",
+        f"pae_file={os.path.join(input_dir, f'{file_id}_pae.json')}",
+        "pae_power=2",
+        "pae_cutoff=4",
+        "pae_graph_resolution=0.5"
     ]
     
     run_command(process_cmd, env_source=phenix_source)
@@ -87,6 +94,12 @@ def dock_into_data(file_id, method, resolution, output_dir, predicted_model, pre
         for mtz_file in mtz_files:
             if os.path.isfile(mtz_file):
                 shutil.copy2(mtz_file, os.path.join(output_dir, "processed_predicted_files", os.path.basename(mtz_file)))
+                edata_cmd = ["phenix.python",
+                    xtal_edata_script,
+                    f"-i",
+                    f"{mtz_file}"
+                ]
+                run_command(edata_cmd, env_source=phenix_source)
 
         mr_cmd = [
             "phasertng.picard",
@@ -125,6 +138,12 @@ def dock_into_data(file_id, method, resolution, output_dir, predicted_model, pre
                 if os.path.exists(src_path):
                     shutil.move(src_path, dest_path)
 
+            # Move the predocked model
+            model_filename = os.path.basename(predocked_model)
+            model_dest_path = os.path.join(docking_output_dir, model_filename)
+            if os.path.exists(predocked_model):
+                shutil.move(predocked_model, model_dest_path)
+
 def prepare_rk_inputs(file_id, output_dir, method):
     """Creates ROCKET_inputs directory and moves necessary files."""
     rocket_dir = os.path.join(output_dir, "ROCKET_inputs")
@@ -132,7 +151,7 @@ def prepare_rk_inputs(file_id, output_dir, method):
 
     if method == "x-ray":
         best_pdb_src = os.path.join(output_dir, "phaser_files", "best.1.coordinates.pdb")
-        mtz_files = glob.glob(f"{output_dir}/phaser_files/*-ccs_*.data.mtz")
+        mtz_files = glob.glob(f"./*feff/*.data.mtz")
     elif method == "cryo-em":
         best_pdb_src = next(iter(glob.glob(os.path.join(output_dir, "docking_outputs", "*.pdb"))), None)
         mtz_files = glob.glob(f"{output_dir}/docking_outputs/weighted_map_data.mtz")
@@ -193,4 +212,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
