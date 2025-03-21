@@ -142,7 +142,7 @@ def dock_into_data(file_id, method, resolution, output_dir, predicted_model, pre
             model_filename = os.path.basename(predocked_model)
             model_dest_path = os.path.join(docking_output_dir, model_filename)
             if os.path.exists(predocked_model):
-                shutil.move(predocked_model, model_dest_path)
+                shutil.copy(predocked_model, model_dest_path)
 
 def prepare_rk_inputs(file_id, output_dir, method):
     """Creates ROCKET_inputs directory and moves necessary files."""
