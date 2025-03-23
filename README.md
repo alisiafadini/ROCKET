@@ -1,4 +1,4 @@
-# *R*efining *O*penfold predictions with *C*rystallographic Li*KE*lihood *T*argets (ROCKET)
+# *R*efining *O*penfold predictions with *C*rystallographic/*C*ryo-EM Li*KE*lihood *T*argets (ROCKET)
 
 This is the code repo for [AlphaFold as a Prior: Experimental Structure Determination Conditioned on a Pretrained Neural Network](https://www.biorxiv.org/content/10.1101/2025.02.18.638828v2)
 
@@ -7,9 +7,9 @@ This is the code repo for [AlphaFold as a Prior: Experimental Structure Determin
 
 ### 1. Install OpenFold
 
-To ensure the usability, we forked and fix the openfold repo, and polish the installation guides. Here is what ROCKET users are advised to do:
+To ensure usability, we forked the OpenFold repo, and sorted a couple details in the installation guides. Here is what we advise ROCKET users to do:
 
-1. Clone our fork of openfold repo, switch to the `pl_upgrades` branch to work with CUDA 12:
+1. Clone our fork of the OpenFold repo, switch to the `pl_upgrades` branch to work with CUDA 12:
 
     ```
     git clone git@github.com:minhuanli/rocket_openfold.git
@@ -20,14 +20,14 @@ To ensure the usability, we forked and fix the openfold repo, and polish the ins
 2. Create a conda/mamba env with the `environment.yml`
    
    
-    Note: If you work with HPC cluster with package management like `module`, purge all your modules before this step to avoid conflicts. 
+    Note: If you work with an HPC cluster with package management like `module`, purge all your modules before this step to avoid conflicts. 
     
     ```
     mamba env create -n <env_name_you_like> -f environment.yml
     mamba activate <env_name_you_like>
     ```
  
-    The main change we made is moving those `flash-attn` package outside of the yml file, so you can install manually afterwards. This is necessary because this openfold version relies on pytorch 2.1, which is incompatible with the latest flash-attn, so a simple `pip install flash-attn` would fail. Also using a `--no-build-isolation` flag allows to use `ninja` for compilation, which is way much faster.
+    The main change we made is moving the `flash-attn` package outside of the yml file, so you can install it manually afterwards. This is necessary because this OpenFold version relies on pytorch 2.1, which is incompatible with the latest flash-attn, so a simple `pip install flash-attn` would fail. Also using a `--no-build-isolation` flag allows using `ninja` for compilation, which is much faster.
  
    
 
@@ -38,7 +38,7 @@ To ensure the usability, we forked and fix the openfold repo, and polish the ins
     pip install flash-attn==2.2.2 --no-build-isolation
     ```
 
-4. Run the setup script to install openfold, configure kernels and folding resources
+4. Run the setup script to install OpenFold, and configure kernels and folding resources
    
     ```
     ./scripts/install_third_party_dependencies.sh
@@ -53,7 +53,7 @@ To ensure the usability, we forked and fix the openfold repo, and polish the ins
     export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
     ```
  
-    So everytime you activate this env, the prepend will happen automatically.
+    This is so everytime you activate this env, the prepend will happen automatically.
 
 5. Download AlphaFold2 weights, add **the resources path to system environment** (we need this for ROCKET)
    
@@ -61,7 +61,7 @@ To ensure the usability, we forked and fix the openfold repo, and polish the ins
     ./scripts/download_alphafold_params.sh ./openfold/resources
     ```
  
-    Note: You can download openfold weights if you want to try
+    Note: You can download OpenFold weights if you want to try
 
     Append the following line to `<path_to_your_conda_env>/etc/conda/activate.d/env_vars.sh`, you should have created it from the previous step
 
@@ -69,7 +69,7 @@ To ensure the usability, we forked and fix the openfold repo, and polish the ins
     export OPENFOLD_RESOURCES="<ABSOLUTE_PATH_TO_OPENFOLD_FOLDER>/openfold/resources"
     ```
 
-    `<ABSOLUTE_PATH_TO_OPENFOLD_FOLDER>` should be the output of `pwd -P` you get from the openfold repo path.
+    `<ABSOLUTE_PATH_TO_OPENFOLD_FOLDER>` should be the output of `pwd -P` you get from the OpenFold repo path.
 
     Deactivate and reactivate your python environment, you should be able to run and see the path:
     
@@ -77,13 +77,13 @@ To ensure the usability, we forked and fix the openfold repo, and polish the ins
     echo $OPENFOLD_RESOURCES 
     ```
 
-6. Check your openfold build with unit tests:
+6. Check your OpenFold build with unit tests:
 
     ```
     ./scripts/run_unit_tests.sh
     ```
  
-    Should see no errors:
+    Ensure you see no errors:
     
     ```
     ...
@@ -97,11 +97,11 @@ To ensure the usability, we forked and fix the openfold repo, and polish the ins
 
 ### 2. Install Phenix (required from automatic preprocessing and post-refinement)
 
-[Phenix](https://phenix-online.org/) is require for automatic data preprocessing and post-refinement for better geometric metrics. Follow the following steps to install it and **add the path to the system environment variables**:
+[Phenix](https://phenix-online.org/) is required for automatic data preprocessing and for post-refinement when polishing final model geometry. Follow the steps below to install it and **add the path to the system environment variables**:
 
-1. Download Phenix installer (version `2.0rc1-5617` is required) according to [https://phenix-online.org/download](https://phenix-online.org/download)
+1. Download the latest `nightly-build` Phenix python3 installer according to [https://phenix-online.org/download](https://phenix-online.org/download)
 
-2. Unpack the installer, run the installation to the path you like
+2. Unpack the installer, run the installation to your path of choice
 
     ```
     tar xvf phenix-installer-2.0rc1-5617-<platform>.tar
@@ -109,7 +109,7 @@ To ensure the usability, we forked and fix the openfold repo, and polish the ins
     ./install --prefix=<phenix_directory>
     ```
 
-    Note: `<phenix_directory>` must be a absolute path. The installer will will make `<phenix_directory>/phenix-2.0rc1-5617` and install there.
+    Note: `<phenix_directory>` must be a absolute path. The installer will will make `<phenix_directory>/phenix-XXX` and install there.
 
 3. Append the following line to `<path_to_your_conda_env>/etc/conda/activate.d/env_vars.sh`, you should have created it from the previous section
 
@@ -117,7 +117,7 @@ To ensure the usability, we forked and fix the openfold repo, and polish the ins
     export PHENIX_ROOT="<phenix_directory>/phenix-2.0rc1-5617"
     ```
 
-    `<phenix_directory>` is where you install phenix in the last step
+    `<phenix_directory>` is where you install Phenix in the last step
 
     Deactivate and reactivate your python environment, you should be able to run and see the path:
     
@@ -127,7 +127,7 @@ To ensure the usability, we forked and fix the openfold repo, and polish the ins
 
 ### 3. Install ROCKET
 
-Install ROCKET. First move to the parent folder, clone the ROCKET repo (so you don't mix the ROCKET repo with the openfold one), then install it with `pip`
+Install ROCKET. First move to the parent folder, clone the ROCKET repo (so you don't mix the ROCKET repo with the OpenFold one), then install it with `pip`
 
 ```
 git clone git@github.com:alisiafadini/ROCKET.git
@@ -137,7 +137,7 @@ pip install .
 
 It will automatically install dependencies like `SFcalculator` and `reciprocalspaceship`.
 
-Note: If you get errors about incompatibility of `prompt_toolkit`, ignore it.
+Note: If you get errors about incompatibility of `prompt_toolkit`, ignore them.
 
 For develop mode, run
 
@@ -145,7 +145,7 @@ For develop mode, run
 pip install -e .
 ```
 
-Run `rk.score --help` after installation, if you saw normal doc strings without error, you are good to go.
+Run `rk.score --help` after installation, if you see a normal doc strings without errors, you are good to go!
 
 
 ### Citing
