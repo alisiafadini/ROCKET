@@ -95,7 +95,37 @@ To ensure the usability, we forked and fix the openfold repo, and polish the ins
     OK (skipped=41)
     ```   
 
-### 2. Install ROCKET
+### 2. Install Phenix (required from automatic preprocessing and post-refinement)
+
+[Phenix](https://phenix-online.org/) is require for automatic data preprocessing and post-refinement for better geometric metrics. Follow the following steps to install it and **add the path to the system environment variables**:
+
+1. Download Phenix installer (version `2.0rc1-5617` is required) according to [https://phenix-online.org/download](https://phenix-online.org/download)
+
+2. Unpack the installer, run the installation to the path you like
+
+    ```
+    tar xvf phenix-installer-2.0rc1-5617-<platform>.tar
+    cd phenix-installer-2.0rc1-5617
+    ./install --prefix=<phenix_directory>
+    ```
+
+    Note: `<phenix_directory>` must be a absolute path. The installer will will make `<phenix_directory>/phenix-2.0rc1-5617` and install there.
+
+3. Append the following line to `<path_to_your_conda_env>/etc/conda/activate.d/env_vars.sh`, you should have created it from the previous section
+
+    ```
+    export PHENIX_ROOT="<phenix_directory>/phenix-2.0rc1-5617"
+    ```
+
+    `<phenix_directory>` is where you install phenix in the last step
+
+    Deactivate and reactivate your python environment, you should be able to run and see the path:
+    
+    ```
+    echo $PHENIX_ROOT 
+    ``` 
+
+### 3. Install ROCKET
 
 Install ROCKET. First move to the parent folder, clone the ROCKET repo (so you don't mix the ROCKET repo with the openfold one), then install it with `pip`
 

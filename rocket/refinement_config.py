@@ -1,3 +1,7 @@
+"""
+This module contains the configuration classes for the ROCKET refinement pipeline.
+The configuration is stored in a human-readable YAML file and can be loaded into a RocketRefinmentConfig object.
+"""
 import yaml
 from pydantic import BaseModel, Field, field_validator
 from enum import Enum
@@ -176,11 +180,6 @@ class RocketRefinmentConfig(BaseModel):
             return value
         raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
     
-    # YAML serialization methods
-    # TODO: make the saved yml have fields in order
-    # def to_yaml_file(self, file_path: str) -> None:
-    #     with open(file_path, "w") as file:
-    #         yaml.dump(self.model_dump(), file)
 
     def to_yaml_file(self, file_path: str) -> None:
         """Save configuration to YAML with fields in specific order"""

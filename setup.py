@@ -19,6 +19,7 @@ setup(
     include_package_data=True,
     install_requires=[
         "scikit-bio",
+        "loguru",
         "SFcalculator-torch==0.2.1",
     ],
     entry_points={
