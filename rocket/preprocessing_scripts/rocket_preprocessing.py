@@ -48,6 +48,75 @@ def run_openfold(file_id, output_dir, precomputed_alignment_dir, mmcif_dir, jax_
 
     return predicted_model
 
+def generate_seg_id_file(file_id, output_dir):
+    """Generates seg_id.txt using chain changes and >20-residue continuous stretches, with seg_id summary."""
+    seg_id_path = os.path.join(output_dir, "ROCKET_inputs", "seg_id.txt")
+    aligned_pdb_path = os.path.join(output_dir, "ROCKET_inputs", f"{file_id}-pred-aligned.pdb")
+
+    if not os.path.exists(aligned_pdb_path):
+        raise FileNotFoundError(f"Aligned PDB file not found at {aligned_pdb_path}")
+
+    # Collect residues per chain in order of appearance
+    chain_residues = {}
+    chain_order = []
+    with open(aligned_pdb_path, 'r') as f:
+        for line in f:
+            if line.startswith("ATOM"):
+                try:
+                    chain_id = line[21].strip()
+                    res_num = int(line[22:26].strip())
+                    if chain_id not in chain_residues:
+                        chain_residues[chain_id] = set()
+                        chain_order.append(chain_id)
+                    chain_residues[chain_id].add(res_num)
+                except ValueError:
+                    continue
+
+    domain_ranges = []
+    seg_start_residues = []
+    previous_chain = None
+
+    for chain_id in chain_order:
+        if chain_id == previous_chain:
+            continue  # Only one domain per unique chain
+
+        residues = sorted(chain_residues[chain_id])
+        if not residues:
+            continue
+
+        # Find first continuous stretch >20
+        current_stretch = [residues[0]]
+        for i in range(1, len(residues)):
+            if residues[i] == residues[i-1] + 1:
+                current_stretch.append(residues[i])
+            else:
+                if len(current_stretch) > 20:
+                    domain_ranges.append((current_stretch[0], current_stretch[-1]))
+                    seg_start_residues.append(current_stretch[0])
+                    break  # Only take the first valid stretch per chain
+                current_stretch = [residues[i]]
+
+        # Handle last stretch
+        if len(current_stretch) > 20 and (not domain_ranges or domain_ranges[-1] != (current_stretch[0], current_stretch[-1])):
+            domain_ranges.append((current_stretch[0], current_stretch[-1]))
+            seg_start_residues.append(current_stretch[0])
+
+        previous_chain = chain_id
+
+    # Write to seg_id.txt
+    with open(seg_id_path, "w") as out_f:
+        for i, (start, end) in enumerate(domain_ranges, 1):
+            out_f.write(f"domain{i}: {start}-{end}\n")
+
+        if seg_start_residues:
+            seg_ids = ",".join(str(r) for r in seg_start_residues)
+            out_f.write(f'seg_ids: "{seg_ids}"\n')
+
+    print(f"Segment ID file written to {seg_id_path}")
+
+
+
+
 def run_process_predicted_model(file_id, input_dir, predicted_model):
     """Processes the predicted model using Phenix."""
     print("Looking for", predicted_model)
@@ -207,12 +276,14 @@ def main():
 
     os.makedirs(args.output_dir, exist_ok=True)
 
-    predicted_model = run_openfold(args.file_id, args.output_dir, args.precomputed_alignment_dir, args.mmcif_dir, args.jax_params_path)
-    run_process_predicted_model(args.file_id, args.output_dir, predicted_model)
-    move_processed_predicted_files(args.output_dir)
+    #predicted_model = run_openfold(args.file_id, args.output_dir, args.precomputed_alignment_dir, args.mmcif_dir, args.jax_params_path)
+    #run_process_predicted_model(args.file_id, args.output_dir, predicted_model)
+    #move_processed_predicted_files(args.output_dir)
 
-    dock_into_data(args.file_id, args.method, args.resolution, args.output_dir, predicted_model, args.predocked_model, args.map1, args.map2, args.fixed_model, args.full_composition)
-    prepare_rk_inputs(args.file_id, args.output_dir, args.method)
+    #dock_into_data(args.file_id, args.method, args.resolution, args.output_dir, predicted_model, args.predocked_model, args.map1, args.map2, args.fixed_model, args.full_composition)
+    #prepare_rk_inputs(args.file_id, args.output_dir, args.method)
+    generate_seg_id_file(args.file_id, args.output_dir)
+
 
 if __name__ == "__main__":
     main()
