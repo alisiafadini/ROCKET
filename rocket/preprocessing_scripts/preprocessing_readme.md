@@ -11,8 +11,25 @@ This script performs the preprocessing of predicted protein structures for **ROC
 | `--method` | Choose `"x-ray"` (calls Phaser) or `"cryo-em"` (calls EMPlacement). |
 | `--output_dir` | Directory to store results (default: `"preprocessing_output"`). |
 | `--precomputed_alignment_dir` | Path to OpenFold precomputed alignments (default: `"alignments/"`). |
-| `--mmcif_dir` | Path to MMCIF database. |
 | `--jax_params_path` | Path to JAX parameter file (`"params_model_1_ptm.npz"`). |
+
+
+The scripts expects input files organized as follows:
+
+```
+<working_directory>/
+├── {file_id}_fasta/
+│   └── {file_id}.fasta       # FASTA file containing the chain to refine
+│                             # Header should be "> {file_id}"
+│
+├── {file_id}_data/
+│   ├── *.mtz                 # For X-ray data
+│   ├── *_half_map*.mrc       # For Cryo-EM data
+│   └── <optional files>/     # e.g., predicted or docked models
+│
+├── alignments/               # (default: --precomputed_alignment_dir)
+│   └── *.a3m / *.hhr         # MSA files for the input sequence
+```
 
 ### Additional Parameters for X-ray (`--method x-ray`)
 | Argument | Description |
