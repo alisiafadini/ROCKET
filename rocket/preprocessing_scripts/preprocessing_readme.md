@@ -16,17 +16,20 @@ This script performs the preprocessing of predicted protein structures for **ROC
 
 The scripts expects input files organized as follows:
 
+```
 <working_directory>/
 ├── {file_id}_fasta/
-│   └── {file_id}.fasta     # FASTA file containing the chain to refine (header should be "> {file_id}")
+│   └── {file_id}.fasta       # FASTA file containing the chain to refine
+│                             # Header should be "> {file_id}"
+│
 ├── {file_id}_data/
-│   ├── *.mtz               # For X-ray data 
-│   ├── *_half_map*.mrc     # For Cryo-EM data
-│   └── optional files/     # e.g., predicted or docked models
-├── alignments/             # (default: --precomputed_alignment_dir)
-│   └── *.a3m / *.hhr       # MSA files for the input sequence
-
-
+│   ├── *.mtz                 # For X-ray data
+│   ├── *_half_map*.mrc       # For Cryo-EM data
+│   └── <optional files>/     # e.g., predicted or docked models
+│
+├── alignments/               # (default: --precomputed_alignment_dir)
+│   └── *.a3m / *.hhr         # MSA files for the input sequence
+```
 
 ### Additional Parameters for X-ray (`--method x-ray`)
 | Argument | Description |
