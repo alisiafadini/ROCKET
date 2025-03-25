@@ -18,7 +18,7 @@ from openfold.config import model_config
 from openfold.data import feature_pipeline, data_pipeline
 
 
-PRESET = "model_1"
+PRESET = "model_1_ptm"
 
 def main():
     p = argparse.ArgumentParser(description=
@@ -79,7 +79,7 @@ def main():
     p.add_argument(
         "--score_fullmsa", 
         action="store_true",
-        help=("Use chimera profile")
+        help=("Also score the full msa")
     )
 
 

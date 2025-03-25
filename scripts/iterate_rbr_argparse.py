@@ -25,7 +25,7 @@ rk.refine
 """
 
 import argparse
-from rocket.refinement import run_refinement, RocketRefinmentConfig
+from rocket.refinement_xray import run_refinement, RocketRefinmentConfig
 
 
 def parse_arguments():

@@ -9,6 +9,21 @@ from tqdm import tqdm
 import numpy as np
 import math
 import matplotlib.pyplot as plt
+import reciprocalspaceship as rs
+
+def downsample_data(mtz_path, downsample_ratio: int):
+    """
+    Downsample the data in an mtz file by a given ratio
+    """
+    df = rs.read_mtz(mtz_path)
+    # Get the h, k, l values
+    hkls = df.get_hkls()
+    # Create a boolean mask where all h, k, l values are divisible by the ratio
+    mask = (hkls[:, 0] % downsample_ratio == 0) & (hkls[:, 1] % downsample_ratio == 0) & (hkls[:, 2] % downsample_ratio == 0)
+    # Apply the mask to the DataFrame
+    downsampled_df = df[mask].copy()
+    
+    return downsampled_df
 
 
 def load_tng_data(tng_file, device=utils.try_gpu()):

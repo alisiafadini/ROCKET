@@ -1,5 +1,5 @@
 import argparse, os, glob
-from rocket.refinement import RocketRefinmentConfig, run_refinement
+from rocket.refinement_xray import RocketRefinmentConfig, run_refinement
 from typing import Union, List
 
 
