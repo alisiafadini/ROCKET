@@ -49,7 +49,7 @@ def run_openfold(file_id, output_dir, precomputed_alignment_dir, mmcif_dir, jax_
     return predicted_model
 
 def generate_seg_id_file(file_id, output_dir):
-    """Generates seg_id.txt using chain changes and >20-residue continuous stretches, with seg_id summary."""
+    """Generates seg_id.txt using chain changes and >20-residue continuous stretches, skipping first seg_id."""
     seg_id_path = os.path.join(output_dir, "ROCKET_inputs", "seg_id.txt")
     aligned_pdb_path = os.path.join(output_dir, "ROCKET_inputs", f"{file_id}-pred-aligned.pdb")
 
@@ -93,10 +93,10 @@ def generate_seg_id_file(file_id, output_dir):
                 if len(current_stretch) > 20:
                     domain_ranges.append((current_stretch[0], current_stretch[-1]))
                     seg_start_residues.append(current_stretch[0])
-                    break  # Only take the first valid stretch per chain
+                    break
                 current_stretch = [residues[i]]
 
-        # Handle last stretch
+        # Handle final stretch
         if len(current_stretch) > 20 and (not domain_ranges or domain_ranges[-1] != (current_stretch[0], current_stretch[-1])):
             domain_ranges.append((current_stretch[0], current_stretch[-1]))
             seg_start_residues.append(current_stretch[0])
@@ -108,13 +108,11 @@ def generate_seg_id_file(file_id, output_dir):
         for i, (start, end) in enumerate(domain_ranges, 1):
             out_f.write(f"domain{i}: {start}-{end}\n")
 
-        if seg_start_residues:
-            seg_ids = ",".join(str(r) for r in seg_start_residues)
-            out_f.write(f'seg_ids: "{seg_ids}"\n')
+        if len(seg_start_residues) > 1:
+            seg_ids = ",".join(str(r) for r in seg_start_residues[1:])  # skip first
+            out_f.write(f'seg_id: "{seg_ids}"\n')
 
     print(f"Segment ID file written to {seg_id_path}")
-
-
 
 
 def run_process_predicted_model(file_id, input_dir, predicted_model):
