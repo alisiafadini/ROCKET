@@ -3,9 +3,11 @@ import subprocess
 import os
 import shutil
 import glob
+from loguru import logger
 
 ### Phenix variables
-phenix_directory = "/dev/shm/alisia/phenix-2.0rc1-5641/"
+# phenix_directory = "/dev/shm/alisia/phenix-2.0rc1-5641/"
+phenix_directory = os.environ["PHENIX_ROOT"]
 phenix_source = os.path.join(phenix_directory, "phenix_env.sh")
 em_nodockedmodel_script = os.path.join(phenix_directory, "lib/python3.9/site-packages/New_Voyager/scripts/emplace_simple.py")
 em_dockedmodel_script = os.path.join(phenix_directory, "lib/python3.9/site-packages/cctbx/maptbx/prepare_map_for_refinement.py")
@@ -15,7 +17,7 @@ def run_command(command, env_source=None):
     """Runs a shell command with optional Phenix environment sourcing."""
     cmd_str = f"bash -c 'source {env_source} && {' '.join(command)}'" if env_source else " ".join(command)
     
-    print(f"Executing: {cmd_str}")
+    logger.info(f"Executing: {cmd_str}")
     
     subprocess.run(cmd_str, shell=True, check=True, executable="/bin/bash")
 
@@ -25,7 +27,7 @@ def run_openfold(file_id, output_dir, precomputed_alignment_dir, mmcif_dir, jax_
     predicted_model = os.path.join(output_dir, "predictions", f"{file_id}_model_1_ptm_unrelaxed.pdb")
 
     if os.path.exists(predicted_model):
-        print(f"Skipping OpenFold: output {predicted_model} already exists.")
+        logger.info(f"Skipping OpenFold: output {predicted_model} already exists.")
         return predicted_model
 
     openfold_cmd = [
@@ -50,7 +52,7 @@ def run_openfold(file_id, output_dir, precomputed_alignment_dir, mmcif_dir, jax_
 
 def run_process_predicted_model(file_id, input_dir, predicted_model):
     """Processes the predicted model using Phenix."""
-    print("Looking for", predicted_model)
+    logger.info("Looking for", predicted_model)
 
 
     process_cmd = [
@@ -76,7 +78,7 @@ def move_processed_predicted_files(output_dir):
     processed_files = glob.glob("*processed*") + glob.glob("*.seq")
 
     if not processed_files:
-        print("No processed files found to move.")
+        logger.info("No processed files found to move.")
         return
 
     for file_path in processed_files:
