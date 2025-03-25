@@ -49,7 +49,7 @@ def run_openfold(file_id, output_dir, precomputed_alignment_dir, mmcif_dir, jax_
     return predicted_model
 
 def generate_seg_id_file(file_id, output_dir):
-    """Generates seg_id.txt using chain changes and >20-residue continuous stretches, skipping first seg_id."""
+    """Generates seg_id.txt using chain changes and >20-residue continuous stretches. Skips first seg_id, outputs None if only one domain."""
     seg_id_path = os.path.join(output_dir, "ROCKET_inputs", "seg_id.txt")
     aligned_pdb_path = os.path.join(output_dir, "ROCKET_inputs", f"{file_id}-pred-aligned.pdb")
 
@@ -103,16 +103,19 @@ def generate_seg_id_file(file_id, output_dir):
 
         previous_chain = chain_id
 
-    # Write to seg_id.txt
+    # Write seg_id.txt
     with open(seg_id_path, "w") as out_f:
         for i, (start, end) in enumerate(domain_ranges, 1):
             out_f.write(f"domain{i}: {start}-{end}\n")
 
         if len(seg_start_residues) > 1:
-            seg_ids = ",".join(str(r) for r in seg_start_residues[1:])  # skip first
+            seg_ids = ",".join(str(r) for r in seg_start_residues[1:])  # Skip first
             out_f.write(f'seg_id: "{seg_ids}"\n')
+        else:
+            out_f.write("seg_id: None\n")
 
     print(f"Segment ID file written to {seg_id_path}")
+
 
 
 def run_process_predicted_model(file_id, input_dir, predicted_model):
@@ -151,6 +154,7 @@ def move_processed_predicted_files(output_dir):
             shutil.move(file_path, os.path.join(processed_dir, os.path.basename(file_path)))
 
 def dock_into_data(file_id, method, resolution, output_dir, predicted_model, predocked_model, map1, map2, fixed_model=None, fasta_composition=None):
+    
     """Handles molecular docking for X-ray or Cryo-EM data."""
     docking_output_dir = os.path.join(output_dir, "docking_outputs")
     os.makedirs(docking_output_dir, exist_ok=True)
@@ -161,19 +165,27 @@ def dock_into_data(file_id, method, resolution, output_dir, predicted_model, pre
         for mtz_file in mtz_files:
             if os.path.isfile(mtz_file):
                 shutil.copy2(mtz_file, os.path.join(output_dir, "processed_predicted_files", os.path.basename(mtz_file)))
-                edata_cmd = ["phenix.python",
-                    xtal_edata_script,
-                    f"-i",
-                    f"{mtz_file}"
-                ]
+                
+                # Always run Edata generation
+                edata_cmd = ["phenix.python", xtal_edata_script, "-i", mtz_file]
                 run_command(edata_cmd, env_source=phenix_source)
 
-        mr_cmd = [
-            "phasertng.picard",
-            f"directory={os.path.join(output_dir, 'processed_predicted_files')}",
-            f"database={os.path.join(output_dir, 'phaser_files')}"
-        ]
-        run_command(mr_cmd, env_source=phenix_source)
+        # If predocked_model is provided, skip MR and copy the model directly
+        if predocked_model:
+            print("Predocked model provided for X-ray: skipping MR step.")
+            rocket_dir = os.path.join(output_dir, "ROCKET_inputs")
+            os.makedirs(rocket_dir, exist_ok=True)
+
+            aligned_pdb_path = os.path.join(rocket_dir, f"{file_id}-pred-aligned.pdb")
+            shutil.copy2(predocked_model, aligned_pdb_path)
+        else:
+            # Proceed with MR step
+            mr_cmd = [
+                "phasertng.picard",
+                f"directory={os.path.join(output_dir, 'processed_predicted_files')}",
+                f"database={os.path.join(output_dir, 'phaser_files')}"
+            ]
+            run_command(mr_cmd, env_source=phenix_source)
 
     elif method == "cryo-em":
         docking_script = em_dockedmodel_script if predocked_model else em_nodockedmodel_script
@@ -210,6 +222,7 @@ def dock_into_data(file_id, method, resolution, output_dir, predicted_model, pre
             model_dest_path = os.path.join(docking_output_dir, model_filename)
             if os.path.exists(predocked_model):
                 shutil.copy(predocked_model, model_dest_path)
+
 
 def prepare_rk_inputs(file_id, output_dir, method):
     """Creates ROCKET_inputs directory and moves necessary files."""
@@ -275,11 +288,12 @@ def main():
     os.makedirs(args.output_dir, exist_ok=True)
 
     #predicted_model = run_openfold(args.file_id, args.output_dir, args.precomputed_alignment_dir, args.mmcif_dir, args.jax_params_path)
-    #run_process_predicted_model(args.file_id, args.output_dir, predicted_model)
-    #move_processed_predicted_files(args.output_dir)
+    predicted_model = "./1lj5_preprocess_outputs/predictions/1lj5_model_1_ptm_unrelaxed.pdb"
+    run_process_predicted_model(args.file_id, args.output_dir, predicted_model)
+    move_processed_predicted_files(args.output_dir)
 
-    #dock_into_data(args.file_id, args.method, args.resolution, args.output_dir, predicted_model, args.predocked_model, args.map1, args.map2, args.fixed_model, args.full_composition)
-    #prepare_rk_inputs(args.file_id, args.output_dir, args.method)
+    dock_into_data(args.file_id, args.method, args.resolution, args.output_dir, predicted_model, args.predocked_model, args.map1, args.map2, args.fixed_model, args.full_composition)
+    prepare_rk_inputs(args.file_id, args.output_dir, args.method)
     generate_seg_id_file(args.file_id, args.output_dir)
 
 
