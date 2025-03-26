@@ -34,8 +34,6 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
     mtz_file = f"{path}/ROCKET_inputs/{target_id}-Edata.mtz"
     input_pdb = f"{path}/ROCKET_inputs/{target_id}-pred-aligned.pdb"
     note = config.note
-    lr_a = config.additive_learning_rate
-    lr_m = config.multiplicative_learning_rate
     bias_version = config.bias_version
     iterations = config.iterations
     num_of_runs = config.num_of_runs
@@ -78,7 +76,12 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
     cra_calphas_list, calphas_mask = rk_coordinates.select_CA_from_craname(
         cryo_sfc.cra_name
     )
-    residue_numbers = [int(name.split("-")[1]) for name in cra_calphas_list]
+
+    # Use initial pos B factor instead of best pos B factor for weighted L2
+    init_pos_bfactor = cryo_sfc.atom_b_iso.clone()
+    bfactor_weights = rk_utils.weighting_torch(init_pos_bfactor, cutoff2=20.0)
+
+    #residue_numbers = [int(name.split("-")[1]) for name in cra_calphas_list]
 
     # LLG initialization
     cryo_llgloss = cryo_targets.LLGloss(cryo_sfc, mtz_file)
@@ -96,6 +99,14 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
         device
     )
     af_bias.freeze()
+
+    # Optimizer settings and initialization
+    if "phase1" in config.note:
+        lr_a = config.additive_learning_rate
+        lr_m = config.multiplicative_learning_rate
+    elif "phase2" in config.note:
+        lr_a = config.phase2_final_lr
+        lr_m = config.phase2_final_lr
 
     best_loss = float("inf")
     best_msa_bias = None
@@ -139,6 +150,31 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
             range(iterations),
             desc=f"{target_id}, uuid: {refinement_run_uuid[:4]}, run: {run_id}",
         )
+
+                # Run smooth stage in phase 1
+        if "phase1" in config.note:
+            w_L2 = config.l2_weight
+        elif "phase2" in config.note:
+            w_L2 = 0.0
+
+        ######
+        early_stopper = rkrf_utils.EarlyStopper(patience=200, min_delta=10.0)
+
+        #### Phase 1 smooth scheduling ######
+        if config.smooth_stage_epochs is not None:
+            lr_a_initial = lr_a
+            lr_m_initial = lr_m
+            w_L2_initial = w_L2
+            lr_stage1_final = config.phase2_final_lr
+            smooth_stage_epochs = config.smooth_stage_epochs
+
+            # Decay rates for each stage
+            decay_rate_stage1_add = (lr_stage1_final / lr_a) ** (
+                1 / smooth_stage_epochs
+            )
+            decay_rate_stage1_mul = (lr_stage1_final / lr_m) ** (
+                1 / smooth_stage_epochs
+            )
 
         ############ 3. Run Refinement ############
         for iteration in progress_bar:
@@ -186,12 +222,12 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
             # Calculate (or refine) sigmaA
             cryo_llgloss.sfc.atom_pos_orth = optimized_xyz.detach().clone()
             cryo_llgloss.sfc.savePDB(
-                f"{output_directory_path!s}/{run_id}_{iteration}_preRBR.pdb"
+                f"{output_directory_path!s}/{run_id}_{iteration}_postRBR.pdb"
             )
 
             # LLG loss
             L_llg = -cryo_llgloss(
-                optimized_xyz,  # TODO add RBR step
+                optimized_xyz, 
             )
 
             L_llg = L_llg  # + 30 * L_plddt
@@ -211,7 +247,7 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
                 )
                 best_run = run_id
                 best_iter = iteration
-                best_pos = aligned_xyz.detach().clone()  # TODO should be optimized
+                best_pos = optimized_xyz.detach().clone()  
 
             progress_bar.set_postfix(
                 LLG=f"{L_llg.clone().item():.2f}",
@@ -224,8 +260,35 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
             }
             sigmas_by_epoch.append(sigmas_dict)
 
-            L_llg.backward()
-            optimizer.step()
+            #### add an L2 loss to constrain confident atoms ###
+            if w_L2 > 0.0:
+                # use
+                L2_loss = torch.sum(
+                    bfactor_weights.unsqueeze(-1) * (optimized_xyz - reference_pos) ** 2
+                )  # / conf_best.shape[0]
+                loss = L_llg + w_L2 * L2_loss + config.w_plddt * L_plddt
+                loss.backward()
+            else:
+                loss = L_llg + config.w_plddt * L_plddt
+                loss.backward()
+
+                if early_stopper.early_stop(loss.item()):
+                    break
+
+            # Do smooth in last several iterations of phase 1 instead of beginning of phase 2
+            if ("phase1" in config.note) and (config.smooth_stage_epochs is not None):
+                if iteration > (config.iterations - smooth_stage_epochs):
+                    lr_a = lr_a_initial * (decay_rate_stage1_add**iteration)
+                    lr_m = lr_m_initial * (decay_rate_stage1_mul**iteration)
+                    w_L2 = w_L2_initial * (1 - (iteration / smooth_stage_epochs))
+
+                # Update the learning rates in the optimizer
+                optimizer.param_groups[0]["lr"] = lr_a
+                optimizer.param_groups[1]["lr"] = lr_m
+                optimizer.step()
+            else:
+                optimizer.step()
+
             time_by_epoch.append(time.time() - start_time)
             memory_by_epoch.append(torch.cuda.max_memory_allocated() / 1024**3)
 

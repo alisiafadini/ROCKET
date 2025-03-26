@@ -534,9 +534,9 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
 
             # Update SFC and save
             llgloss.sfc.atom_pos_orth = aligned_xyz.detach().clone()
-            llgloss.sfc.savePDB(
-                f"{output_directory_path!s}/{run_id}_{iteration}_preRBR.pdb"
-            )
+            #llgloss.sfc.savePDB(
+            #    f"{output_directory_path!s}/{run_id}_{iteration}_preRBR.pdb"
+            #)
 
             # Rigid body refinement (RBR) step
             optimized_xyz, loss_track_pose = rk_coordinates.rigidbody_refine_quat(
