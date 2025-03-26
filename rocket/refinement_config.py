@@ -79,6 +79,7 @@ class DataConfig(BaseModel):
     voxel_spacing: float = 4.5
     msa_subratio: Optional[float] = None
     w_plddt: float = 0.0
+    downsample_ratio: Optional[int] = None
 
     @field_validator('datamode', mode='before')
     @classmethod

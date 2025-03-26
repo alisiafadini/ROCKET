@@ -101,15 +101,20 @@ To ensure usability, we forked the OpenFold repo, and sorted a couple details in
 
 1. Download the latest `nightly-build` Phenix python3 installer according to [https://phenix-online.org/download](https://phenix-online.org/download)
 
-2. Unpack the installer, run the installation to your path of choice
+2. Run the installer
 
     ```
-    tar xvf phenix-installer-2.0rc1-5617-<platform>.tar
-    cd phenix-installer-2.0rc1-5617
-    ./install --prefix=<phenix_directory>
+    bash phenix-installer-2.0rc1-5617-<platform>.sh
     ```
 
-    Note: `<phenix_directory>` must be a absolute path. The installer will will make `<phenix_directory>/phenix-XXX` and install there.
+    You will be prompted to type your preferred path of installation, after specifying it, you will see:
+
+    ```
+    Phenix will now be installed into this location:
+    <phenix_directory>/phenix-2.0rc1-5617
+    ```
+
+    Note: `<phenix_directory>` must be a absolute path. The installer will will make `<phenix_directory>/phenix-2.0rc1-5617` and install there.
 
 3. Append the following line to `<path_to_your_conda_env>/etc/conda/activate.d/env_vars.sh`, you should have created it from the previous section
 

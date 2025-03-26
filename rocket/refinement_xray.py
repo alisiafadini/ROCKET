@@ -13,16 +13,22 @@ from rocket import coordinates as rk_coordinates
 from rocket import utils as rk_utils
 from rocket import refinement_utils as rkrf_utils
 from rocket.llg import structurefactors as llg_sf
+from rocket.refinement_config import RocketRefinmentConfig
 
 
 from openfold.config import model_config
 from openfold.data import feature_pipeline, data_pipeline
 
+from loguru import logger
 
-PRESET = "model_1"
+
+PRESET = "model_1_ptm"
 EXCLUDING_RES = None
 
-def run_refinement(*, config: RocketRefinmentConfig) -> str:
+def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentConfig:
+    if isinstance(config, str):
+        config = RocketRefinmentConfig.from_yaml_file(config)
+    assert config.datamode == "xray", "Make sure to set datamode to 'xray'!"
 
     ############ 1. Global settings ############
     # Device
@@ -37,6 +43,7 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
         raise ValueError("rbr_opt only supports lbfgs or adam")
 
     # Configure input paths
+    # TODO: make sure the following file paths match the new pattern
     tng_file = "{p}/{r}/{r}-tng_withrfree.mtz".format(p=config.path, r=config.file_root)
     input_pdb = "{p}/{r}/{r}-pred-aligned.pdb".format(p=config.path, r=config.file_root)
     true_pdb = "{p}/{r}/{r}_noalts.pdb".format(p=config.path, r=config.file_root)
@@ -46,6 +53,7 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
     if config.uuid_hex is None:
         refinement_run_uuid = uuid.uuid4().hex
     else:
+        config.uuid_hex = uuid.uuid4().hex
         refinement_run_uuid = config.uuid_hex
     output_directory_path = (
         f"{config.path}/{config.file_root}/outputs/{refinement_run_uuid}/{config.note}"
@@ -53,10 +61,10 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
     try:
         os.makedirs(output_directory_path, exist_ok=True)
     except FileExistsError:
-        print(
+        logger.info(
             f"Warning: Directory '{output_directory_path}' already exists. Overwriting..."
         )
-    print(
+    logger.info(
         f"System: {config.file_root}, refinment run ID: {refinement_run_uuid!s}, Note: {config.note}",
         flush=True,
     )
@@ -70,6 +78,7 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
         REFPDB = False
 
     # If there are additional chain in the system
+    # TODO: make sure the following files exist in the new pattern
     if config.additional_chain:
         constant_fp_added_HKL = torch.load(
             "{p}/{r}/{r}_added_chain_atoms_HKL.pt".format(
@@ -747,4 +756,4 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
 
     config.to_yaml_file(f"{output_directory_path!s}/config.yaml")
 
-    return refinement_run_uuid
+    return config
