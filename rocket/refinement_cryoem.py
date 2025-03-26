@@ -29,7 +29,7 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
     assert config.datamode == "cryoem", "Make sure to set datamode to 'cryoem'!"
     device = f"cuda:{config.cuda_device}" if torch.cuda.is_available() else "cpu"
     
-    target_id = config.file_root
+    target_id = config.file_id
     path = config.path
     mtz_file = f"{path}/ROCKET_inputs/{target_id}-Edata.mtz"
     input_pdb = f"{path}/ROCKET_inputs/{target_id}-pred-aligned.pdb"
@@ -43,7 +43,7 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
     if config.uuid_hex:
         refinement_run_uuid = config.uuid_hex
     else:
-        config.uuid_hex = uuid.uuid4().hex
+        config.uuid_hex = uuid.uuid4().hex[:10]
         refinement_run_uuid = config.uuid_hex
     output_directory_path = f"{path}/ROCKET_outputs/{refinement_run_uuid}/{note}"
     try:

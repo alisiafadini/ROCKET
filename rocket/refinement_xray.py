@@ -43,16 +43,16 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
         raise ValueError("rbr_opt only supports lbfgs or adam")
 
     # Configure input paths
-    tng_file = "{p}/ROCKET_inputs/{r}-Edata.mtz".format(p=config.path, r=config.file_root)
-    input_pdb = "{p}/ROCKET_inputs/{r}-pred-aligned.pdb".format(p=config.path, r=config.file_root)
-    true_pdb = "{p}/ROCKET_inputs/{r}_noalts.pdb".format(p=config.path, r=config.file_root)
+    tng_file = "{p}/ROCKET_inputs/{r}-Edata.mtz".format(p=config.path, r=config.file_id)
+    input_pdb = "{p}/ROCKET_inputs/{r}-pred-aligned.pdb".format(p=config.path, r=config.file_id)
+    true_pdb = "{p}/ROCKET_inputs/{r}_noalts.pdb".format(p=config.path, r=config.file_id)
 
     # Configure output path
     # Generate uuid for this run
-    if config.uuid_hex is None:
-        refinement_run_uuid = uuid.uuid4().hex
+    if config.uuid_hex:
+        refinement_run_uuid = config.uuid_hex
     else:
-        config.uuid_hex = uuid.uuid4().hex
+        config.uuid_hex = uuid.uuid4().hex[:10]
         refinement_run_uuid = config.uuid_hex
     output_directory_path = (
         f"{config.path}/ROCKET_outputs/{refinement_run_uuid}/{config.note}"
@@ -64,7 +64,7 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
             f"Warning: Directory '{output_directory_path}' already exists. Overwriting..."
         )
     logger.info(
-        f"System: {config.file_root}, refinment run ID: {refinement_run_uuid!s}, Note: {config.note}",
+        f"System: {config.file_id}, refinment run ID: {refinement_run_uuid!s}, Note: {config.note}",
         flush=True,
     )
     if not config.verbose:
@@ -81,20 +81,20 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
     if config.additional_chain:
         constant_fp_added_HKL = torch.load(
             "{p}/ROCKET_inputs/{r}_added_chain_atoms_HKL.pt".format(
-                p=config.path, r=config.file_root
+                p=config.path, r=config.file_id
             )
         ).to(device=device)
         constant_fp_added_asu = torch.load(
             "{p}/ROCKET_inputs/{r}_added_chain_atoms_asu.pt".format(
-                p=config.path, r=config.file_root
+                p=config.path, r=config.file_id
             )
         ).to(device=device)
 
         phitrue_path = "{p}/ROCKET_inputs/{r}_allchains-phitrue-solvent{s}.npy".format(
-            p=config.path, r=config.file_root, s=config.solvent
+            p=config.path, r=config.file_id, s=config.solvent
         )
         Etrue_path = "{p}/ROCKET_inputs/{r}_allchains-Etrue-solvent{s}.npy".format(
-            p=config.path, r=config.file_root, s=config.solvent
+            p=config.path, r=config.file_id, s=config.solvent
         )
 
         if os.path.exists(phitrue_path) and os.path.exists(Etrue_path):
@@ -108,10 +108,10 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
         constant_fp_added_asu = None
 
         phitrue_path = "{p}/ROCKET_inputs/{r}-phitrue-solvent{s}.npy".format(
-            p=config.path, r=config.file_root, s=config.solvent
+            p=config.path, r=config.file_id, s=config.solvent
         )
         Etrue_path = "{p}/ROCKET_inputs/{r}-Etrue-solvent{s}.npy".format(
-            p=config.path, r=config.file_root, s=config.solvent
+            p=config.path, r=config.file_id, s=config.solvent
         )
 
         if os.path.exists(phitrue_path) and os.path.exists(Etrue_path):
@@ -329,7 +329,7 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
                 rk_utils.assert_numpy(features_at_it_start[..., 0]),
             )
         else:
-            msa_feat_init_np = np.load(config.msa_feat_init_path, allow_pickle=True)
+            msa_feat_init_np = np.load(glob.glob(config.msa_feat_init_path)[0], allow_pickle=True)
             features_at_it_start_np = np.repeat(
                 np.expand_dims(msa_feat_init_np, -1), config.init_recycling + 1, -1
             )
@@ -380,8 +380,8 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
             lr_a=lr_a,
             lr_m=lr_m,
             weight_decay=config.weight_decay,
-            starting_bias=config.starting_bias,
-            starting_weights=config.starting_weights,
+            starting_bias=glob.glob(config.starting_bias)[0],
+            starting_weights=glob.glob(config.starting_weights)[0],
             recombination_bias=recombination_bias,
         )
 
@@ -401,7 +401,7 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
 
         progress_bar = tqdm(
             range(config.iterations),
-            desc=f"{config.file_root}, uuid: {refinement_run_uuid[:4]}, run: {run_id}",
+            desc=f"{config.file_id}, uuid: {refinement_run_uuid[:4]}, run: {run_id}",
         )
 
         # Run smooth stage in phase 1

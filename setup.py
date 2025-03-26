@@ -21,10 +21,12 @@ setup(
         "scikit-bio",
         "loguru",
         "SFcalculator-torch==0.2.1",
+        "matplotlib",
     ],
     entry_points={
         "console_scripts": [
             "rk.refine=rocket.scripts.run_refine:cli_runrefine",
+            "rk.config=rocket.scripts.run_config:cli_runconfig",
             "rk.mse=rocket.scripts.run_mse:run_mse_all_datasets",
             "rk.msacluster=rocket.scripts.run_msacluster:main",
             "rk.score=rocket.scripts.run_msascore:main",

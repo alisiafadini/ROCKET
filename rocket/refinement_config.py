@@ -6,6 +6,7 @@ import yaml
 from pydantic import BaseModel, Field, field_validator
 from enum import Enum
 from typing import List, Optional, Dict, Any, ClassVar
+import uuid, os, glob
 
 # Custom StrEnum implementation for Python < 3.11
 class StrEnum(str, Enum):
@@ -22,7 +23,7 @@ class DATAMODE(StrEnum):
 # Path and file configuration
 class PathConfig(BaseModel):
     path: str = ""
-    file_root: str = ""
+    file_id: str = ""
     template_pdb: Optional[str] = None
     input_msa: Optional[str] = None
     sub_msa_path: Optional[str] = None
@@ -115,7 +116,7 @@ class RocketRefinmentConfig(BaseModel):
     _flat_to_nested_map: ClassVar[Dict[str, str]] = {
         # Paths
         "path": "paths.path",
-        "file_root": "paths.file_root",
+        "file_id": "paths.file_id",
         "template_pdb": "paths.template_pdb",
         "input_msa": "paths.input_msa",
         "sub_msa_path": "paths.sub_msa_path",
@@ -266,3 +267,78 @@ class RocketRefinmentConfig(BaseModel):
         
         # Create the instance
         return cls.model_validate(nested_dict)
+    
+
+class RUNMODE(StrEnum):
+    PHASE1 = "phase1"
+    PHASE2 = "phase2"
+    BOTH = "both"
+
+def gen_config(mode: Optional[RUNMODE]=RUNMODE.BOTH, datamode: Optional[DATAMODE]=None, working_dir: Optional[str]=None, file_id: Optional[str]=None, pre_phase1_config: Optional[RocketRefinmentConfig]=None):
+    if mode == RUNMODE.PHASE1:
+        phase1_config = gen_config_phase1(datamode, working_dir, file_id)
+        phase1_config.to_yaml_file(os.path.join(working_dir, "ROCKET_config_phase1.yaml"))
+        return phase1_config
+    elif mode == RUNMODE.PHASE2:
+        phase2_config = gen_config_phase2(pre_phase1_config)
+        phase2_config.to_yaml_file(os.path.join(phase2_config.working_dir, "ROCKET_config_phase2.yaml"))
+        return phase2_config
+    else:
+        phase1_config = gen_config_phase1(datamode, working_dir, file_id)
+        phase1_config.to_yaml_file(os.path.join(working_dir, "ROCKET_config_phase1.yaml"))
+        phase2_config = gen_config_phase2(phase1_config)
+        phase2_config.to_yaml_file(os.path.join(working_dir, "ROCKET_config_phase2.yaml"))
+        return phase1_config, phase2_config
+
+def gen_config_phase1(datamode: DATAMODE, working_dir: str, file_id: str):
+    phase1_config = RocketRefinmentConfig(
+        note = "phase1_<your_note_here>",
+        paths = PathConfig(
+            path = working_dir,
+            file_id = file_id,
+            uuid_hex = uuid.uuid4().hex[:10],
+        ),
+        execution = ExecutionConfig(
+            cuda_device = 0,
+            num_of_runs = 3,
+            verbose = False,
+        ),
+        algorithm = AlgorithmConfig(
+            iterations = 100,
+            optimization = OptimizationParams(
+                additive_learning_rate = 0.05,
+                multiplicative_learning_rate = 1.0,
+                l2_weight = 1e-7,
+                phase2_final_lr = 1e-3,
+                smooth_stage_epochs = 50,
+            ),
+        ),
+        data = DataConfig(
+            datamode=datamode,
+            min_resolution = 3.0,
+        ),
+    )
+    return phase1_config
+
+def gen_config_phase2(phase1_config: RocketRefinmentConfig):
+    phase2_config = phase1_config.model_copy()
+    phase2_config.note = "phase2_<your_note_here>"
+    phase2_config.data.min_resolution = None
+
+    output_directory_path = os.path.join(phase2_config.path, "ROCKET_outputs", phase2_config.uuid_hex)
+    phase1_path = os.path.join(output_directory_path, phase1_config.note)
+    starting_bias_path = os.path.join(phase1_path, "best_msa_bias*.pt")
+    starting_weights_path = os.path.join(phase1_path, "best_feat_weights*.pt")
+    
+        
+    phase2_config.paths.starting_bias = starting_bias_path 
+    phase2_config.paths.starting_weights = starting_weights_path
+    if phase1_config.input_msa is not None:
+        msa_feat_init_path = os.path.join(phase1_path, "msa_feat_start.npy")
+        phase2_config.paths.msa_feat_init_path = msa_feat_init_path
+
+    phase2_config.algorithm.iterations = 500
+    phase2_config.algorithm.optimization.smooth_stage_epochs = None
+    phase2_config.execution.num_of_runs = 1
+
+    return phase2_config
