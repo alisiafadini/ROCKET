@@ -24,8 +24,7 @@ setup(
     ],
     entry_points={
         "console_scripts": [
-            "rk.multiphaserefine=rocket.scripts.run_phase1andphase2:run_both_phases_all_datasets",
-            "rk.phase1=rocket.scripts.run_phase1:run_phase1_all_datasets",
+            "rk.refine=rocket.scripts.run_refine:cli_runrefine",
             "rk.mse=rocket.scripts.run_mse:run_mse_all_datasets",
             "rk.msacluster=rocket.scripts.run_msacluster:main",
             "rk.score=rocket.scripts.run_msascore:main",
