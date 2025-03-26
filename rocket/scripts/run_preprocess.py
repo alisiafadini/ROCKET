@@ -23,7 +23,7 @@ def run_command(command, env_source=None):
     
     subprocess.run(cmd_str, shell=True, check=True, executable="/bin/bash")
 
-def run_openfold(file_id, output_dir, precomputed_alignment_dir, mmcif_dir, jax_param_path):
+def run_openfold(file_id, output_dir, precomputed_alignment_dir, jax_param_path, max_recycling_iters, use_deepspeed_evoformer_attention):
     """Runs OpenFold inference using the specified parameters."""
     fasta_dir = f"{file_id}_fasta"
     predicted_model = os.path.join(output_dir, "predictions", f"{file_id}_model_1_ptm_unrelaxed.pdb")
@@ -33,14 +33,16 @@ def run_openfold(file_id, output_dir, precomputed_alignment_dir, mmcif_dir, jax_
         return predicted_model
 
     openfold_cmd = [
-        "python3", "run_pretrained_openfold.py",
-        fasta_dir, mmcif_dir,
+        "rk.predict",
+        fasta_dir,
         "--output_dir", output_dir,
         "--config_preset", "model_1_ptm",
         "--model_device", "cuda:0",
         "--save_output",
         "--data_random_seed", "42",
         "--skip_relaxation",
+        "--use_deepspeed_evoformer_attention", use_deepspeed_evoformer_attention,
+        "--max_recycling_iters", max_recycling_iters,
         "--jax_param_path", jax_param_path,
         "--use_precomputed_alignments", precomputed_alignment_dir
     ]
@@ -274,6 +276,11 @@ def parse_args():
     parser.add_argument("--resolution", default=None)
     parser.add_argument("--output_dir", default="preprocessing_output")
     parser.add_argument("--precomputed_alignment_dir", default="alignments/")
+    parser.add_argument("--max_recycling_iters", type=int, default=4)
+    parser.add_argument(
+        "--use_deepspeed_evoformer_attention", action="store_true", default=False, 
+        help="Whether to use the DeepSpeed evoformer attention layer. Must have deepspeed installed in the environment.",
+    )
     parser.add_argument("--jax_params_path", default=None)
     parser.add_argument("--predocked_model", default=None)
     parser.add_argument("--fixed_model", default=None)
@@ -305,8 +312,7 @@ def cli_runpreprocess():
     os.makedirs(args.output_dir, exist_ok=True)
     symlink_input_files(args.file_id, args.output_dir, args.precomputed_alignment_dir)
 
-    predicted_model = run_openfold(args.file_id, args.output_dir, args.precomputed_alignment_dir, args.mmcif_dir, args.jax_params_path)
-    # predicted_model = "./1lj5_preprocess_outputs/predictions/1lj5_model_1_ptm_unrelaxed.pdb"
+    predicted_model = run_openfold(args.file_id, args.output_dir, args.precomputed_alignment_dir, args.jax_params_path, args.max_recycling_iters, args.use_deepspeed_evoformer_attention)
     run_process_predicted_model(args.file_id, args.output_dir, predicted_model)
     move_processed_predicted_files(args.output_dir)
 

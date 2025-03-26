@@ -25,6 +25,7 @@ setup(
     ],
     entry_points={
         "console_scripts": [
+            "rk.predict=rocket.scripts.run_pretrained_openfold:cli_runopenfold",
             "rk.preprocess=rocket.scripts.run_preprocess:cli_runpreprocess",
             "rk.refine=rocket.scripts.run_refine:cli_runrefine",
             "rk.config=rocket.scripts.run_config:cli_runconfig",
