@@ -321,7 +321,8 @@ def cli_runpreprocess():
     seg_id = generate_seg_id_file(args.file_id, args.output_dir)
 
     # Generate ROCKET configuration yaml files
-    phase1_config = gen_config_phase1(datamode=args.method, file_id=args.file_id, working_dir=args.output_dir)
+    phase1_config = gen_config_phase1(datamode=args.method, file_id=args.file_id, working_dir=os.path.abspath(args.output_dir))
+    phase1_config.algorithm.init_recycling = args.max_recycling_iters
     if seg_id:
         phase1_config.algorithm.domain_segs = seg_id
     phase1_config.to_yaml_file(os.path.join(args.output_dir, "ROCKET_config_phase1.yaml"))

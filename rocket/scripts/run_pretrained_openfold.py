@@ -346,7 +346,7 @@ def main(args):
             out = run_model(model, processed_feature_dict, tag, args.output_dir)
 
             # MH @ Jun 21, 2024, save out the processed feature dict
-            with open(f"{output_directory}/predictions/{output_name}_processed_feats.pickle", "wb") as file:
+            with open(f"{output_directory}/{output_name}_processed_feats.pickle", "wb") as file:
                 from rocket import utils as rk_utils
                 device_processed_features = rk_utils.move_tensors_to_device(
                             processed_feature_dict, device="cpu"
