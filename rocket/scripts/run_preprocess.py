@@ -35,17 +35,20 @@ def run_openfold(file_id, output_dir, precomputed_alignment_dir, jax_param_path,
     openfold_cmd = [
         "rk.predict",
         fasta_dir,
-        "--output_dir", output_dir,
+        "--output_dir", f"{output_dir}",
         "--config_preset", "model_1_ptm",
         "--model_device", "cuda:0",
         "--save_output",
         "--data_random_seed", "42",
         "--skip_relaxation",
-        "--use_deepspeed_evoformer_attention", use_deepspeed_evoformer_attention,
-        "--max_recycling_iters", max_recycling_iters,
-        "--jax_param_path", jax_param_path,
-        "--use_precomputed_alignments", precomputed_alignment_dir
+        "--max_recycling_iters", f"{max_recycling_iters}",
+        "--use_precomputed_alignments", f"{precomputed_alignment_dir}"
     ]
+    if use_deepspeed_evoformer_attention:
+        openfold_cmd.extend(["--use_deepspeed_evoformer_attention"])
+    
+    if jax_param_path:
+        openfold_cmd.extend(["--jax_params_path", jax_param_path])
 
     run_command(openfold_cmd)
 
@@ -264,7 +267,7 @@ def symlink_input_files(file_id, output_dir, precomputed_alignment_dir):
 
     alignments_dst = os.path.join(output_dir, "alignments")
     if not os.path.exists(alignments_dst):
-        os.symlink(os.path.abspath(precomputed_alignment_dir), alignments_dst)
+        os.symlink(os.path.join(os.path.abspath(precomputed_alignment_dir), file_id), alignments_dst)
 
 
 
@@ -277,10 +280,7 @@ def parse_args():
     parser.add_argument("--output_dir", default="preprocessing_output")
     parser.add_argument("--precomputed_alignment_dir", default="alignments/")
     parser.add_argument("--max_recycling_iters", type=int, default=4)
-    parser.add_argument(
-        "--use_deepspeed_evoformer_attention", action="store_true", default=False, 
-        help="Whether to use the DeepSpeed evoformer attention layer. Must have deepspeed installed in the environment.",
-    )
+    parser.add_argument("--use_deepspeed_evoformer_attention", action="store_true", default=False, help="Whether to use the DeepSpeed evoformer attention layer. Must have deepspeed installed in the environment.")
     parser.add_argument("--jax_params_path", default=None)
     parser.add_argument("--predocked_model", default=None)
     parser.add_argument("--fixed_model", default=None)
