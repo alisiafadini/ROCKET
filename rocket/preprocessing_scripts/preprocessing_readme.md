@@ -11,7 +11,7 @@ This script performs the preprocessing of predicted protein structures for **ROC
 | `--method` | Choose `"x-ray"` (calls Phaser) or `"cryo-em"` (calls EMPlacement). |
 | `--output_dir` | Directory to store results (default: `"preprocessing_output"`). |
 | `--precomputed_alignment_dir` | Path to OpenFold precomputed alignments (default: `"alignments/"`). |
-| `--jax_params_path` | Path to JAX parameter file (`"params_model_1_ptm.npz"`). |
+| `--jax_params_path` | Path to JAX parameter file (`"params_model_1_ptm.npz"`). Default `None`, will use system env var `$OPENFOLD_RESOURCES` |
 
 
 The scripts expects input files organized as follows:
@@ -58,11 +58,15 @@ After execution, results will be structured in the `--output_dir` directory:
 
 ```
 output_dir/
-│── predictions/                   # OpenFold structure predictions and pkl files
-│── processed_predicted_files/     # Processed predictions from Phenix (including trimmed confidence loops)
-│── docking_outputs/               # Cryo-EM docking results
-│── phaser_files/                  # X-ray molecular replacement results
-│── ROCKET_inputs/                 # Final outputs for ROCKET main trunk
+|── {file_id}.fasta                 # FASTA file containing the chain to refine, copied from input
+├── alignments/                     # MSA files for the input sequence, copied from input
+│   └── *.a3m / *.hhr               
+│── predictions/                    # OpenFold structure predictions and pkl files
+│   └── xxx_processed_feats.pickle  # Processed feature dict with cluster profiles           
+│── processed_predicted_files/      # Processed predictions from Phenix (including trimmed confidence loops)
+│── docking_outputs/                # Cryo-EM docking results
+│── phaser_files/                   # X-ray molecular replacement results
+│── ROCKET_inputs/                  # Final outputs for ROCKET main trunk
 │   ├── {file_id}-pred-aligned.pdb  # Aligned prediction with pseudo-Bs
 │   ├── {file_id}-Edata.mtz         # Experimental data in LLG convention
 ```

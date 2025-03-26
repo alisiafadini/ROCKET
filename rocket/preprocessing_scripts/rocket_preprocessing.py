@@ -272,8 +272,7 @@ def parse_args():
     parser.add_argument("--method", choices=["x-ray", "cryo-em"], required=True)
     parser.add_argument("--output_dir", default="preprocessing_output")
     parser.add_argument("--precomputed_alignment_dir", default="alignments/")
-    parser.add_argument("--mmcif_dir", default="/net/cci-gpu-00/raid1/scratch1/alisia/programs/openfold/openfold_v2.0.0/data/pdb_mmcif/mmcif_files/")
-    parser.add_argument("--jax_params_path", default="/net/cci-gpu-00/raid1/scratch1/alisia/programs/openfold/openfold_v2.0.0/openfold/resources/params/params_model_1_ptm.npz")
+    parser.add_argument("--jax_params_path", default=None)
     parser.add_argument("--predocked_model", default=None)
     parser.add_argument("--fixed_model", default=None)
     parser.add_argument("--xray_data_label", default=None)
@@ -305,8 +304,8 @@ def main():
     os.makedirs(args.output_dir, exist_ok=True)
     symlink_input_files(args.file_id, args.output_dir, args.precomputed_alignment_dir)
 
-    #predicted_model = run_openfold(args.file_id, args.output_dir, args.precomputed_alignment_dir, args.mmcif_dir, args.jax_params_path)
-    predicted_model = "./1lj5_preprocess_outputs/predictions/1lj5_model_1_ptm_unrelaxed.pdb"
+    predicted_model = run_openfold(args.file_id, args.output_dir, args.precomputed_alignment_dir, args.mmcif_dir, args.jax_params_path)
+    # predicted_model = "./1lj5_preprocess_outputs/predictions/1lj5_model_1_ptm_unrelaxed.pdb"
     run_process_predicted_model(args.file_id, args.output_dir, predicted_model)
     move_processed_predicted_files(args.output_dir)
 
