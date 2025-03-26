@@ -4,12 +4,14 @@ import pickle
 import numpy as np
 from tqdm import tqdm
 import rocket
-import os
+import os, glob, shutil
 import time
 from rocket import coordinates as rk_coordinates
 from rocket import utils as rk_utils
 from rocket import refinement_utils as rkrf_utils
 from openfold.config import model_config
+from openfold.data import feature_pipeline, data_pipeline
+
 
 from rocket.cryo import targets as cryo_targets
 from rocket.cryo import structurefactors as cryo_sf
@@ -73,6 +75,7 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
     )
 
     reference_pos = cryo_sfc.atom_pos_orth.clone()
+    target_seq = cryo_sfc._pdb.sequence
     cra_calphas_list, calphas_mask = rk_coordinates.select_CA_from_craname(
         cryo_sfc.cra_name
     )
@@ -113,33 +116,196 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
     best_feat_weights = None
     best_run = None
     best_iter = None
-    best_pos = reference_pos
+
+    # MH edit @ Nov 8th, 2024: Support to use msa as input
+    if config.msa_subratio is not None and config.input_msa is None:
+        config.input_msa = "alignments"  # default dir for alignment
+
+    recombination_bias = None
+    if config.input_msa is not None:
+        fasta_path = [
+            f
+            for ext in ("*.fa", "*.fasta")
+            for f in glob.glob(os.path.join(config.path, ext))
+        ][0]
+        a3m_path = os.path.join(config.path, config.input_msa)
+        if os.path.isfile(a3m_path):
+            msa_name, ext = os.path.splitext(os.path.basename(a3m_path))
+            alignment_dir = os.path.join(os.path.dirname(a3m_path), "tmp_align")
+            os.makedirs(alignment_dir, exist_ok=True)
+            shutil.copy(a3m_path, os.path.join(alignment_dir, msa_name + ".a3m"))
+            tmp_align = True
+        elif os.path.isdir(a3m_path):
+            alignment_dir = a3m_path
+            tmp_align = False
+        data_processor = data_pipeline.DataPipeline(template_featurizer=None)
+        feature_dict = rkrf_utils.generate_feature_dict(
+            fasta_path,
+            alignment_dir,
+            data_processor,
+        )
+        # prepare featuerizer
+        afconfig = model_config(PRESET)
+        afconfig.data.common.max_recycling_iters = config.init_recycling
+        del afconfig.data.common.masked_msa
+        afconfig.data.common.resample_msa_in_recycling = False
+        feature_processor = feature_pipeline.FeaturePipeline(afconfig.data)
+        if tmp_align:
+            shutil.rmtree(alignment_dir)
+
+        # MH edits @ Oct 19, 2024, support MSA subsampling at the beginning
+        if config.msa_subratio is not None:
+            assert (
+                config.msa_subratio > 0.0 and config.msa_subratio <= 1.0
+            ), "msa_subratio should be None or between 0.0 and 1.0!"
+            # Do subsampling of msa, keep the first sequence
+            if config.sub_msa_path is None:
+                idx = np.arange(feature_dict["msa"].shape[0] - 1) + 1
+                sub_idx = np.concatenate(
+                    (
+                        np.array([0]),
+                        np.random.choice(
+                            idx, size=int(config.msa_subratio * len(idx)), replace=False
+                        ),
+                    )
+                )
+                feature_dict["msa"] = feature_dict["msa"][sub_idx]
+                feature_dict["deletion_matrix_int"] = feature_dict[
+                    "deletion_matrix_int"
+                ][sub_idx]
+                # Save out the subsampled msa
+                np.save(
+                    f"{output_directory_path!s}/sub_msa.npy",
+                    feature_dict["msa"],
+                )
+                np.save(
+                    f"{output_directory_path!s}/sub_delmat.npy",
+                    feature_dict["deletion_matrix_int"],
+                )
+            else:
+                feature_dict["msa"] = np.load(config.sub_msa_path, allow_pickle=True)
+                feature_dict["deletion_matrix_int"] = np.load(
+                    config.sub_delmat_path, allow_pickle=True
+                )
+        processed_feature_dict = feature_processor.process_features(
+            feature_dict, mode="predict"
+        )
+
+        # Edit by MH @ Nov 18, 2024, use bias of fullmsa to realize the cluster msa
+        if config.bias_from_fullmsa:
+            fullmsa_dir = os.path.join(config.path, "alignments")
+            fullmsa_feature_dict = rkrf_utils.generate_feature_dict(
+                fasta_path,
+                fullmsa_dir,
+                data_processor,
+            )
+            fullmsa_processed_feature_dict = feature_processor.process_features(
+                fullmsa_feature_dict, mode="predict"
+            )
+            fullmsa_profile = fullmsa_processed_feature_dict["msa_feat"][
+                :, :, 25:48
+            ].clone()
+            submsa_profile = processed_feature_dict["msa_feat"][:, :, 25:48].clone()
+            processed_feature_dict["msa_feat"][
+                :, :, 25:48
+            ] = (
+                fullmsa_profile.clone()
+            )  # Use full msa's profile as basis for linear space -- higher rank (?)
+            recombination_bias = (
+                submsa_profile[..., 0] - fullmsa_profile[..., 0]
+            )  # Use the difference as the initial bias, so we could start from the desired profile
+        elif config.chimera_profile:
+            fullmsa_dir = os.path.join(config.path, "alignments")
+            fullmsa_feature_dict = rkrf_utils.generate_feature_dict(
+                fasta_path,
+                fullmsa_dir,
+                data_processor,
+            )
+            fullmsa_processed_feature_dict = feature_processor.process_features(
+                fullmsa_feature_dict, mode="predict"
+            )
+            full_profile = fullmsa_processed_feature_dict["msa_feat"][
+                :, :, 25:48
+            ].clone()
+            sub_profile = processed_feature_dict["msa_feat"][:, :, 25:48].clone()
+            processed_feature_dict["msa_feat"][:, :, 25:48] = torch.where(
+                sub_profile == 0.0, full_profile.clone(), sub_profile.clone()
+            )
+
+        device_processed_features = rk_utils.move_tensors_to_device(
+            processed_feature_dict, device=device
+        )
+        feature_key = "msa_feat"
+
+        if config.msa_feat_init_path is None:
+            features_at_it_start = (
+                device_processed_features[feature_key].detach().clone()
+            )
+            np.save(
+                f"{output_directory_path!s}/msa_feat_start.npy",
+                rk_utils.assert_numpy(features_at_it_start[..., 0]),
+            )
+        else:
+            msa_feat_init_np = np.load(glob.glob(config.msa_feat_init_path)[0], allow_pickle=True)
+            features_at_it_start_np = np.repeat(
+                np.expand_dims(msa_feat_init_np, -1), config.init_recycling + 1, -1
+            )
+            features_at_it_start = torch.tensor(features_at_it_start_np).to(
+                device_processed_features[feature_key]
+            )
+            device_processed_features[feature_key] = (
+                features_at_it_start.detach().clone()
+            )
+
+    else:
+        # Initialize the processed dict space
+        device_processed_features, feature_key, features_at_it_start = (
+            rkrf_utils.init_processed_dict(
+                bias_version=config.bias_version,
+                path=config.path,
+                device=device,
+                template_pdb=config.template_pdb,
+                target_seq=target_seq,
+                PRESET=PRESET,
+            )
+        )
+
+    # MH edit @ Oct 2nd, 2024: Support optional template input
+    if config.template_pdb is not None:
+        device_processed_features_template = rocket.make_processed_dict_from_template(
+            config.template_pdb,
+            target_seq,
+            device=device,
+            mask_sidechains_add_cb=True,
+            mask_sidechains=True,
+            max_recycling_iters=config.init_recycling,
+        )
+        for key in device_processed_features_template.keys():
+            if key.startswith("template_"):
+                device_processed_features[key] = device_processed_features_template[key]
+
 
     for n in range(num_of_runs):
 
         run_id = rkrf_utils.number_to_letter(n)
+        best_pos = reference_pos
 
-        # Initialize the processed dict space
-        # TODO: below assumed the processed feature_dict in the folder
-        device_processed_features, feature_key, features_at_it_start = (
-            rkrf_utils.init_processed_dict(
-                bias_version=bias_version,
-                path=path,
-                device=device,
-                PRESET=PRESET,
-            )
-        )
+
         # Initialize bias
         device_processed_features, optimizer, bias_names = rkrf_utils.init_bias(
             device_processed_features=device_processed_features,
-            bias_version=bias_version,
+            bias_version=config.bias_version,
             device=device,
             lr_a=lr_a,
             lr_m=lr_m,
+            weight_decay=config.weight_decay,
+            starting_bias=glob.glob(config.starting_bias)[0],
+            starting_weights=glob.glob(config.starting_weights)[0],
+            recombination_bias=recombination_bias,
         )
 
         # List initialization for saving values
-        sigmas_by_epoch = []
+        #sigmas_by_epoch = []
         llg_losses = []
         time_by_epoch = []
         memory_by_epoch = []
@@ -209,13 +375,15 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
                 cra_name=cryo_sfc.cra_name,
                 best_pos=best_pos,
                 exclude_res=EXCLUDING_RES,
+                domain_segs=config.domain_segs,
+                reference_bfactor=init_pos_bfactor,
             )
             # Rigid body refinement (RBR) step
             optimized_xyz, loss_track_pose = rk_coordinates.rigidbody_refine_quat(
                 aligned_xyz, cryo_llgloss_rbr, sfc_rbr.cra_name, lbfgs=True
             )
 
-            cryo_llgloss.sfc.atom_b_iso = pseudo_Bs.detach()
+            cryo_llgloss.sfc.atom_b_iso = pseudo_Bs.detach().clone()
             all_pldtts.append(plddts_res)
             mean_it_plddts.append(np.mean(plddts_res))
 
@@ -254,11 +422,6 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
                 memory=f"{torch.cuda.max_memory_allocated()/1024**3:.1f}G",
             )
 
-            # Save sigmaA values for further processing
-            sigmas_dict = {
-                f"sigma_{i + 1}": sigma_value.item() for i, sigma_value in enumerate(sigmas)
-            }
-            sigmas_by_epoch.append(sigmas_dict)
 
             #### add an L2 loss to constrain confident atoms ###
             if w_L2 > 0.0:
@@ -304,11 +467,6 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
             rk_utils.assert_numpy(llg_losses),
         )
 
-        with open(
-            f"{output_directory_path!s}/sigmas_by_epoch_{run_id}.pkl",
-            "wb",
-        ) as file:
-            pickle.dump(sigmas_by_epoch, file)
 
     torch.save(
         best_msa_bias,
