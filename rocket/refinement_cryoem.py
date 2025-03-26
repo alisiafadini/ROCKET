@@ -31,9 +31,8 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
     
     target_id = config.file_root
     path = config.path
-    # TODO: make sure the follow path match the new pattern
-    mtz_file = f"{path}/{target_id}/{target_id}-Edata.mtz"
-    input_pdb = f"{path}/{target_id}/{target_id}-pred-aligned.pdb"
+    mtz_file = f"{path}/ROCKET_inputs/{target_id}-Edata.mtz"
+    input_pdb = f"{path}/ROCKET_inputs/{target_id}-pred-aligned.pdb"
     note = config.note
     lr_a = config.additive_learning_rate
     lr_m = config.multiplicative_learning_rate
@@ -46,7 +45,7 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
     else:
         config.uuid_hex = uuid.uuid4().hex
         refinement_run_uuid = config.uuid_hex
-    output_directory_path = f"{path}/{target_id}/outputs/{refinement_run_uuid}/{note}"
+    output_directory_path = f"{path}/ROCKET_outputs/{refinement_run_uuid}/{note}"
     try:
         os.makedirs(output_directory_path, exist_ok=True)
     except FileExistsError:
@@ -115,7 +114,6 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
             rkrf_utils.init_processed_dict(
                 bias_version=bias_version,
                 path=path,
-                file_root=target_id,
                 device=device,
                 PRESET=PRESET,
             )

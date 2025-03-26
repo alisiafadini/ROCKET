@@ -6,6 +6,7 @@ from rocket import utils as rk_utils
 from rocket import coordinates as rk_coordinates
 from rocket.llg import utils as llg_utils
 import skbio, re
+import glob
 
 
 def generate_feature_dict(
@@ -29,7 +30,7 @@ def number_to_letter(n):
 
 
 def get_identical_indices(A, B):
-    '''
+    """
     Get indices of aligned string A and B to produce identical sequence
 
     >>> A = 'EWTUY'
@@ -38,16 +39,16 @@ def get_identical_indices(A, B):
     [0,3,4], [0,2,3]
 
     So A[0,3,4] = 'EUY' = B[0,2,3]
-    '''
+    """
     ind_A = []
     ind_B = []
-    ai = 0 
+    ai = 0
     bi = 0
-    for a, b in zip(A,B):
-        if a == '-':
+    for a, b in zip(A, B):
+        if a == "-":
             bi += 1
             continue
-        if b == '-':
+        if b == "-":
             ai += 1
             continue
         if a == b:
@@ -68,36 +69,66 @@ def get_pattern_index(str_list, pattern):
 def get_common_ca_ind(pdb1, pdb2):
     seq1 = pdb1.sequence
     seq2 = pdb2.sequence
-    alignment = skbio.alignment.StripedSmithWaterman(seq1)(seq2) # Align sequence with Smith Waterman Algorithm
-    subind_1 = np.arange(alignment.query_begin, alignment.query_end+1)
-    subind_2 = np.arange(alignment.target_begin, alignment.target_end_optimal+1)
-    subsubind_1, subsubind_2 = get_identical_indices(alignment.aligned_query_sequence, alignment.aligned_target_sequence)
+    alignment = skbio.alignment.StripedSmithWaterman(seq1)(
+        seq2
+    )  # Align sequence with Smith Waterman Algorithm
+    subind_1 = np.arange(alignment.query_begin, alignment.query_end + 1)
+    subind_2 = np.arange(alignment.target_begin, alignment.target_end_optimal + 1)
+    subsubind_1, subsubind_2 = get_identical_indices(
+        alignment.aligned_query_sequence, alignment.aligned_target_sequence
+    )
     common_seq1 = subind_1[subsubind_1]
     common_seq2 = subind_2[subsubind_2]
-    common_ca_ind_1 = [get_pattern_index(pdb1.cra_name, rf'.*-{j}-.*-CA$') for j in common_seq1]
-    common_ca_ind_2 = [get_pattern_index(pdb2.cra_name, rf'.*-{i}-.*-CA$') for i in common_seq2]
-    assert (np.array([i[-6:] for i in np.array(pdb1.cra_name)[common_ca_ind_1]]) == np.array([i[-6:] for i in np.array(pdb2.cra_name)[common_ca_ind_2]])).all()
+    common_ca_ind_1 = [
+        get_pattern_index(pdb1.cra_name, rf".*-{j}-.*-CA$") for j in common_seq1
+    ]
+    common_ca_ind_2 = [
+        get_pattern_index(pdb2.cra_name, rf".*-{i}-.*-CA$") for i in common_seq2
+    ]
+    assert (
+        np.array([i[-6:] for i in np.array(pdb1.cra_name)[common_ca_ind_1]])
+        == np.array([i[-6:] for i in np.array(pdb2.cra_name)[common_ca_ind_2]])
+    ).all()
     return common_ca_ind_1, common_ca_ind_2
 
 
 def get_common_bb_ind(pdb1, pdb2):
     seq1 = pdb1.sequence
     seq2 = pdb2.sequence
-    alignment = skbio.alignment.StripedSmithWaterman(seq1)(seq2) # Align sequence with Smith Waterman Algorithm
-    subind_1 = np.arange(alignment.query_begin, alignment.query_end+1)
-    subind_2 = np.arange(alignment.target_begin, alignment.target_end_optimal+1)
-    subsubind_1, subsubind_2 = get_identical_indices(alignment.aligned_query_sequence, alignment.aligned_target_sequence)
+    alignment = skbio.alignment.StripedSmithWaterman(seq1)(
+        seq2
+    )  # Align sequence with Smith Waterman Algorithm
+    subind_1 = np.arange(alignment.query_begin, alignment.query_end + 1)
+    subind_2 = np.arange(alignment.target_begin, alignment.target_end_optimal + 1)
+    subsubind_1, subsubind_2 = get_identical_indices(
+        alignment.aligned_query_sequence, alignment.aligned_target_sequence
+    )
     common_seq1 = subind_1[subsubind_1]
     common_seq2 = subind_2[subsubind_2]
-    common_ca_ind_1 = [get_pattern_index(pdb1.cra_name, rf'.*-{j}-.*-CA$') for j in common_seq1]
-    common_N_ind_1 = [get_pattern_index(pdb1.cra_name, rf'.*-{j}-.*-N$') for j in common_seq1]
-    common_C_ind_1 = [get_pattern_index(pdb1.cra_name, rf'.*-{j}-.*-C$') for j in common_seq1]
-    common_ca_ind_2 = [get_pattern_index(pdb2.cra_name, rf'.*-{i}-.*-CA$') for i in common_seq2]
-    common_N_ind_2 = [get_pattern_index(pdb2.cra_name, rf'.*-{i}-.*-N$') for i in common_seq2]
-    common_C_ind_2 = [get_pattern_index(pdb2.cra_name, rf'.*-{i}-.*-C$') for i in common_seq2]
+    common_ca_ind_1 = [
+        get_pattern_index(pdb1.cra_name, rf".*-{j}-.*-CA$") for j in common_seq1
+    ]
+    common_N_ind_1 = [
+        get_pattern_index(pdb1.cra_name, rf".*-{j}-.*-N$") for j in common_seq1
+    ]
+    common_C_ind_1 = [
+        get_pattern_index(pdb1.cra_name, rf".*-{j}-.*-C$") for j in common_seq1
+    ]
+    common_ca_ind_2 = [
+        get_pattern_index(pdb2.cra_name, rf".*-{i}-.*-CA$") for i in common_seq2
+    ]
+    common_N_ind_2 = [
+        get_pattern_index(pdb2.cra_name, rf".*-{i}-.*-N$") for i in common_seq2
+    ]
+    common_C_ind_2 = [
+        get_pattern_index(pdb2.cra_name, rf".*-{i}-.*-C$") for i in common_seq2
+    ]
     common_bb_ind_1 = common_ca_ind_1 + common_N_ind_1 + common_C_ind_1
     common_bb_ind_2 = common_ca_ind_2 + common_N_ind_2 + common_C_ind_2
-    assert (np.array([i[-6:] for i in np.array(pdb1.cra_name)[common_bb_ind_1]]) == np.array([i[-6:] for i in np.array(pdb2.cra_name)[common_bb_ind_2]])).all()
+    assert (
+        np.array([i[-6:] for i in np.array(pdb1.cra_name)[common_bb_ind_1]])
+        == np.array([i[-6:] for i in np.array(pdb2.cra_name)[common_bb_ind_2]])
+    ).all()
     return common_bb_ind_1, common_bb_ind_2
 
 
@@ -125,11 +156,17 @@ class EarlyStopper:
 
 
 def init_processed_dict(
-    bias_version, path, file_root, device, template_pdb=None, target_seq=None, PRESET="model_1", postfix="processed_feats.pickle"
+    bias_version,
+    path,
+    device,
+    template_pdb=None,
+    target_seq=None,
+    PRESET="model_1_ptm",
+    postfix="processed_feats.pickle",
 ):
     if bias_version == 4:
         device_processed_features = rocket.make_processed_dict_from_template(
-            template_pdb="{p}/{r}/{t}".format(p=path, r=file_root, t=template_pdb),
+            template_pdb="{p}/ROCKET_inputs/{t}".format(p=path, t=template_pdb),
             target_seq=target_seq,
             config_preset=PRESET,
             device=device,
@@ -143,8 +180,7 @@ def init_processed_dict(
         feature_key = "template_torsion_angles_sin_cos"
     else:
         with open(
-            "{p}/{r}/{r}_{f}".format(p=path, r=file_root, f=postfix),
-            "rb",
+            glob.glob("{p}/predictions/*{f}".format(p=path, f=postfix))[0], "rb"
         ) as file:
             # Load the data from the pickle file
             processed_features = pickle.load(file)
@@ -237,10 +273,7 @@ def init_bias(
 
         if recombination_bias is not None:
             device_processed_features["msa_feat_bias"] = (
-                recombination_bias
-                .detach()
-                .to(device=device)
-                .requires_grad_(True)
+                recombination_bias.detach().to(device=device).requires_grad_(True)
             )
         elif starting_bias is not None:
             device_processed_features["msa_feat_bias"] = (
@@ -322,7 +355,13 @@ def init_bias(
 
 
 def position_alignment(
-    af2_output, device_processed_features, cra_name, best_pos, exclude_res, domain_segs=None, reference_bfactor=None
+    af2_output,
+    device_processed_features,
+    cra_name,
+    best_pos,
+    exclude_res,
+    domain_segs=None,
+    reference_bfactor=None,
 ):
     xyz_orth_sfc, plddts = rk_coordinates.extract_allatoms(
         af2_output, device_processed_features, cra_name
@@ -334,12 +373,14 @@ def position_alignment(
     if reference_bfactor is None:
         weights = rk_utils.weighting(rk_utils.assert_numpy(pseudo_Bs))
     else:
-        assert reference_bfactor.shape == pseudo_Bs.shape, "Reference bfactor should have same shape as model bfactor!"
+        assert (
+            reference_bfactor.shape == pseudo_Bs.shape
+        ), "Reference bfactor should have same shape as model bfactor!"
         weights = rk_utils.weighting(rk_utils.assert_numpy(reference_bfactor))
     # plddts_np = rk_utils.assert_numpy(plddts)
     # weights = np.ones_like(plddts_np)
     # weights[plddts_np < 85.0] = 1e-5
-        
+
     aligned_xyz = rk_coordinates.weighted_kabsch(
         xyz_orth_sfc,
         best_pos,

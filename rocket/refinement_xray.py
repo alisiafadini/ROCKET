@@ -43,10 +43,9 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
         raise ValueError("rbr_opt only supports lbfgs or adam")
 
     # Configure input paths
-    # TODO: make sure the following file paths match the new pattern
-    tng_file = "{p}/{r}/{r}-tng_withrfree.mtz".format(p=config.path, r=config.file_root)
-    input_pdb = "{p}/{r}/{r}-pred-aligned.pdb".format(p=config.path, r=config.file_root)
-    true_pdb = "{p}/{r}/{r}_noalts.pdb".format(p=config.path, r=config.file_root)
+    tng_file = "{p}/ROCKET_inputs/{r}-Edata.mtz".format(p=config.path, r=config.file_root)
+    input_pdb = "{p}/ROCKET_inputs/{r}-pred-aligned.pdb".format(p=config.path, r=config.file_root)
+    true_pdb = "{p}/ROCKET_inputs/{r}_noalts.pdb".format(p=config.path, r=config.file_root)
 
     # Configure output path
     # Generate uuid for this run
@@ -56,7 +55,7 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
         config.uuid_hex = uuid.uuid4().hex
         refinement_run_uuid = config.uuid_hex
     output_directory_path = (
-        f"{config.path}/{config.file_root}/outputs/{refinement_run_uuid}/{config.note}"
+        f"{config.path}/ROCKET_outputs/{refinement_run_uuid}/{config.note}"
     )
     try:
         os.makedirs(output_directory_path, exist_ok=True)
@@ -81,20 +80,20 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
     # TODO: make sure the following files exist in the new pattern
     if config.additional_chain:
         constant_fp_added_HKL = torch.load(
-            "{p}/{r}/{r}_added_chain_atoms_HKL.pt".format(
+            "{p}/ROCKET_inputs/{r}_added_chain_atoms_HKL.pt".format(
                 p=config.path, r=config.file_root
             )
         ).to(device=device)
         constant_fp_added_asu = torch.load(
-            "{p}/{r}/{r}_added_chain_atoms_asu.pt".format(
+            "{p}/ROCKET_inputs/{r}_added_chain_atoms_asu.pt".format(
                 p=config.path, r=config.file_root
             )
         ).to(device=device)
 
-        phitrue_path = "{p}/{r}/{r}_allchains-phitrue-solvent{s}.npy".format(
+        phitrue_path = "{p}/ROCKET_inputs/{r}_allchains-phitrue-solvent{s}.npy".format(
             p=config.path, r=config.file_root, s=config.solvent
         )
-        Etrue_path = "{p}/{r}/{r}_allchains-Etrue-solvent{s}.npy".format(
+        Etrue_path = "{p}/ROCKET_inputs/{r}_allchains-Etrue-solvent{s}.npy".format(
             p=config.path, r=config.file_root, s=config.solvent
         )
 
@@ -108,10 +107,10 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
         constant_fp_added_HKL = None
         constant_fp_added_asu = None
 
-        phitrue_path = "{p}/{r}/{r}-phitrue-solvent{s}.npy".format(
+        phitrue_path = "{p}/ROCKET_inputs/{r}-phitrue-solvent{s}.npy".format(
             p=config.path, r=config.file_root, s=config.solvent
         )
-        Etrue_path = "{p}/{r}/{r}-Etrue-solvent{s}.npy".format(
+        Etrue_path = "{p}/ROCKET_inputs/{r}-Etrue-solvent{s}.npy".format(
             p=config.path, r=config.file_root, s=config.solvent
         )
 
@@ -210,9 +209,9 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
         fasta_path = [
             f
             for ext in ("*.fa", "*.fasta")
-            for f in glob.glob(os.path.join(config.path, config.file_root, ext))
+            for f in glob.glob(os.path.join(config.path, ext))
         ][0]
-        a3m_path = os.path.join(config.path, config.file_root, config.input_msa)
+        a3m_path = os.path.join(config.path, config.input_msa)
         if os.path.isfile(a3m_path):
             msa_name, ext = os.path.splitext(os.path.basename(a3m_path))
             alignment_dir = os.path.join(os.path.dirname(a3m_path), "tmp_align")
@@ -277,7 +276,7 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
 
         # Edit by MH @ Nov 18, 2024, use bias of fullmsa to realize the cluster msa
         if config.bias_from_fullmsa:
-            fullmsa_dir = os.path.join(config.path, config.file_root, "alignments")
+            fullmsa_dir = os.path.join(config.path, "alignments")
             fullmsa_feature_dict = rkrf_utils.generate_feature_dict(
                 fasta_path,
                 fullmsa_dir,
@@ -299,7 +298,7 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
                 submsa_profile[..., 0] - fullmsa_profile[..., 0]
             )  # Use the difference as the initial bias, so we could start from the desired profile
         elif config.chimera_profile:
-            fullmsa_dir = os.path.join(config.path, config.file_root, "alignments")
+            fullmsa_dir = os.path.join(config.path, "alignments")
             fullmsa_feature_dict = rkrf_utils.generate_feature_dict(
                 fasta_path,
                 fullmsa_dir,
@@ -347,7 +346,6 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
             rkrf_utils.init_processed_dict(
                 bias_version=config.bias_version,
                 path=config.path,
-                file_root=config.file_root,
                 device=device,
                 template_pdb=config.template_pdb,
                 target_seq=target_seq,
