@@ -17,6 +17,8 @@ from rocket.llg import structurefactors as llg_sf
 from openfold.config import model_config
 from openfold.data import feature_pipeline, data_pipeline
 
+from loguru import logger
+
 
 PRESET = "model_1_ptm"
 
@@ -26,9 +28,9 @@ def main():
     Run LLG scoring for system with different msas
     """)
     p.add_argument("path", action="store", help="Path to parent folder")
-    p.add_argument("system", action="store", help="PDB codes or filename roots for the dataset")
-    p.add_argument("-i", action='store', help='prefix for msas to use, path and system will prepend')
-    p.add_argument("-o", action="store", help='name of output directory to write prediction and scoring to')
+    p.add_argument("system", action="store", help="file_id for the dataset")
+    p.add_argument("-i", action='store', help='prefix for msas to use, path will prepend')
+    p.add_argument("-o", action="store", help='name of output directory to write prediction and scoring to, path will prepend')
     p.add_argument(
         "--domain_segs",
         type=int,
@@ -82,27 +84,26 @@ def main():
         help=("Also score the full msa")
     )
 
-
     config = p.parse_args()
     device = rk_utils.try_gpu()
     RBR_LBFGS = True
 
-    output_directory_path = os.path.join(config.path, config.system, config.o)
+    output_directory_path = os.path.join(config.path, config.o)
     os.makedirs(output_directory_path, exist_ok=True)
     
     # Configure input paths
-    print(f"Working with system {config.system}", flush=True)
-    tng_file = "{p}/{r}/{r}-tng_withrfree.mtz".format(p=config.path, r=config.system)
-    input_pdb = "{p}/{r}/{r}-pred-aligned.pdb".format(p=config.path, r=config.system)
+    logger.info(f"Working with system {config.system}", flush=True)
+    tng_file = "{p}/ROCKET_inputs/{r}-Edata.mtz".format(p=config.path, r=config.system)
+    input_pdb = "{p}/ROCKET_inputs/{r}-pred-aligned.pdb".format(p=config.path, r=config.system)
 
     if config.additional_chain:
         constant_fp_added_HKL = torch.load(
-            "{p}/{r}/{r}_added_chain_atoms_HKL.pt".format(
+            "{p}/ROCKET_inputs/{r}_added_chain_atoms_HKL.pt".format(
                 p=config.path, r=config.system
             )
         ).to(device=device)
         constant_fp_added_asu = torch.load(
-            "{p}/{r}/{r}_added_chain_atoms_asu.pt".format(
+            "{p}/ROCKET_inputs/{r}_added_chain_atoms_asu.pt".format(
                 p=config.path, r=config.system
             )
         ).to(device=device)
@@ -112,7 +113,7 @@ def main():
         constant_fp_added_asu = None
 
     # Initialize SFC
-    print(f"Initialize SFC and LLGloss...", flush=True)
+    logger.info(f"Initialize SFC and LLGloss...", flush=True)
     sfc = llg_sf.initial_SFC(
         input_pdb,
         tng_file,
@@ -156,10 +157,10 @@ def main():
     ).to(device)
     af_bias.freeze()
 
-    fasta_path = [f for ext in ('*.fa', '*.fasta') for f in glob.glob(os.path.join(config.path, config.system, ext))][0]
+    fasta_path = [f for ext in ('*.fa', '*.fasta') for f in glob.glob(os.path.join(config.path, ext))][0]
 
     # Edit by MH @ Nov 15, 2024, recombination of full msa and subset msa
-    fullmsa_dir =  "{p}/{r}/alignments".format(p=config.path, r=config.system)
+    fullmsa_dir =  "{p}/alignments".format(p=config.path)
     data_processor = data_pipeline.DataPipeline(template_featurizer=None)
     fullmsa_feature_dict = rkrf_utils.generate_feature_dict(
         fasta_path,
@@ -272,7 +273,7 @@ def main():
         df_tmp.to_csv(os.path.join(output_directory_path, "msa_scoring.csv"), mode="a", header=False, index=False)
 
     # Get available msas
-    a3m_paths = glob.glob(os.path.join(config.path, config.system, config.i+"*.a3m"))
+    a3m_paths = glob.glob(os.path.join(config.path, config.i + "*.a3m"))
     print(f"{len(a3m_paths)} msa files available...", flush=True)
     a3m_paths.sort()
     

@@ -22,6 +22,9 @@ setup(
         "loguru",
         "SFcalculator-torch==0.2.1",
         "matplotlib",
+        "polyleven",
+        "scikit-learn",
+        "seaborn",
     ],
     entry_points={
         "console_scripts": [
