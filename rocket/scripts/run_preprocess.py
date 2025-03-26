@@ -5,6 +5,8 @@ import shutil
 import glob
 from loguru import logger
 
+from ..refinement_config import gen_config_phase1, gen_config_phase2
+
 ### Phenix variables
 # phenix_directory = "/dev/shm/alisia/phenix-2.0rc1-5641/"
 phenix_directory = os.environ["PHENIX_ROOT"]
@@ -113,12 +115,12 @@ def generate_seg_id_file(file_id, output_dir):
         if len(seg_start_residues) > 1:
             seg_ids = ",".join(str(r) for r in seg_start_residues[1:])  # Skip first
             out_f.write(f'seg_id: "{seg_ids}"\n')
+            logger.info(f"Segment ID file written to {seg_id_path}")
+            return seg_start_residues[1:]
         else:
             out_f.write("seg_id: None\n")
-
-    print(f"Segment ID file written to {seg_id_path}")
-
-
+            logger.info(f"No segment, only one domain found.")
+            return None    
 
 def run_process_predicted_model(file_id, input_dir, predicted_model):
     """Processes the predicted model using Phenix."""
@@ -157,11 +159,11 @@ def move_processed_predicted_files(output_dir):
 
 def dock_into_data(file_id, method, resolution, output_dir, predicted_model, predocked_model, map1, map2, fixed_model=None, fasta_composition=None):
     
-    """Handles molecular docking for X-ray or Cryo-EM data."""
+    """Handles molecular docking for Xray or CryoEM data."""
     docking_output_dir = os.path.join(output_dir, "docking_outputs")
     os.makedirs(docking_output_dir, exist_ok=True)
 
-    if method == "x-ray":
+    if method == "xray":
         mtz_files = glob.glob(os.path.join(f"{file_id}_data", "*.mtz"))
 
         for mtz_file in mtz_files:
@@ -174,7 +176,7 @@ def dock_into_data(file_id, method, resolution, output_dir, predicted_model, pre
 
         # If predocked_model is provided, skip MR and copy the model directly
         if predocked_model:
-            print("Predocked model provided for X-ray: skipping MR step.")
+            print("Predocked model provided for Xray: skipping MR step.")
             rocket_dir = os.path.join(output_dir, "ROCKET_inputs")
             os.makedirs(rocket_dir, exist_ok=True)
 
@@ -189,7 +191,7 @@ def dock_into_data(file_id, method, resolution, output_dir, predicted_model, pre
             ]
             run_command(mr_cmd, env_source=phenix_source)
 
-    elif method == "cryo-em":
+    elif method == "cryoem":
         docking_script = em_dockedmodel_script if predocked_model else em_nodockedmodel_script
         docking_cmd = ["phenix.python", docking_script]
 
@@ -231,14 +233,14 @@ def prepare_rk_inputs(file_id, output_dir, method):
     rocket_dir = os.path.join(output_dir, "ROCKET_inputs")
     os.makedirs(rocket_dir, exist_ok=True)
 
-    if method == "x-ray":
+    if method == "xray":
         best_pdb_src = os.path.join(output_dir, "phaser_files", "best.1.coordinates.pdb")
         mtz_files = glob.glob(f"./*feff/*.data.mtz")
-    elif method == "cryo-em":
+    elif method == "cryoem":
         best_pdb_src = next(iter(glob.glob(os.path.join(output_dir, "docking_outputs", "*.pdb"))), None)
         mtz_files = glob.glob(f"{output_dir}/docking_outputs/weighted_map_data.mtz")
     else:
-        raise ValueError("Invalid method. Choose either 'x-ray' or 'cryo-em'.")
+        raise ValueError("Invalid method. Choose either 'xray' or 'cryoem'.")
 
     best_pdb_dst = os.path.join(rocket_dir, f"{file_id}-pred-aligned.pdb")
     if best_pdb_src and os.path.exists(best_pdb_src):
@@ -268,8 +270,8 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Run OpenFold inference and dock into data")
     
     parser.add_argument("--file_id", required=True)
-    parser.add_argument("--resolution", required=True)
-    parser.add_argument("--method", choices=["x-ray", "cryo-em"], required=True)
+    parser.add_argument("--method", choices=["xray", "cryoem"], required=True)
+    parser.add_argument("--resolution", default=None)
     parser.add_argument("--output_dir", default="preprocessing_output")
     parser.add_argument("--precomputed_alignment_dir", default="alignments/")
     parser.add_argument("--jax_params_path", default=None)
@@ -282,23 +284,22 @@ def parse_args():
 
     args = parser.parse_args()
 
-    if args.method == "x-ray" and not args.xray_data_label:
-        parser.error("--xray_data_label is required when --method is x-ray.")
+    if args.method == "xray" and not args.xray_data_label:
+        parser.error("--xray_data_label is required when --method is xray.")
 
-    if args.method == "cryo-em":
-        missing = [arg for arg in ["map1", "map2"] if getattr(args, arg) is None]
+    if args.method == "cryoem":
+        missing = [arg for arg in ["map1", "map2", "resolution"] if getattr(args, arg) is None]
         if missing:
-            parser.error(f"The following arguments are required for 'cryo-em' method: {', '.join(missing)}")
+            parser.error(f"The following arguments are required for 'cryoem' method: {', '.join(missing)}")
 
         # Require full_composition only if predocked_model is not provided
         if not args.predocked_model and args.full_composition is None:
-            parser.error("--full_composition is required for cryo-em when --predocked_model is not provided.")
+            parser.error("--full_composition is required for cryoem when --predocked_model is not provided.")
 
     return args
 
 
-
-def main():
+def cli_runpreprocess():
     args = parse_args()
 
     os.makedirs(args.output_dir, exist_ok=True)
@@ -311,8 +312,16 @@ def main():
 
     dock_into_data(args.file_id, args.method, args.resolution, args.output_dir, predicted_model, args.predocked_model, args.map1, args.map2, args.fixed_model, args.full_composition)
     prepare_rk_inputs(args.file_id, args.output_dir, args.method)
-    generate_seg_id_file(args.file_id, args.output_dir)
+    seg_id = generate_seg_id_file(args.file_id, args.output_dir)
+
+    # Generate ROCKET configuration yaml files
+    phase1_config = gen_config_phase1(datamode=args.method, file_id=args.file_id, working_dir=args.output_dir)
+    if seg_id:
+        phase1_config.algorithm.domain_segs = seg_id
+    phase1_config.to_yaml_file(os.path.join(args.output_dir, "ROCKET_config_phase1.yaml"))
+    phase2_config = gen_config_phase2(phase1_config)
+    phase2_config.to_yaml_file(os.path.join(args.output_dir, "ROCKET_config_phase2.yaml"))
 
 
 if __name__ == "__main__":
-    main()
+    cli_runpreprocess()

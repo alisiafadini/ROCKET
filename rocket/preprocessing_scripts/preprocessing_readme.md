@@ -7,8 +7,8 @@ This script performs the preprocessing of predicted protein structures for **ROC
 | Argument | Description |
 |----------|------------|
 | `--file_id` | Identifier for input files. |
-| `--resolution` | Resolution of the experimental data (e.g., 2.5 for X-ray). |
-| `--method` | Choose `"x-ray"` (calls Phaser) or `"cryo-em"` (calls EMPlacement). |
+| `--resolution` | The best resolution for cryoEM map. Not used for x-ray case. |
+| `--method` | Choose `"xray"` (calls Phaser) or `"cryoem"` (calls EMPlacement). |
 | `--output_dir` | Directory to store results (default: `"preprocessing_output"`). |
 | `--precomputed_alignment_dir` | Path to OpenFold precomputed alignments (default: `"alignments/"`). |
 | `--jax_params_path` | Path to JAX parameter file (`"params_model_1_ptm.npz"`). Default `None`, will use system env var `$OPENFOLD_RESOURCES` |
@@ -28,7 +28,8 @@ The scripts expects input files organized as follows:
 │   └── <optional files>/     # e.g., predicted or docked models
 │
 ├── alignments/               # (default: --precomputed_alignment_dir)
-│   └── *.a3m / *.hhr         # MSA files for the input sequence
+│   └── {file_id}
+|       └──*.a3m / *.hhr          
 ```
 
 ### Additional Parameters for X-ray (`--method x-ray`)
@@ -60,7 +61,7 @@ After execution, results will be structured in the `--output_dir` directory:
 output_dir/
 |── {file_id}.fasta                 # FASTA file containing the chain to refine, copied from input
 ├── alignments/                     # MSA files for the input sequence, copied from input
-│   └── *.a3m / *.hhr               
+|   └──*.a3m / *.hhr               
 │── predictions/                    # OpenFold structure predictions and pkl files
 │   └── xxx_processed_feats.pickle  # Processed feature dict with cluster profiles           
 │── processed_predicted_files/      # Processed predictions from Phenix (including trimmed confidence loops)
@@ -77,7 +78,7 @@ output_dir/
 python3 rocket_preprocessing.py \
     --file_id sample1 \
     --resolution 2.5 \
-    --method x-ray \
+    --method xray \
     --xray_data_label "FP,SIGFP" \
     --output_dir results_xray
 ```
@@ -87,7 +88,7 @@ python3 rocket_preprocessing.py \
 python3 rocket_preprocessing.py \
     --file_id sample2 \
     --resolution 4.0 \
-    --method cryo-em \
+    --method cryoem \
     --map1 path/to/halfmap1.mrc \
     --map2 path/to/halfmap2.mrc \
     --full_composition path/to/composition.fasta \
