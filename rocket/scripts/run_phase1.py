@@ -1,5 +1,5 @@
 import argparse, os, glob
-from rocket.refinement import RocketRefinmentConfig, run_refinement
+from rocket.refinement_xray import RocketRefinmentConfig, run_refinement
 from typing import Union, List
 
 
@@ -10,6 +10,15 @@ def int_or_none(value):
         return int(value)
     except ValueError:
         raise argparse.ArgumentTypeError(f"Invalid value: {value}. Must be an integer or 'None'.")
+    
+
+def float_or_none(value):
+    if value.lower() == 'none':
+        return None
+    try:
+        return float(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"Invalid value: {value}. Must be an float or 'None'.")
 
 def parse_arguments():
     """Parse commandline arguments"""
@@ -157,6 +166,31 @@ def parse_arguments():
         type=float,
         help=("Voxel spacing for solvent percentage estimation"),
     )
+
+    parser.add_argument(
+        "--msa_subratio",
+        default=None,
+        type=float_or_none,
+        help=("MSA subsampling ratio, between 0.0 and 1.0. Default None, no subsampling."),
+    )
+
+    parser.add_argument(
+        "--input_msa",
+        default=None,
+        help=("path to msa file .a3m/.fasta for use, working path and system will prepend"),
+    )
+
+    parser.add_argument(
+        "--bias_from_fullmsa", 
+        action="store_true",
+        help=("Generate initial profile via biasing from full msa profile")
+    )
+
+    parser.add_argument(
+        "--chimera_profile", 
+        action="store_true",
+        help=("Use chimera profile")
+    )  
     
     return parser.parse_args()
 
@@ -177,6 +211,9 @@ def generate_phase1_config(
     min_resol: float = 3.0,
     note: str = "",
     refine_sigmaA: bool = True,
+    input_msa: Union[str, None] = None,
+    bias_from_fullmsa: bool = False,
+    chimera_profile: bool = False,
     template_pdb: Union[str, None] = None,
     domain_segs: Union[List[int], None] = None,
     add_lr: float = 0.05,
@@ -185,6 +222,7 @@ def generate_phase1_config(
     smooth_stage_epochs: int = 50,
     mse_uuid: Union[str, None] = None,
     voxel_spacing: float = 4.5,
+    msa_subratio: Union[float, None] = None,
 ) -> RocketRefinmentConfig:
 
     if mse_uuid is None:
@@ -218,6 +256,9 @@ def generate_phase1_config(
         num_of_runs=num_of_runs,
         iterations=n_step,
         # iterations=2,
+        input_msa=input_msa,
+        bias_from_fullmsa=bias_from_fullmsa,
+        chimera_profile=chimera_profile,
         template_pdb=template_pdb,
         cuda_device=cuda_device,
         solvent=True,
@@ -234,7 +275,8 @@ def generate_phase1_config(
         starting_bias=starting_bias_path,
         starting_weights=starting_weights_path,
         note="phase1"+note,
-        voxel_spacing=voxel_spacing
+        voxel_spacing=voxel_spacing,
+        msa_subratio=msa_subratio,
     )
 
     return phase1_config
@@ -259,6 +301,9 @@ def run_phase1_all_datasets() -> None:
                                                mul_lr=args.mul_lr,
                                                num_of_runs=args.num_of_runs,
                                                n_step=args.n_step,
+                                               input_msa=args.input_msa,
+                                               bias_from_fullmsa=args.bias_from_fullmsa,
+                                               chimera_profile=args.chimera_profile,
                                                template_pdb=args.template_pdb,
                                                refine_sigmaA=args.refine_sigmaA,
                                                min_resol=args.min_resolution,
@@ -266,6 +311,7 @@ def run_phase1_all_datasets() -> None:
                                                smooth_stage_epochs=args.smooth_stage_epochs,
                                                mse_uuid=args.mse_uuid,
                                                voxel_spacing=args.voxel_spacing,
+                                               msa_subratio=args.msa_subratio,
                                                )
         phase1_uuid = run_refinement(config=phase1_config)
 

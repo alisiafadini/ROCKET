@@ -2,78 +2,33 @@ import uuid
 import copy
 import warnings
 import torch
-import pickle
 import numpy as np
 from tqdm import tqdm
 import rocket
-import os
+import os, glob, shutil
 import time
-import yaml
+
 from rocket.llg import utils as llg_utils
 from rocket import coordinates as rk_coordinates
 from rocket import utils as rk_utils
 from rocket import refinement_utils as rkrf_utils
 from rocket.llg import structurefactors as llg_sf
+from rocket.refinement_config import RocketRefinmentConfig
+
+
 from openfold.config import model_config
-from typing import Union, List
-from pydantic import BaseModel
+from openfold.data import feature_pipeline, data_pipeline
+
+from loguru import logger
 
 
-PRESET = "model_1"
-# THRESH_B = None
+PRESET = "model_1_ptm"
 EXCLUDING_RES = None
 
-
-class RocketRefinmentConfig(BaseModel):
-    path: str
-    file_root: str
-    bias_version: int
-    iterations: int
-    num_of_runs: int = 1
-    template_pdb: Union[str, None] = None
-    cuda_device: int = (0,)
-    init_recycling: int = (1,)
-    domain_segs: Union[List[int], None] = None
-    solvent: bool
-    sfc_scale: bool
-    refine_sigmaA: bool
-    additive_learning_rate: float
-    multiplicative_learning_rate: float
-    weight_decay: Union[float, None] = 0.0001  # TODO: should default be 0.0?
-    batch_sub_ratio: float
-    number_of_batches: int
-    rbr_opt_algorithm: str
-    rbr_lbfgs_learning_rate: float
-    smooth_stage_epochs: Union[int, None] = 50
-    phase2_final_lr: float = 1e-3
-    note: str = ""
-    free_flag: str
-    testset_value: int
-    additional_chain: bool
-    verbose: bool
-    l2_weight: float
-    w_plddt: float = 0.0
-    # b_threshold: float
-    min_resolution: Union[float, None] = None
-    max_resolution: Union[float, None] = None
-    starting_bias: Union[str, None] = None
-    starting_weights: Union[str, None] = None
-    uuid_hex: Union[str, None] = None
-    voxel_spacing: float = 4.5
-
-    # intercept them upload load/save and cast to string as appropriate
-    def to_yaml_file(self, file_path: str) -> None:
-        with open(file_path, "w") as file:
-            yaml.dump(self.dict(), file)
-
-    @classmethod
-    def from_yaml_file(self, file_path: str):
-        with open(file_path, "r") as file:
-            payload = yaml.safe_load(file)
-        return RocketRefinmentConfig.model_validate(payload)
-
-
-def run_refinement(*, config: RocketRefinmentConfig) -> str:
+def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentConfig:
+    if isinstance(config, str):
+        config = RocketRefinmentConfig.from_yaml_file(config)
+    assert config.datamode == "xray", "Make sure to set datamode to 'xray'!"
 
     ############ 1. Global settings ############
     # Device
@@ -88,27 +43,28 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
         raise ValueError("rbr_opt only supports lbfgs or adam")
 
     # Configure input paths
-    tng_file = "{p}/{r}/{r}-tng_withrfree.mtz".format(p=config.path, r=config.file_root)
-    input_pdb = "{p}/{r}/{r}-pred-aligned.pdb".format(p=config.path, r=config.file_root)
-    true_pdb = "{p}/{r}/{r}_noalts.pdb".format(p=config.path, r=config.file_root)
+    tng_file = "{p}/ROCKET_inputs/{r}-Edata.mtz".format(p=config.path, r=config.file_id)
+    input_pdb = "{p}/ROCKET_inputs/{r}-pred-aligned.pdb".format(p=config.path, r=config.file_id)
+    true_pdb = "{p}/ROCKET_inputs/{r}_noalts.pdb".format(p=config.path, r=config.file_id)
 
     # Configure output path
     # Generate uuid for this run
-    if config.uuid_hex is None:
-        refinement_run_uuid = uuid.uuid4().hex
+    if config.uuid_hex:
+        refinement_run_uuid = config.uuid_hex
     else:
+        config.uuid_hex = uuid.uuid4().hex[:10]
         refinement_run_uuid = config.uuid_hex
     output_directory_path = (
-        f"{config.path}/{config.file_root}/outputs/{refinement_run_uuid}/{config.note}"
+        f"{config.path}/ROCKET_outputs/{refinement_run_uuid}/{config.note}"
     )
     try:
         os.makedirs(output_directory_path, exist_ok=True)
     except FileExistsError:
-        print(
+        logger.info(
             f"Warning: Directory '{output_directory_path}' already exists. Overwriting..."
         )
-    print(
-        f"System: {config.file_root}, refinment run ID: {refinement_run_uuid!s}, Note: {config.note}",
+    logger.info(
+        f"System: {config.file_id}, refinment run ID: {refinement_run_uuid!s}, Note: {config.note}",
         flush=True,
     )
     if not config.verbose:
@@ -121,23 +77,24 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
         REFPDB = False
 
     # If there are additional chain in the system
+    # TODO: make sure the following files exist in the new pattern
     if config.additional_chain:
         constant_fp_added_HKL = torch.load(
-            "{p}/{r}/{r}_added_chain_atoms_HKL.pt".format(
-                p=config.path, r=config.file_root
+            "{p}/ROCKET_inputs/{r}_added_chain_atoms_HKL.pt".format(
+                p=config.path, r=config.file_id
             )
         ).to(device=device)
         constant_fp_added_asu = torch.load(
-            "{p}/{r}/{r}_added_chain_atoms_asu.pt".format(
-                p=config.path, r=config.file_root
+            "{p}/ROCKET_inputs/{r}_added_chain_atoms_asu.pt".format(
+                p=config.path, r=config.file_id
             )
         ).to(device=device)
 
-        phitrue_path = "{p}/{r}/{r}_allchains-phitrue-solvent{s}.npy".format(
-            p=config.path, r=config.file_root, s=config.solvent
+        phitrue_path = "{p}/ROCKET_inputs/{r}_allchains-phitrue-solvent{s}.npy".format(
+            p=config.path, r=config.file_id, s=config.solvent
         )
-        Etrue_path = "{p}/{r}/{r}_allchains-Etrue-solvent{s}.npy".format(
-            p=config.path, r=config.file_root, s=config.solvent
+        Etrue_path = "{p}/ROCKET_inputs/{r}_allchains-Etrue-solvent{s}.npy".format(
+            p=config.path, r=config.file_id, s=config.solvent
         )
 
         if os.path.exists(phitrue_path) and os.path.exists(Etrue_path):
@@ -150,11 +107,11 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
         constant_fp_added_HKL = None
         constant_fp_added_asu = None
 
-        phitrue_path = "{p}/{r}/{r}-phitrue-solvent{s}.npy".format(
-            p=config.path, r=config.file_root, s=config.solvent
+        phitrue_path = "{p}/ROCKET_inputs/{r}-phitrue-solvent{s}.npy".format(
+            p=config.path, r=config.file_id, s=config.solvent
         )
-        Etrue_path = "{p}/{r}/{r}-Etrue-solvent{s}.npy".format(
-            p=config.path, r=config.file_root, s=config.solvent
+        Etrue_path = "{p}/ROCKET_inputs/{r}-Etrue-solvent{s}.npy".format(
+            p=config.path, r=config.file_id, s=config.solvent
         )
 
         if os.path.exists(phitrue_path) and os.path.exists(Etrue_path):
@@ -183,12 +140,10 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
     # CA mask and residue numbers for track
     cra_calphas_list, calphas_mask = rk_coordinates.select_CA_from_craname(sfc.cra_name)
     residue_numbers = [int(name.split("-")[1]) for name in cra_calphas_list]
-    
+
     # Use initial pos B factor instead of best pos B factor for weighted L2
     init_pos_bfactor = sfc.atom_b_iso.clone()
-    bfactor_weights = rk_utils.weighting_torch(
-        init_pos_bfactor, cutoff2=20.0
-    )
+    bfactor_weights = rk_utils.weighting_torch(init_pos_bfactor, cutoff2=20.0)
 
     sfc_rbr = llg_sf.initial_SFC(
         input_pdb,
@@ -239,34 +194,158 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
         lr_m = config.phase2_final_lr
 
     # Initialize best Rfree weights and bias for Phase 1
-    best_rfree = float("inf")
+    best_llg = float("inf")
     best_msa_bias = None
     best_feat_weights = None
     best_run = None
     best_iter = None
-    best_pos = reference_pos
 
-    # MH edit @ Oct 2nd, 2024: Support optional template input 
-    if config.template_pdb is not None:
-        device_processed_features_template = rocket.make_processed_dict_from_template(
-            config.template_pdb, 
-            target_seq, 
-            device=device, 
-            mask_sidechains_add_cb=False, 
-            mask_sidechains=False, 
-            max_recycling_iters=config.init_recycling
+    # MH edit @ Nov 8th, 2024: Support to use msa as input
+    if config.msa_subratio is not None and config.input_msa is None:
+        config.input_msa = "alignments"  # default dir for alignment
+
+    recombination_bias = None
+    if config.input_msa is not None:
+        fasta_path = [
+            f
+            for ext in ("*.fa", "*.fasta")
+            for f in glob.glob(os.path.join(config.path, ext))
+        ][0]
+        a3m_path = os.path.join(config.path, config.input_msa)
+        if os.path.isfile(a3m_path):
+            msa_name, ext = os.path.splitext(os.path.basename(a3m_path))
+            alignment_dir = os.path.join(os.path.dirname(a3m_path), "tmp_align")
+            os.makedirs(alignment_dir, exist_ok=True)
+            shutil.copy(a3m_path, os.path.join(alignment_dir, msa_name + ".a3m"))
+            tmp_align = True
+        elif os.path.isdir(a3m_path):
+            alignment_dir = a3m_path
+            tmp_align = False
+        data_processor = data_pipeline.DataPipeline(template_featurizer=None)
+        feature_dict = rkrf_utils.generate_feature_dict(
+            fasta_path,
+            alignment_dir,
+            data_processor,
+        )
+        # prepare featuerizer
+        afconfig = model_config(PRESET)
+        afconfig.data.common.max_recycling_iters = config.init_recycling
+        del afconfig.data.common.masked_msa
+        afconfig.data.common.resample_msa_in_recycling = False
+        feature_processor = feature_pipeline.FeaturePipeline(afconfig.data)
+        if tmp_align:
+            shutil.rmtree(alignment_dir)
+
+        # MH edits @ Oct 19, 2024, support MSA subsampling at the beginning
+        if config.msa_subratio is not None:
+            assert (
+                config.msa_subratio > 0.0 and config.msa_subratio <= 1.0
+            ), "msa_subratio should be None or between 0.0 and 1.0!"
+            # Do subsampling of msa, keep the first sequence
+            if config.sub_msa_path is None:
+                idx = np.arange(feature_dict["msa"].shape[0] - 1) + 1
+                sub_idx = np.concatenate(
+                    (
+                        np.array([0]),
+                        np.random.choice(
+                            idx, size=int(config.msa_subratio * len(idx)), replace=False
+                        ),
+                    )
+                )
+                feature_dict["msa"] = feature_dict["msa"][sub_idx]
+                feature_dict["deletion_matrix_int"] = feature_dict[
+                    "deletion_matrix_int"
+                ][sub_idx]
+                # Save out the subsampled msa
+                np.save(
+                    f"{output_directory_path!s}/sub_msa.npy",
+                    feature_dict["msa"],
+                )
+                np.save(
+                    f"{output_directory_path!s}/sub_delmat.npy",
+                    feature_dict["deletion_matrix_int"],
+                )
+            else:
+                feature_dict["msa"] = np.load(config.sub_msa_path, allow_pickle=True)
+                feature_dict["deletion_matrix_int"] = np.load(
+                    config.sub_delmat_path, allow_pickle=True
+                )
+        processed_feature_dict = feature_processor.process_features(
+            feature_dict, mode="predict"
         )
 
-    for n in range(config.num_of_runs):
+        # Edit by MH @ Nov 18, 2024, use bias of fullmsa to realize the cluster msa
+        if config.bias_from_fullmsa:
+            fullmsa_dir = os.path.join(config.path, "alignments")
+            fullmsa_feature_dict = rkrf_utils.generate_feature_dict(
+                fasta_path,
+                fullmsa_dir,
+                data_processor,
+            )
+            fullmsa_processed_feature_dict = feature_processor.process_features(
+                fullmsa_feature_dict, mode="predict"
+            )
+            fullmsa_profile = fullmsa_processed_feature_dict["msa_feat"][
+                :, :, 25:48
+            ].clone()
+            submsa_profile = processed_feature_dict["msa_feat"][:, :, 25:48].clone()
+            processed_feature_dict["msa_feat"][
+                :, :, 25:48
+            ] = (
+                fullmsa_profile.clone()
+            )  # Use full msa's profile as basis for linear space -- higher rank (?)
+            recombination_bias = (
+                submsa_profile[..., 0] - fullmsa_profile[..., 0]
+            )  # Use the difference as the initial bias, so we could start from the desired profile
+        elif config.chimera_profile:
+            fullmsa_dir = os.path.join(config.path, "alignments")
+            fullmsa_feature_dict = rkrf_utils.generate_feature_dict(
+                fasta_path,
+                fullmsa_dir,
+                data_processor,
+            )
+            fullmsa_processed_feature_dict = feature_processor.process_features(
+                fullmsa_feature_dict, mode="predict"
+            )
+            full_profile = fullmsa_processed_feature_dict["msa_feat"][
+                :, :, 25:48
+            ].clone()
+            sub_profile = processed_feature_dict["msa_feat"][:, :, 25:48].clone()
+            processed_feature_dict["msa_feat"][:, :, 25:48] = torch.where(
+                sub_profile == 0.0, full_profile.clone(), sub_profile.clone()
+            )
 
-        run_id = rkrf_utils.number_to_letter(n)
+        device_processed_features = rk_utils.move_tensors_to_device(
+            processed_feature_dict, device=device
+        )
+        feature_key = "msa_feat"
 
+        if config.msa_feat_init_path is None:
+            features_at_it_start = (
+                device_processed_features[feature_key].detach().clone()
+            )
+            np.save(
+                f"{output_directory_path!s}/msa_feat_start.npy",
+                rk_utils.assert_numpy(features_at_it_start[..., 0]),
+            )
+        else:
+            msa_feat_init_np = np.load(glob.glob(config.msa_feat_init_path)[0], allow_pickle=True)
+            features_at_it_start_np = np.repeat(
+                np.expand_dims(msa_feat_init_np, -1), config.init_recycling + 1, -1
+            )
+            features_at_it_start = torch.tensor(features_at_it_start_np).to(
+                device_processed_features[feature_key]
+            )
+            device_processed_features[feature_key] = (
+                features_at_it_start.detach().clone()
+            )
+
+    else:
         # Initialize the processed dict space
         device_processed_features, feature_key, features_at_it_start = (
             rkrf_utils.init_processed_dict(
                 bias_version=config.bias_version,
                 path=config.path,
-                file_root=config.file_root,
                 device=device,
                 template_pdb=config.template_pdb,
                 target_seq=target_seq,
@@ -274,12 +353,25 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
             )
         )
 
-        # MH edit @ Oct 2nd, 2024: Support optional template input 
-        if config.template_pdb is not None:
-            for key in device_processed_features_template.keys():
-                if key.startswith("template_"):
-                    device_processed_features[key] = device_processed_features_template[key]
-        
+    # MH edit @ Oct 2nd, 2024: Support optional template input
+    if config.template_pdb is not None:
+        device_processed_features_template = rocket.make_processed_dict_from_template(
+            config.template_pdb,
+            target_seq,
+            device=device,
+            mask_sidechains_add_cb=True,
+            mask_sidechains=True,
+            max_recycling_iters=config.init_recycling,
+        )
+        for key in device_processed_features_template.keys():
+            if key.startswith("template_"):
+                device_processed_features[key] = device_processed_features_template[key]
+
+    for n in range(config.num_of_runs):
+
+        run_id = rkrf_utils.number_to_letter(n)
+        best_pos = reference_pos
+
         # Initialize bias
         device_processed_features, optimizer, bias_names = rkrf_utils.init_bias(
             device_processed_features=device_processed_features,
@@ -288,8 +380,9 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
             lr_a=lr_a,
             lr_m=lr_m,
             weight_decay=config.weight_decay,
-            starting_bias=config.starting_bias,
-            starting_weights=config.starting_weights,
+            starting_bias=glob.glob(config.starting_bias)[0],
+            starting_weights=glob.glob(config.starting_weights)[0],
+            recombination_bias=recombination_bias,
         )
 
         # List initialization for saving values
@@ -308,17 +401,17 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
 
         progress_bar = tqdm(
             range(config.iterations),
-            desc=f"{config.file_root}, uuid: {refinement_run_uuid[:4]}, run: {run_id}",
+            desc=f"{config.file_id}, uuid: {refinement_run_uuid[:4]}, run: {run_id}",
         )
-        
+
         # Run smooth stage in phase 1
         if "phase1" in config.note:
             w_L2 = config.l2_weight
         elif "phase2" in config.note:
             w_L2 = 0.0
-            
+
         ######
-        early_stopper = rkrf_utils.EarlyStopper(patience=200, min_delta=0.1)
+        early_stopper = rkrf_utils.EarlyStopper(patience=200, min_delta=10.0)
 
         #### Phase 1 smooth scheduling ######
         if config.smooth_stage_epochs is not None:
@@ -329,8 +422,12 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
             smooth_stage_epochs = config.smooth_stage_epochs
 
             # Decay rates for each stage
-            decay_rate_stage1_add = (lr_stage1_final / lr_a) ** (1 / smooth_stage_epochs)
-            decay_rate_stage1_mul = (lr_stage1_final / lr_m) ** (1 / smooth_stage_epochs)
+            decay_rate_stage1_add = (lr_stage1_final / lr_a) ** (
+                1 / smooth_stage_epochs
+            )
+            decay_rate_stage1_mul = (lr_stage1_final / lr_m) ** (
+                1 / smooth_stage_epochs
+            )
 
         ############ 3. Run Refinement ############
         for iteration in progress_bar:
@@ -373,7 +470,7 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
             )
 
             # pLDDT loss
-            L_plddt = - torch.mean(af2_output["plddt"])
+            L_plddt = -torch.mean(af2_output["plddt"])
 
             # Position Kabsch Alignment
             aligned_xyz, plddts_res, pseudo_Bs = rkrf_utils.position_alignment(
@@ -383,8 +480,10 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
                 best_pos=best_pos,
                 exclude_res=EXCLUDING_RES,
                 domain_segs=config.domain_segs,
+                reference_bfactor=init_pos_bfactor,
             )
-            llgloss.sfc.atom_b_iso = pseudo_Bs.detach()
+            llgloss.sfc.atom_b_iso = pseudo_Bs.detach().clone()
+            llgloss_rbr.sfc.atom_b_iso = pseudo_Bs.detach().clone()
             all_pldtts.append(plddts_res)
             mean_it_plddts.append(np.mean(plddts_res))
 
@@ -435,9 +534,9 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
 
             # Update SFC and save
             llgloss.sfc.atom_pos_orth = aligned_xyz.detach().clone()
-            llgloss.sfc.savePDB(
-                f"{output_directory_path!s}/{run_id}_{iteration}_preRBR.pdb"
-            )
+            #llgloss.sfc.savePDB(
+            #    f"{output_directory_path!s}/{run_id}_{iteration}_preRBR.pdb"
+            #)
 
             # Rigid body refinement (RBR) step
             optimized_xyz, loss_track_pose = rk_coordinates.rigidbody_refine_quat(
@@ -473,8 +572,8 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
             rfree_by_epoch.append(llgloss.sfc.r_free.item())
 
             # check if current Rfree is the best so far
-            if rfree_by_epoch[-1] < best_rfree:
-                best_rfree = rfree_by_epoch[-1]
+            if llg_losses[-1] < best_llg:
+                best_llg = llg_losses[-1]
                 best_msa_bias = (
                     device_processed_features["msa_feat_bias"].detach().cpu().clone()
                 )
@@ -532,15 +631,13 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
                 if early_stopper.early_stop(loss.item()):
                     break
 
-            # Do smooth in last several iterations of phase 1 instead of beginning of phase 2 
+            # Do smooth in last several iterations of phase 1 instead of beginning of phase 2
             if ("phase1" in config.note) and (config.smooth_stage_epochs is not None):
                 if iteration > (config.iterations - smooth_stage_epochs):
                     lr_a = lr_a_initial * (decay_rate_stage1_add**iteration)
                     lr_m = lr_m_initial * (decay_rate_stage1_mul**iteration)
-                    w_L2 = w_L2_initial * (
-                        1 - (iteration / smooth_stage_epochs)
-                    )
-                
+                    w_L2 = w_L2_initial * (1 - (iteration / smooth_stage_epochs))
+
                 # Update the learning rates in the optimizer
                 optimizer.param_groups[0]["lr"] = lr_a
                 optimizer.param_groups[1]["lr"] = lr_m
@@ -657,4 +754,4 @@ def run_refinement(*, config: RocketRefinmentConfig) -> str:
 
     config.to_yaml_file(f"{output_directory_path!s}/config.yaml")
 
-    return refinement_run_uuid
+    return config

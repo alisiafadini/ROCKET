@@ -1,3 +1,4 @@
+import os, argparse
 import torch
 import numpy as np
 import reciprocalspaceship as rs
@@ -102,9 +103,9 @@ def move_tensors_to_device(processed_features, device=try_gpu()):
         # Check if the value is a PyTorch tensor
         if isinstance(value, torch.Tensor):
             # Move the tensor to the specified device
-            value = value.to(device)
+            device_value = value.clone().to(device)
         # Add the key-value pair to the new dictionary
-        processed_features_on_device[key] = value
+        processed_features_on_device[key] = device_value
 
     # Return the new dictionary with tensors moved to the device
     return processed_features_on_device
@@ -156,6 +157,72 @@ def load_mtz(mtz: str) -> rs.DataSet:
     dataset.compute_dHKL(inplace=True)
     return dataset
 
+
 def load_pdb(pdb: str) -> PDBParser:
     model = PDBParser(pdb)
     return model
+
+
+def get_params_path():
+    resources_path = os.environ.get("OPENFOLD_RESOURCES", None)
+    if resources_path is None:
+        raise ValueError("Please set OPENFOLD_RESOURCES environment variable")
+    params_path = os.path.join(resources_path,  "params")
+    return params_path
+
+# def add_data_args(parser: argparse.ArgumentParser):
+#     """
+#     Inherited from OpenFold/scripts/utils.py
+#     """
+#     parser.add_argument(
+#         '--uniref90_database_path', type=str, default=None,
+#     )
+#     parser.add_argument(
+#         '--mgnify_database_path', type=str, default=None,
+#     )
+#     parser.add_argument(
+#         '--pdb70_database_path', type=str, default=None,
+#     )
+#     parser.add_argument(
+#         '--pdb_seqres_database_path', type=str, default=None,
+#     )
+#     parser.add_argument(
+#         '--uniref30_database_path', type=str, default=None,
+#     )
+#     parser.add_argument(
+#         '--uniclust30_database_path', type=str, default=None,
+#     )
+#     parser.add_argument(
+#         '--uniprot_database_path', type=str, default=None,
+#     )
+#     parser.add_argument(
+#         '--bfd_database_path', type=str, default=None,
+#     )
+#     parser.add_argument(
+#         '--jackhmmer_binary_path', type=str, default=str(CONDA_ENV_BINARY_PATH / 'jackhmmer'),
+#     )
+#     parser.add_argument(
+#         '--hhblits_binary_path', type=str, default=str(CONDA_ENV_BINARY_PATH / 'hhblits'),
+#     )
+#     parser.add_argument(
+#         '--hhsearch_binary_path', type=str, default=str(CONDA_ENV_BINARY_PATH / 'hhsearch'),
+#     )
+#     parser.add_argument(
+#         '--hmmsearch_binary_path', type=str, default=str(CONDA_ENV_BINARY_PATH / 'hmmsearch'),
+#     )
+#     parser.add_argument(
+#         '--hmmbuild_binary_path', type=str, default=str(CONDA_ENV_BINARY_PATH / 'hmmbuild'),
+#     )
+#     parser.add_argument(
+#         '--kalign_binary_path', type=str, default=str(CONDA_ENV_BINARY_PATH / 'kalign'),
+#     )
+#     parser.add_argument(
+#         '--max_template_date', type=str,
+#         default=date.today().strftime("%Y-%m-%d"),
+#     )
+#     parser.add_argument(
+#         '--obsolete_pdbs_path', type=str, default=None
+#     )
+#     parser.add_argument(
+#         '--release_dates_path', type=str, default=None
+#     )

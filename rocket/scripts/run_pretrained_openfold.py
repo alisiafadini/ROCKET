@@ -1,3 +1,6 @@
+# Modified by Minhuan Li, for ROCKET, 2025
+# Remove the requirement template, remove single seq mode, read resources from the system environment variables
+
 # Copyright 2021 AlQuraishi Laboratory
 # Copyright 2021 DeepMind Technologies Limited
 #
@@ -51,8 +54,8 @@ from openfold.utils.trace_utils import (
     trace_model_,
 )
 
-from scripts.precompute_embeddings import EmbeddingGenerator
-from scripts.utils import add_data_args
+# from scripts.precompute_embeddings import EmbeddingGenerator
+from ..utils import get_params_path
 
 
 TRACING_INTERVAL = 50
@@ -85,14 +88,16 @@ def precompute_alignments(tags, seqs, alignment_dir, args):
 
             # In seqemb mode, use AlignmentRunner only to generate templates
             if args.use_single_seq_mode:
-                alignment_runner = data_pipeline.AlignmentRunner(
-                    jackhmmer_binary_path=args.jackhmmer_binary_path,
-                    uniref90_database_path=args.uniref90_database_path,
-                    template_searcher=template_searcher,
-                    no_cpus=args.cpus,
-                )
-                embedding_generator = EmbeddingGenerator()
-                embedding_generator.run(tmp_fasta_path, alignment_dir)
+                # alignment_runner = data_pipeline.AlignmentRunner(
+                #     jackhmmer_binary_path=args.jackhmmer_binary_path,
+                #     uniref90_database_path=args.uniref90_database_path,
+                #     template_searcher=template_searcher,
+                #     no_cpus=args.cpus,
+                # )
+                # embedding_generator = EmbeddingGenerator()
+                # embedding_generator.run(tmp_fasta_path, alignment_dir)
+                # MH edit @ Mar 24 2025, remove the single seq mode for ROCKET
+                raise NotImplementedError("Single Seq Mode not supported for ROCKET use")
             else:
                 alignment_runner = data_pipeline.AlignmentRunner(
                     jackhmmer_binary_path=args.jackhmmer_binary_path,
@@ -396,7 +401,7 @@ def main(args):
                 logger.info(f"Model output written to {output_dict_path}...")
 
 
-if __name__ == "__main__":
+def cli_runopenfold():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "fasta_dir", type=str,
@@ -494,12 +499,12 @@ if __name__ == "__main__":
         "--use_deepspeed_evoformer_attention", action="store_true", default=False, 
         help="Whether to use the DeepSpeed evoformer attention layer. Must have deepspeed installed in the environment.",
     )
-    add_data_args(parser)
+    # add_data_args(parser)
     args = parser.parse_args()
 
     if args.jax_param_path is None and args.openfold_checkpoint_path is None:
         args.jax_param_path = os.path.join(
-            "openfold", "resources", "params",
+            get_params_path(),
             "params_" + args.config_preset + ".npz"
         )
 
@@ -510,3 +515,4 @@ if __name__ == "__main__":
         )
 
     main(args)
+

@@ -5,10 +5,10 @@ from tqdm import tqdm
 device="cuda:0"
 script_path = "/n/hekstra_lab/people/minhuan/projects/AF2_refine/screen_data/run_pretrained_openfold.py"
 root = "/n/hekstra_lab/people/minhuan/projects/AF2_refine/screen_data/"
-config_preset = "model_1"
+config_preset = "model_1_ptm"
 max_recycling_iters = 20
 jax_para_path = f"/n/hekstra_lab/people/minhuan/projects/AF2_refine/openfold_xtal/openfold/resources/params/params_{config_preset}.npz"
-output_dir = os.path.join(root, f"AF2_trimmed_all_outputs_{max_recycling_iters}recycle")
+output_dir = os.path.join(root, f"AF2_trimmed_all_outputs_{max_recycling_iters}recycle_ptm")
 command = [
     "python",
     f"{script_path}",
