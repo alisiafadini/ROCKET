@@ -166,8 +166,23 @@ def prepare_rk_inputs(file_id, output_dir, method):
         mtz_dst = os.path.join(rocket_dir, f"{file_id}-Edata.mtz")
         shutil.copy2(mtz_src, mtz_dst)
 
+def symlink_input_files(file_id, output_dir, precomputed_alignment_dir):
+    """Symlinks the sequence FASTA and alignment directory to the output folder."""
+    fasta_src = os.path.join(f"{file_id}_fasta", f"{file_id}.fasta")
+    fasta_dst = os.path.join(output_dir, f"{file_id}.fasta")
+    if os.path.exists(fasta_src):
+        if not os.path.exists(fasta_dst):
+            os.symlink(os.path.abspath(fasta_src), fasta_dst)
+    else:
+        raise FileNotFoundError(f"FASTA file not found: {fasta_src}")
+
+    alignments_dst = os.path.join(output_dir, "alignments")
+    if not os.path.exists(alignments_dst):
+        os.symlink(os.path.abspath(precomputed_alignment_dir), alignments_dst)
+
+
+
 def parse_args():
-    """Parses and validates command-line arguments."""
     parser = argparse.ArgumentParser(description="Run OpenFold inference and dock into data")
     
     parser.add_argument("--file_id", required=True)
@@ -206,6 +221,7 @@ def main():
     args = parse_args()
 
     os.makedirs(args.output_dir, exist_ok=True)
+    symlink_input_files(args.file_id, args.output_dir, args.precomputed_alignment_dir)
 
     predicted_model = run_openfold(args.file_id, args.output_dir, args.precomputed_alignment_dir, args.mmcif_dir, args.jax_params_path)
     run_process_predicted_model(args.file_id, args.output_dir, predicted_model)
