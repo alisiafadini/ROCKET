@@ -93,8 +93,8 @@ def main():
     
     # Configure input paths
     logger.info(f"Working with system {config.system}", flush=True)
-    tng_file = "{p}/ROCKET_inputs/{r}-Edata.mtz".format(p=config.path, r=config.system)
-    input_pdb = "{p}/ROCKET_inputs/{r}-pred-aligned.pdb".format(p=config.path, r=config.system)
+    tng_file = os.path.join(config.path, "ROCKET_inputs", f"{config.system}-Edata.mtz")
+    input_pdb = os.path.join(config.path, "ROCKET_inputs", f"{config.system}-pred-aligned.pdb")
 
     if config.additional_chain:
         constant_fp_added_HKL = torch.load(
@@ -160,7 +160,7 @@ def main():
     fasta_path = [f for ext in ('*.fa', '*.fasta') for f in glob.glob(os.path.join(config.path, ext))][0]
 
     # Edit by MH @ Nov 15, 2024, recombination of full msa and subset msa
-    fullmsa_dir =  "{p}/alignments".format(p=config.path)
+    fullmsa_dir =  os.path.join(config.path, "alignments")
     data_processor = data_pipeline.DataPipeline(template_featurizer=None)
     fullmsa_feature_dict = rkrf_utils.generate_feature_dict(
         fasta_path,

@@ -20,7 +20,7 @@ setup(
     install_requires=[
         "scikit-bio",
         "loguru",
-        "SFcalculator-torch==0.2.1",
+        "SFcalculator-torch>=0.2.2",
         "matplotlib",
         "polyleven",
         "scikit-learn",
