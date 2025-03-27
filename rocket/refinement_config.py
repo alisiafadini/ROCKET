@@ -166,6 +166,7 @@ class RocketRefinmentConfig(BaseModel):
         "voxel_spacing": "data.voxel_spacing",
         "msa_subratio": "data.msa_subratio",
         "w_plddt": "data.w_plddt",
+        "downsample_ratio": "data.downsample_ratio",
         
         # Metadata
         "note": "note"

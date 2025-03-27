@@ -266,7 +266,7 @@ def prepare_pred_aligned(output_dir, file_id):
         "phenix.superpose_pdbs",
         f"{mr_model_path}",
         f"{pred_model_path}",
-        f"output.file_name={os.path.join(output_dir, 'ROCKET_inputs', f'{file_id}-pred-aligned.pdb')}"
+        f"output.file_name={os.path.join(output_dir, 'ROCKET_inputs', f'{file_id}-pred-aligned_unprocessed.pdb')}"
     ]
     run_command(superpose_command, env_source=phenix_source)
     aligned_model_path = os.path.join(output_dir, "ROCKET_inputs", f"{file_id}-pred-aligned_unprocessed.pdb")
@@ -275,9 +275,9 @@ def prepare_pred_aligned(output_dir, file_id):
     mr_model = PDBParser(mr_model_path)
     align_model = PDBParser(aligned_model_path)
     align_model.set_spacegroup(mr_model.spacegroup)
-    align_model.set_unitcell(mr_model.unitcell)
+    align_model.set_unitcell(mr_model.cell)
     align_model.set_biso(plddt2pseudoB(align_model.atom_b_iso))
-    align_model.write_pdb(os.path.join(output_dir, "ROCKET_inputs", f"{file_id}-pred-aligned.pdb"))
+    align_model.savePDB(os.path.join(output_dir, "ROCKET_inputs", f"{file_id}-pred-aligned.pdb"))
 
 
 def symlink_input_files(file_id, output_dir, precomputed_alignment_dir):
