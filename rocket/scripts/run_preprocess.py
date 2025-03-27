@@ -6,6 +6,8 @@ import glob
 from loguru import logger
 
 from ..refinement_config import gen_config_phase1, gen_config_phase2
+from ..utils import plddt2pseudoB
+from SFC_Torch import PDBParser
 
 ### Phenix variables
 # phenix_directory = "/dev/shm/alisia/phenix-2.0rc1-5641/"
@@ -60,7 +62,7 @@ def run_openfold(file_id, output_dir, precomputed_alignment_dir, jax_param_path,
 def generate_seg_id_file(file_id, output_dir):
     """Generates seg_id.txt using chain changes and >20-residue continuous stretches. Skips first seg_id, outputs None if only one domain."""
     seg_id_path = os.path.join(output_dir, "ROCKET_inputs", "seg_id.txt")
-    aligned_pdb_path = os.path.join(output_dir, "ROCKET_inputs", f"{file_id}-pred-aligned.pdb")
+    aligned_pdb_path = os.path.join(output_dir, "ROCKET_inputs", f"{file_id}-MRed.pdb")
 
     if not os.path.exists(aligned_pdb_path):
         raise FileNotFoundError(f"Aligned PDB file not found at {aligned_pdb_path}")
@@ -185,7 +187,7 @@ def dock_into_data(file_id, method, resolution, output_dir, predicted_model, pre
             rocket_dir = os.path.join(output_dir, "ROCKET_inputs")
             os.makedirs(rocket_dir, exist_ok=True)
 
-            aligned_pdb_path = os.path.join(rocket_dir, f"{file_id}-pred-aligned.pdb")
+            aligned_pdb_path = os.path.join(rocket_dir, f"{file_id}-MRed.pdb")
             shutil.copy2(predocked_model, aligned_pdb_path)
         else:
             # Proceed with MR step
@@ -247,13 +249,36 @@ def prepare_rk_inputs(file_id, output_dir, method):
     else:
         raise ValueError("Invalid method. Choose either 'xray' or 'cryoem'.")
 
-    best_pdb_dst = os.path.join(rocket_dir, f"{file_id}-pred-aligned.pdb")
+    best_pdb_dst = os.path.join(rocket_dir, f"{file_id}-MRed.pdb")
     if best_pdb_src and os.path.exists(best_pdb_src):
         shutil.copy2(best_pdb_src, best_pdb_dst)
 
     for mtz_src in mtz_files:
         mtz_dst = os.path.join(rocket_dir, f"{file_id}-Edata.mtz")
         shutil.copy2(mtz_src, mtz_dst)
+
+def prepare_pred_aligned(output_dir, file_id):
+    mr_model_path = os.path.join(output_dir, "ROCKET_inputs", f"{file_id}-MRed.pdb")
+    assert os.path.exists(mr_model_path), f"MR model not found: {mr_model_path}"
+    pred_model_path = os.path.join(output_dir, "predictions", f"{file_id}_model_1_ptm_unrelaxed.pdb")
+    assert os.path.exists(pred_model_path), f"Predicted model not found: {pred_model_path}"
+    superpose_command = [
+        "phenix.superpose_pdbs",
+        f"{mr_model_path}",
+        f"{pred_model_path}",
+        f"output.file_name={os.path.join(output_dir, 'ROCKET_inputs', f'{file_id}-pred-aligned.pdb')}"
+    ]
+    run_command(superpose_command, env_source=phenix_source)
+    aligned_model_path = os.path.join(output_dir, "ROCKET_inputs", f"{file_id}-pred-aligned_unprocessed.pdb")
+    assert os.path.exists(aligned_model_path), f"Failed to superpose models: {aligned_model_path}"
+
+    mr_model = PDBParser(mr_model_path)
+    align_model = PDBParser(aligned_model_path)
+    align_model.set_spacegroup(mr_model.spacegroup)
+    align_model.set_unitcell(mr_model.unitcell)
+    align_model.set_biso(plddt2pseudoB(align_model.atom_b_iso))
+    align_model.write_pdb(os.path.join(output_dir, "ROCKET_inputs", f"{file_id}-pred-aligned.pdb"))
+
 
 def symlink_input_files(file_id, output_dir, precomputed_alignment_dir):
     """Symlinks the sequence FASTA and alignment directory to the output folder."""
@@ -318,6 +343,7 @@ def cli_runpreprocess():
 
     dock_into_data(args.file_id, args.method, args.resolution, args.output_dir, predicted_model, args.predocked_model, args.map1, args.map2, args.fixed_model, args.full_composition)
     prepare_rk_inputs(args.file_id, args.output_dir, args.method)
+    prepare_pred_aligned(args.output_dir, args.file_id)
     seg_id = generate_seg_id_file(args.file_id, args.output_dir)
 
     # Generate ROCKET configuration yaml files

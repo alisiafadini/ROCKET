@@ -43,7 +43,7 @@ def main():
     )
     p.add_argument(
         "--init_recycling",
-        default=20,
+        default=4,
         type=int,
         help=("number of initial recycling"),
     )
@@ -68,7 +68,7 @@ def main():
     )
     p.add_argument(
         "--min_resolution",
-        default=1.0,
+        default=3.0,
         type=float,
         help=("min resolution cut"),
     )

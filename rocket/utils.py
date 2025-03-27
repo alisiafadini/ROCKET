@@ -5,6 +5,13 @@ import reciprocalspaceship as rs
 from functools import partial
 from SFC_Torch import PDBParser
 
+def plddt2pseudoB(plddts):
+    # Use Tom Terwilliger's formula to convert plddt to Bfactor and update sfcalculator instance
+    deltas = 1.5 * np.exp(4 * (0.7 - 0.01 * plddts))
+    b_factors = (8 * np.pi**2 * deltas**2) / 3
+    return b_factors
+
+
 def weighting(x, cutoff1=11.5, cutoff2=30.0):
     """
     Convert B factor to weights for L2 loss and Kabsch Alignment
