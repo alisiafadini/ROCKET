@@ -2,6 +2,7 @@
 
 This is the code repo for [AlphaFold as a Prior: Experimental Structure Determination Conditioned on a Pretrained Neural Network](https://www.biorxiv.org/content/10.1101/2025.02.18.638828v2)
 
+You can find detailed documentation and walk-through tutorials at: https://rocket-9.gitbook.io/rocket-docs
 
 ## Installation
 
