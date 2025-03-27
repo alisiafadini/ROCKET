@@ -52,7 +52,7 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
     if config.uuid_hex:
         refinement_run_uuid = config.uuid_hex
     else:
-        config.uuid_hex = uuid.uuid4().hex[:10]
+        config.paths.uuid_hex = uuid.uuid4().hex[:10]
         refinement_run_uuid = config.uuid_hex
     output_directory_path = (
         f"{config.path}/ROCKET_outputs/{refinement_run_uuid}/{config.note}"
@@ -380,8 +380,8 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
             lr_a=lr_a,
             lr_m=lr_m,
             weight_decay=config.weight_decay,
-            starting_bias=glob.glob(config.starting_bias)[0],
-            starting_weights=glob.glob(config.starting_weights)[0],
+            starting_bias=config.starting_bias,
+            starting_weights=config.starting_weights,
             recombination_bias=recombination_bias,
         )
 
