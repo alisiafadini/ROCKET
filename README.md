@@ -13,7 +13,7 @@ To ensure usability, we forked the OpenFold repo, and sorted a couple details in
 1. Clone our fork of the OpenFold repo, switch to the `pl_upgrades` branch to work with CUDA 12:
 
     ```
-    git clone git@github.com:minhuanli/rocket_openfold.git
+    git clone https://github.com/minhuanli/rocket_openfold.git
     cd rocket_openfold
     git checkout pl_upgrades
     ```
@@ -136,7 +136,7 @@ To ensure usability, we forked the OpenFold repo, and sorted a couple details in
 Install ROCKET. First move to the parent folder, clone the ROCKET repo (so you don't mix the ROCKET repo with the OpenFold one), then install it with `pip`
 
 ```
-git clone git@github.com:alisiafadini/ROCKET.git
+git clone https://github.com/alisiafadini/ROCKET.git
 cd ROCKET
 pip install .
 ```
