@@ -10,6 +10,8 @@ You can find detailed documentation and walk-through tutorials at: https://rocke
 
 To ensure usability, we forked the OpenFold repo, and sorted a couple details in the installation guides. Here is what we advise ROCKET users to do:
 
+**Note**: The ⁠openfold installation requires approximately 6 GB of free space to download weights. Please ensure you start in a directory with sufficient available space.
+
 1. Clone our fork of the OpenFold repo, switch to the `pl_upgrades` branch to work with CUDA 12:
 
     ```
