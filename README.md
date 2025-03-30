@@ -102,7 +102,7 @@ To ensure usability, we forked the OpenFold repo, and sorted a couple details in
 
 [Phenix](https://phenix-online.org/) is required for automatic data preprocessing and for post-refinement when polishing final model geometry. Follow the steps below to install it and **add the path to the system environment variables**:
 
-1. Download the latest `nightly-build` Phenix python3 installer according to [https://phenix-online.org/download](https://phenix-online.org/download)
+1. Download the latest `nightly-build` Phenix python3 installer according to [https://phenix-online.org/download](https://phenix-online.org/download), note you have download the installer from the [show-all link](https://www.phenix-online.org/download/nightly_builds.cgi?show_all=1), with version newer than `2.0rc1-5647`
 
 2. Run the installer
 
