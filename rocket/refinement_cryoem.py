@@ -380,9 +380,9 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
             )
             # Rigid body refinement (RBR) step
             optimized_xyz, loss_track_pose = rk_coordinates.rigidbody_refine_quat(
-                aligned_xyz, cryo_llgloss_rbr, sfc_rbr.cra_name, lbfgs=True
+                aligned_xyz, cryo_llgloss_rbr, sfc_rbr.cra_name, lbfgs=True, verbose=False, 
             )
-
+            
             cryo_llgloss.sfc.atom_b_iso = pseudo_Bs.detach().clone()
             all_pldtts.append(plddts_res)
             mean_it_plddts.append(np.mean(plddts_res))
@@ -401,7 +401,7 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
             L_llg = L_llg  # + 30 * L_plddt
 
             sigmas = cryo_llgloss.sigmaAs
-            print("mean sigmaA", np.mean(rk_utils.assert_numpy(sigmas)))
+            # print("mean sigmaA", np.mean(rk_utils.assert_numpy(sigmas)))
             llg_losses.append(L_llg.clone().item())
 
             # check if current loss is the best so far
