@@ -251,14 +251,14 @@ class LLGloss(torch.nn.Module):
         scale_steps=10,
         scale_initialize=False,
         added_chain_HKL=None,
-        added_chain_asu=None
+        added_chain_asu=None,
     ) -> torch.Tensor:
         self.sfc.calc_fprotein(atoms_position_tensor=xyz_orth)
 
         if added_chain_HKL is not None:
             self.sfc.Fprotein_HKL = self.sfc.Fprotein_HKL + added_chain_HKL
             self.sfc.Fprotein_asu = self.sfc.Fprotein_asu + added_chain_asu
-        
+
         if solvent:
             self.sfc.calc_fsolvent()
             if update_scales:
@@ -299,10 +299,9 @@ class LLGloss(torch.nn.Module):
         solvent=True,
         update_scales=False,
         added_chain_HKL=None,
-        added_chain_asu=None
+        added_chain_asu=None,
     ):
         """
-        TODO: Use rfree label in the LLG calculation
         Args:
             xyz_orth: torch.Tensor, [N_atoms, 3] in angstroms
                 Orthogonal coordinates of proteins, coming from AF2 model, send to SFC
@@ -325,7 +324,7 @@ class LLGloss(torch.nn.Module):
             solvent=solvent,
             update_scales=update_scales,
             added_chain_HKL=added_chain_HKL,
-            added_chain_asu=added_chain_asu
+            added_chain_asu=added_chain_asu,
         )
         llg = 0.0
 
