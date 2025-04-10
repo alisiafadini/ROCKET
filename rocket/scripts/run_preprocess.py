@@ -486,7 +486,10 @@ def cli_runpreprocess():
             f"Adding internal MTZ labels from {args.xray_data_label} to {edata_path}"
         )
         ds = internal_mtz_labels(edata_path, args.xray_data_label)
-        ds.write_mtz(edata_path)
+        try:
+            ds.write_mtz(edata_path)
+        except Exception as e:
+            logger.info("MTZ write failed:", e)
 
     # Generate ROCKET configuration yaml files
     phase1_config = gen_config_phase1(
