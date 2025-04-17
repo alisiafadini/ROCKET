@@ -51,7 +51,6 @@ class LLGloss(torch.nn.Module):
             self.register_buffer("Emean", data_dict["Emean"])
             self.register_buffer("PHIEmean", data_dict["PHIEmean"])
             self.register_buffer("Dobs", data_dict["Dobs"])
-            print("!!!!! mtz string shape", data_dict["Emean"].shape)
 
         elif isinstance(mtz_file, rs.DataSet):
             data_dict = mtz_file
@@ -76,7 +75,6 @@ class LLGloss(torch.nn.Module):
                     data_dict["Dobs"].values, dtype=torch.float32, device=self.device
                 ),
             )
-            print("!!!!! sampling shape", data_dict.shape)
         else:
             raise TypeError(
                 f"mtz_file must be a path string or an rs.DataSet, got {type(mtz_file)} instead."
