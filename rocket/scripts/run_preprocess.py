@@ -324,10 +324,21 @@ def prepare_rk_inputs(file_id, output_dir, method):
     os.makedirs(rocket_dir, exist_ok=True)
 
     if method == "xray":
+        feff_dirs = glob.glob("./*feff")
+        if len(feff_dirs) == 0:
+            raise FileNotFoundError(
+                "No '*feff' directory found in the current directory."
+            )
+        if len(feff_dirs) > 1:
+            raise RuntimeError(
+                f"More than one '*feff' directory found: {feff_dirs}. Please clean up ambiguous directories."
+            )
+
+        feff_dir = feff_dirs[0]
         best_pdb_src = os.path.join(
             output_dir, "phaser_files", "best.1.coordinates.pdb"
         )
-        mtz_files = glob.glob("./*feff/*.data.mtz")
+        mtz_files = glob.glob(os.path.join(feff_dir, "*.data.mtz"))
     elif method == "cryoem":
         best_pdb_src = next(
             iter(glob.glob(os.path.join(output_dir, "docking_outputs", "*.pdb"))), None
@@ -507,6 +518,22 @@ def cli_runpreprocess():
     phase2_config.to_yaml_file(
         os.path.join(args.output_dir, "ROCKET_config_phase2.yaml")
     )
+
+    # Move *feff folder(s) to output_dir (if only one exists)
+    feff_dirs = glob.glob("./*feff")
+    if len(feff_dirs) == 1:
+        feff_dir = feff_dirs[0]
+        dest = os.path.join(args.output_dir, os.path.basename(feff_dir))
+        # Remove target if it exists to avoid shutil.move error
+        if os.path.exists(dest):
+            shutil.rmtree(dest)
+        shutil.move(feff_dir, dest)
+        logger.info(f"Moved {feff_dir} to {dest}")
+
+    elif len(feff_dirs) > 1:
+        raise RuntimeError(
+            f"More than one '*feff' directory found: {feff_dirs}. Please clean up ambiguous directories."
+        )
 
 
 if __name__ == "__main__":
