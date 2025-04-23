@@ -248,6 +248,15 @@ def dock_into_data(
         mtz_files = glob.glob(os.path.join(f"{file_id}_data", "*.mtz"))
 
         for mtz_file in mtz_files:
+            # CHECK for *feff directory BEFORE running xtal_edata_script
+            feff_dirs = glob.glob("./*feff")
+            if len(feff_dirs) > 0:
+                raise RuntimeError(
+                    f"Refusing to continue: found existing '*feff' directory(ies): {feff_dirs}. "
+                    "Please clean up before running preprocessing again. "
+                    "This prevents ambiguous or stale outputs."
+                )
+
             if os.path.isfile(mtz_file):
                 shutil.copy2(
                     mtz_file,
@@ -258,9 +267,9 @@ def dock_into_data(
                     ),
                 )
 
-                # Always run Edata generation
-                edata_cmd = ["phenix.python", xtal_edata_script, "-i", mtz_file]
-                run_command(edata_cmd, env_source=phenix_source)
+            # Always run Edata generation
+            edata_cmd = ["phenix.python", xtal_edata_script, "-i", mtz_file]
+            run_command(edata_cmd, env_source=phenix_source)
 
         # If predocked_model is provided, skip MR and copy the model directly
         if predocked_model:
@@ -502,6 +511,22 @@ def cli_runpreprocess():
         except Exception as e:
             logger.info("MTZ write failed:", e)
 
+        # Move *feff folder(s) to output_dir (if only one exists)
+        feff_dirs = glob.glob("./*feff")
+        if len(feff_dirs) == 1:
+            feff_dir = feff_dirs[0]
+            dest = os.path.join(args.output_dir, os.path.basename(feff_dir))
+            # Remove target if it exists to avoid shutil.move error
+            if os.path.exists(dest):
+                shutil.rmtree(dest)
+            shutil.move(feff_dir, dest)
+            logger.info(f"Moved {feff_dir} to {dest}")
+
+        elif len(feff_dirs) > 1:
+            raise RuntimeError(
+                f"More than one '*feff' directory found: {feff_dirs}. You may have run preprocessing twice. Please clean up ambiguous directories."
+            )
+
     # Generate ROCKET configuration yaml files
     phase1_config = gen_config_phase1(
         datamode=args.method,
@@ -518,22 +543,6 @@ def cli_runpreprocess():
     phase2_config.to_yaml_file(
         os.path.join(args.output_dir, "ROCKET_config_phase2.yaml")
     )
-
-    # Move *feff folder(s) to output_dir (if only one exists)
-    feff_dirs = glob.glob("./*feff")
-    if len(feff_dirs) == 1:
-        feff_dir = feff_dirs[0]
-        dest = os.path.join(args.output_dir, os.path.basename(feff_dir))
-        # Remove target if it exists to avoid shutil.move error
-        if os.path.exists(dest):
-            shutil.rmtree(dest)
-        shutil.move(feff_dir, dest)
-        logger.info(f"Moved {feff_dir} to {dest}")
-
-    elif len(feff_dirs) > 1:
-        raise RuntimeError(
-            f"More than one '*feff' directory found: {feff_dirs}. You may have run preprocessing twice. Please clean up ambiguous directories."
-        )
 
 
 if __name__ == "__main__":
