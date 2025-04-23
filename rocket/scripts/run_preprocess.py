@@ -331,7 +331,7 @@ def prepare_rk_inputs(file_id, output_dir, method):
             )
         if len(feff_dirs) > 1:
             raise RuntimeError(
-                f"More than one '*feff' directory found: {feff_dirs}. Please clean up ambiguous directories."
+                f"More than one '*feff' directory found: {feff_dirs}. You may have run preprocessing twice. Please clean up ambiguous directories."
             )
 
         feff_dir = feff_dirs[0]
@@ -532,7 +532,7 @@ def cli_runpreprocess():
 
     elif len(feff_dirs) > 1:
         raise RuntimeError(
-            f"More than one '*feff' directory found: {feff_dirs}. Please clean up ambiguous directories."
+            f"More than one '*feff' directory found: {feff_dirs}. You may have run preprocessing twice. Please clean up ambiguous directories."
         )
 
 
