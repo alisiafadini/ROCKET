@@ -221,20 +221,18 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
 
         # MH edits @ Oct 19, 2024, support MSA subsampling at the beginning
         if config.msa_subratio is not None:
-            assert (
-                config.msa_subratio > 0.0 and config.msa_subratio <= 1.0
-            ), "msa_subratio should be None or between 0.0 and 1.0!"
+            assert config.msa_subratio > 0.0 and config.msa_subratio <= 1.0, (
+                "msa_subratio should be None or between 0.0 and 1.0!"
+            )
             # Do subsampling of msa, keep the first sequence
             if config.sub_msa_path is None:
                 idx = np.arange(feature_dict["msa"].shape[0] - 1) + 1
-                sub_idx = np.concatenate(
-                    (
-                        np.array([0]),
-                        np.random.choice(
-                            idx, size=int(config.msa_subratio * len(idx)), replace=False
-                        ),
-                    )
-                )
+                sub_idx = np.concatenate((
+                    np.array([0]),
+                    np.random.choice(
+                        idx, size=int(config.msa_subratio * len(idx)), replace=False
+                    ),
+                ))
                 feature_dict["msa"] = feature_dict["msa"][sub_idx]
                 feature_dict["deletion_matrix_int"] = feature_dict[
                     "deletion_matrix_int"
@@ -272,9 +270,7 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
                 :, :, 25:48
             ].clone()
             submsa_profile = processed_feature_dict["msa_feat"][:, :, 25:48].clone()
-            processed_feature_dict["msa_feat"][
-                :, :, 25:48
-            ] = (
+            processed_feature_dict["msa_feat"][:, :, 25:48] = (
                 fullmsa_profile.clone()
             )  # Use full msa's profile as basis for linear space -- higher rank (?)
             recombination_bias = (

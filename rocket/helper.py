@@ -89,14 +89,10 @@ def make_processed_dict_from_template(
             for k in gly_idx
             if k in template_idx_set and k in backbone_idx_set
         )
-        cbs = np.array(
-            [
-                extend(c, n, ca, 1.522, 1.927, -2.143)
-                for c, n, ca in zip(
-                    pos[0, :, 2], pos[0, :, 0], pos[0, :, 1], strict=False
-                )
-            ]
-        )
+        cbs = np.array([
+            extend(c, n, ca, 1.522, 1.927, -2.143)
+            for c, n, ca in zip(pos[0, :, 2], pos[0, :, 0], pos[0, :, 1], strict=False)
+        ])
         pos[0, projected_cb, 3] = cbs[projected_cb]
         atom_mask[0, template_idxs, :5] = decoy_prot.atom_mask[:, :5]
         atom_mask[0, projected_cb, 3] = 1

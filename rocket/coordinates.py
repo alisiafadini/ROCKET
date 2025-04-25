@@ -553,9 +553,9 @@ def extract_allatoms(outputs, feats, cra_name_sfc: list):
         "aatype"
     ]  # TODO: tackle the match between UNK and real non-standard aa name from SFC
     aatype_1d = res_names[utils.assert_numpy(aatype[:, 0], arr_type=int)]
-    chain_resid = np.array(
-        ["A-" + str(i) + "-" for i in range(n_res)]
-    )  # TODO: here we assume all residues in same chain A
+    chain_resid = np.array([
+        "A-" + str(i) + "-" for i in range(n_res)
+    ])  # TODO: here we assume all residues in same chain A
     crname_repeats = (
         np.char.add(chain_resid, aatype_1d).reshape(-1, 1).repeat(37, axis=-1)
     )  # [n_res, 37]
@@ -742,9 +742,9 @@ def weighted_kabsch(
     aligned_pos = torch.ones_like(moving_tensor)
     for domain_range in domain_ranges:
         domain_start, domain_end_notin = domain_range
-        domain_bool = np.array(
-            [(i >= domain_start) and (i < domain_end_notin) for i in resid]
-        )
+        domain_bool = np.array([
+            (i >= domain_start) and (i < domain_end_notin) for i in resid
+        ])
         working_set = backbone_bool & residue_bool & domain_bool
         moving_tensor_np = utils.assert_numpy(moving_tensor)[working_set]
         ref_tensor_np = utils.assert_numpy(ref_tensor)[working_set]

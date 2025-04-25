@@ -52,9 +52,9 @@ class MSEloss:
     """
 
     def __init__(self, target: PDBParser, moving: PDBParser, device: torch.device):
-        assert (
-            target.sequence == moving.sequence
-        ), "target pdb has different sequence with moving pdb!"
+        assert target.sequence == moving.sequence, (
+            "target pdb has different sequence with moving pdb!"
+        )
         # get the intersect atoms index
         self.target_pdb = target
         self.device = device
