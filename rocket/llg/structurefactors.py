@@ -14,7 +14,7 @@ def initial_SFC(
     Flabel,
     SigFlabel,
     Freelabel=None,
-    device=SFC.utils.try_gpu(),
+    device=None,  # <--- default to None
     testset_value=0,
     n_bins=10,
     solvent=True,
@@ -22,6 +22,9 @@ def initial_SFC(
     added_chain_asu=None,
     spacing=4.5,
 ):
+    if device is None:
+        device = SFC.utils.try_gpu()  # <-- assign here
+
     sfcalculator = SFcalculator(
         pdb_file,
         mtz_file,

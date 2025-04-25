@@ -31,7 +31,9 @@ def downsample_data(mtz_path, downsample_ratio: int):
     return downsampled_df
 
 
-def load_tng_data(tng_file, device=utils.try_gpu()):
+def load_tng_data(tng_file, device=None):
+    if device is None:
+        device = utils.try_gpu()
     tng = utils.load_mtz(tng_file).dropna()
 
     # Generate PhaserTNG tensors
