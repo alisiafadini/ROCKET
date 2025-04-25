@@ -10,8 +10,8 @@ import torch
 from SFC_Torch import SFcalculator
 
 from rocket import utils
-from rocket.llg import structurefactors as llg_sf
-from rocket.llg import utils as llg_utils
+from rocket.xtal import structurefactors as llg_sf
+from rocket.xtal import utils as llg_utils
 
 
 class LLGloss(torch.nn.Module):

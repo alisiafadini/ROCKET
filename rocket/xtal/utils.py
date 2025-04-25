@@ -6,7 +6,7 @@ import numpy as np
 import torch
 
 from rocket import utils
-from rocket.llg import structurefactors
+from rocket.xtal import structurefactors
 
 
 def newton_step(tensor_pre_update, gradient, Hessian):
