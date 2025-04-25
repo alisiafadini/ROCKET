@@ -79,7 +79,7 @@ def try_gpu(i=0):
     return torch.device("cpu")
 
 
-def move_tensors_to_device_inplace(processed_features, device=try_gpu()):
+def move_tensors_to_device_inplace(processed_features, device=None):
     """
     Moves PyTorch tensors in a dictionary to the specified device in-place.
 
@@ -87,6 +87,8 @@ def move_tensors_to_device_inplace(processed_features, device=try_gpu()):
         processed_features (dict): Dictionary containing tensors.
         device (str): Device to move tensors to (e.g., "cuda:0", "cpu").
     """
+    if device is None:
+        device = try_gpu()
     # Iterate through the keys and values in the input dictionary
     for key, value in processed_features.items():
         # Check if the value is a PyTorch tensor
@@ -95,7 +97,7 @@ def move_tensors_to_device_inplace(processed_features, device=try_gpu()):
             processed_features[key] = value.to(device)
 
 
-def move_tensors_to_device(processed_features, device=try_gpu()):
+def move_tensors_to_device(processed_features, device=None):
     """
     Moves PyTorch tensors in a dictionary to the specified device.
 
@@ -106,7 +108,9 @@ def move_tensors_to_device(processed_features, device=try_gpu()):
     Returns:
         dict: Dictionary with tensors moved to the specified device.
     """
-    # Create a new dictionary to store processed features with tensors moved to the device
+    if device is None:
+        device = try_gpu()
+    # Create a new dictionary to store processed features, tensors moved to the device
     processed_features_on_device = {}
 
     # Iterate through the keys and values in the input dictionary
@@ -133,7 +137,7 @@ def convert_feat_tensors_to_numpy(dictionary):
 
 
 def is_list_or_tuple(x):
-    return isinstance(x, list) or isinstance(x, tuple)
+    return isinstance(x, list | tuple)
 
 
 def assert_numpy(x, arr_type=None):
@@ -182,61 +186,3 @@ def get_params_path():
         raise ValueError("Please set OPENFOLD_RESOURCES environment variable")
     params_path = os.path.join(resources_path, "params")
     return params_path
-
-
-# def add_data_args(parser: argparse.ArgumentParser):
-#     """
-#     Inherited from OpenFold/scripts/utils.py
-#     """
-#     parser.add_argument(
-#         '--uniref90_database_path', type=str, default=None,
-#     )
-#     parser.add_argument(
-#         '--mgnify_database_path', type=str, default=None,
-#     )
-#     parser.add_argument(
-#         '--pdb70_database_path', type=str, default=None,
-#     )
-#     parser.add_argument(
-#         '--pdb_seqres_database_path', type=str, default=None,
-#     )
-#     parser.add_argument(
-#         '--uniref30_database_path', type=str, default=None,
-#     )
-#     parser.add_argument(
-#         '--uniclust30_database_path', type=str, default=None,
-#     )
-#     parser.add_argument(
-#         '--uniprot_database_path', type=str, default=None,
-#     )
-#     parser.add_argument(
-#         '--bfd_database_path', type=str, default=None,
-#     )
-#     parser.add_argument(
-#         '--jackhmmer_binary_path', type=str, default=str(CONDA_ENV_BINARY_PATH / 'jackhmmer'),
-#     )
-#     parser.add_argument(
-#         '--hhblits_binary_path', type=str, default=str(CONDA_ENV_BINARY_PATH / 'hhblits'),
-#     )
-#     parser.add_argument(
-#         '--hhsearch_binary_path', type=str, default=str(CONDA_ENV_BINARY_PATH / 'hhsearch'),
-#     )
-#     parser.add_argument(
-#         '--hmmsearch_binary_path', type=str, default=str(CONDA_ENV_BINARY_PATH / 'hmmsearch'),
-#     )
-#     parser.add_argument(
-#         '--hmmbuild_binary_path', type=str, default=str(CONDA_ENV_BINARY_PATH / 'hmmbuild'),
-#     )
-#     parser.add_argument(
-#         '--kalign_binary_path', type=str, default=str(CONDA_ENV_BINARY_PATH / 'kalign'),
-#     )
-#     parser.add_argument(
-#         '--max_template_date', type=str,
-#         default=date.today().strftime("%Y-%m-%d"),
-#     )
-#     parser.add_argument(
-#         '--obsolete_pdbs_path', type=str, default=None
-#     )
-#     parser.add_argument(
-#         '--release_dates_path', type=str, default=None
-#     )
