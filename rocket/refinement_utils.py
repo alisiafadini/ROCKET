@@ -74,7 +74,7 @@ def get_common_ca_ind(pdb1: PDBParser, pdb2: PDBParser):
     """
     A known bug: it can throw some residues out when the two pdbs have ideentical sequences
     for example, "DFGTT" for both, and it will only keep "GTT"
-    """
+    """  # noqa: E501
     seq1 = pdb1.sequence
     seq2 = pdb2.sequence
     alignment = skbio.alignment.StripedSmithWaterman(seq1)(
@@ -131,7 +131,7 @@ def get_common_bb_ind(pdb1, pdb2):
     common_C_ind_2 = [
         get_pattern_index(pdb2.cra_name, rf".*-{i}-.*-C$") for i in common_seq2
     ]
-    
+
     filtered_ca_ind_1 = list(filter(lambda x: x is not None, common_ca_ind_1))
     filtered_N_ind_1 = list(filter(lambda x: x is not None, common_N_ind_1))
     filtered_C_ind_1 = list(filter(lambda x: x is not None, common_C_ind_1))

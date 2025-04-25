@@ -1,7 +1,6 @@
 # Top Level API
 # Submodules
-from rocket import base, coordinates, cryo, utils, xtal
-from rocket import refinement_utils
+from rocket import base, coordinates, cryo, refinement_utils, utils, xtal
 from rocket.base import MSABiasAFv1, MSABiasAFv2, MSABiasAFv3, TemplateBiasAF
 from rocket.helper import make_processed_dict_from_template
 from rocket.mse import MSEloss, MSElossBB
