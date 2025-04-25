@@ -26,6 +26,7 @@ classifiers = [ # Optional: PyPI classifiers, see https://pypi.org/classifiers/
 dependencies = [
     "scikit-bio",
     "ruff",
+    "mypy",
     "loguru",
     "SFcalculator-torch>=0.2.2",
     "matplotlib",
@@ -125,3 +126,7 @@ skip-magic-trailing-comma = false
 
 # Auto-detect line endings (usually best)
 line-ending = "auto"
+
+[tool.mypy]
+ignore_missing_imports = true
+strict = true
