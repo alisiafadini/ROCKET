@@ -52,9 +52,9 @@ class MSEloss:
     """
 
     def __init__(self, target: PDBParser, moving: PDBParser, device: torch.device):
-        assert target.sequence == moving.sequence, (
-            "target pdb has different sequence with moving pdb!"
-        )
+        assert (
+            target.sequence == moving.sequence
+        ), "target pdb has different sequence with moving pdb!"
         # get the intersect atoms index
         self.target_pdb = target
         self.device = device
@@ -65,7 +65,7 @@ class MSEloss:
                 id_t = target.cra_name.index(name)
                 index_moving.append(i)
                 index_target.append(id_t)
-            except:
+            except ValueError:
                 pass
         assert (
             np.array(target.cra_name)[index_target]

@@ -195,15 +195,8 @@ def init_processed_dict(
 
 
 def init_llgloss(sfc, tng_file, min_resolution=None, max_resolution=None):
-    if min_resolution is None:
-        resol_min = min(sfc.dHKL)
-    else:
-        resol_min = min_resolution
-
-    if max_resolution is None:
-        resol_max = max(sfc.dHKL)
-    else:
-        resol_max = max_resolution
+    resol_min = min(sfc.dHKL) if min_resolution is None else min_resolution
+    resol_max = max(sfc.dHKL) if max_resolution is None else max_resolution
     llgloss = rocket.llg.targets.LLGloss(
         sfc, tng_file, sfc.device, resol_min, resol_max
     )

@@ -23,10 +23,13 @@ class MSABiasAFv1(AlphaFold):
         self,
         config,
         preset,
-        params_root=get_params_path(),
+        params_root=None,
         use_deepspeed_evo_attention=True,
     ):
-        super(MSABiasAFv1, self).__init__(config)
+        super().__init__(config)
+
+        if params_root is None:
+            params_root = get_params_path()
 
         # AlphaFold params
         params_path = os.path.join(params_root, f"params_{preset}.npz")
@@ -75,24 +78,25 @@ class MSABiasAFv1(AlphaFold):
     def iteration(self, feats, prevs, _recycle=True, bias=True):
         if bias:
             feats = self._bias(feats)
-        return super(MSABiasAFv1, self).iteration(feats, prevs, _recycle)
+        return super().iteration(feats, prevs, _recycle)
 
-    def forward(self, batch, prevs=[None, None, None], num_iters=1, bias=True):
+    def forward(self, batch, prevs=None, num_iters=1, bias=True):
+        if prevs is None:
+            prevs = [None, None, None]
         is_grad_enabled = torch.is_grad_enabled()
 
         # Main recycling loop
         for cycle_no in range(num_iters):
             # Select the features for the current recycling cycle
-            fetch_cur_batch = lambda t: t[..., cycle_no]
+            fetch_cur_batch = lambda t: t[..., cycle_no]  # noqa: E731, B023
             feats = tensor_tree_map(fetch_cur_batch, batch)
 
             is_final_iter = cycle_no == (num_iters - 1)
 
             with torch.set_grad_enabled(is_grad_enabled and is_final_iter):
-                if is_final_iter:
+                if is_final_iter and torch.is_autocast_enabled():
                     # Sidestep AMP bug (PyTorch issue #65766)
-                    if torch.is_autocast_enabled():
-                        torch.clear_autocast_cache()
+                    torch.clear_autocast_cache()
 
                 # Run the next iteration of the model
                 outputs, m_1_prev, z_prev, x_prev, _ = self.iteration(
@@ -146,14 +150,9 @@ class TemplateBiasAF(MSABiasAFv1):
     """
 
     def _bias(self, feats):
-        # TODO: make sure the following operations are valid, Values in feature have to be mapped into -1.0 - 1.0
-        # angle_mask = feats["template_torsion_angles_mask"] == 1
-        # feats["template_torsion_angles_sin_cos"][angle_mask] = (
-        #     feats["template_torsion_angles_sin_cos"][angle_mask].clone() + feats["template_torsion_angles_sin_cos_bias"][angle_mask]
-        # )
-        # feats["template_torsion_angles_sin_cos"][angle_mask] = (
-        #     feats["template_torsion_angles_sin_cos"][angle_mask] / torch.linalg.norm(feats["template_torsion_angles_sin_cos"][angle_mask], dim=-1, keepdim=True)
-        # )
+        # TODO: make sure the following operations are valid,
+        # Values in feature have to be mapped into -1.0 - 1.0
+
         feats["template_torsion_angles_sin_cos"] = (
             feats["template_torsion_angles_sin_cos"].clone()
             + feats["template_torsion_angles_sin_cos_bias"]

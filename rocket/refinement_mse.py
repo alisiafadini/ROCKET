@@ -60,14 +60,6 @@ def run_refinement_mse(*, config: RocketMSERefinmentConfig) -> str:
     # Device
     device = f"cuda:{config.cuda_device}"
 
-    # Using LBFGS or Adam in RBR
-    if config.rbr_opt_algorithm == "lbfgs":
-        RBR_LBFGS = True
-    elif config.rbr_opt_algorithm == "adam":
-        RBR_LBFGS = False
-    else:
-        raise ValueError("rbr_opt only supports lbfgs or adam")
-
     # Configure input paths
     input_pdb = f"{config.path}/{config.file_root}/{config.file_root}-pred-aligned.pdb"
 
@@ -84,10 +76,10 @@ def run_refinement_mse(*, config: RocketMSERefinmentConfig) -> str:
         os.makedirs(output_directory_path, exist_ok=True)
     except FileExistsError:
         print(
-            f"Warning: Directory '{output_directory_path}' already exists. Overwriting..."
+            f"Warning: Directory '{output_directory_path}' already exists. Overwriting."
         )
     print(
-        f"System: {config.file_root}, refinment run ID: {refinement_run_uuid!s}, Note: {config.note}",
+        f"System: {config.file_root}, run ID: {refinement_run_uuid!s}, Note: {config.note}",  # noqa: E501
         flush=True,
     )
     if not config.verbose:
@@ -104,7 +96,6 @@ def run_refinement_mse(*, config: RocketMSERefinmentConfig) -> str:
     cra_calphas_list, calphas_mask = rk_coordinates.select_CA_from_craname(
         target_pdb.cra_name
     )
-    residue_numbers = [int(name.split("-")[1]) for name in cra_calphas_list]
 
     # Use initial pos B factor instead of best pos B factor for weighted L2
     init_pos_bfactor = torch.tensor(
@@ -254,7 +245,8 @@ def run_refinement_mse(*, config: RocketMSERefinmentConfig) -> str:
             time_by_epoch.append(time.time() - start_time)
             memory_by_epoch.append(torch.cuda.max_memory_allocated() / 1024**3)
 
-            # Save the absolute difference in mean contribution from each residue channel from previous iteration
+            # Save the absolute difference in mean contribution from each residue
+            # channel from previous iteration
             if config.bias_version == 4:
                 features_at_step_end = (
                     device_processed_features["template_torsion_angles_sin_cos"][..., 0]
