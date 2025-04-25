@@ -43,10 +43,11 @@ def make_processed_dict_from_template(
 ):
     """
     template_pdb           :  path to pdb file used as template
-    config_dict            :  the name of the model to get the parameters from. Options: model_[1-5]
+    config_dict            :  the name of the model to get the parameters from.
+                              Options: model_[1-5]
     msa_dict               :  dictionary containing precomputed msa properties in numpy
     device                 :  "cpu" or "cuda:i"
-    mask_sidechains_add_cb :  mask out sidechain atoms except for C-Beta, and add C-Beta to glycines
+    mask_sidechains_add_cb :  mask out sidechain atoms except for C-Beta, add gly C-Beta
     mask_sidechains        :  mask out sidechain atoms except for C-Beta
     deterministic          :  make all data processing deterministic (no masking, etc.)
     """
@@ -83,15 +84,19 @@ def make_processed_dict_from_template(
         ]
         projected_cb_set = set(projected_cb)
         gly_idx = [i for i, a in enumerate(target_seq) if a == "G"]
-        assert all([
+        assert all(
             k in projected_cb_set
             for k in gly_idx
             if k in template_idx_set and k in backbone_idx_set
-        ])
-        cbs = np.array([
-            extend(c, n, ca, 1.522, 1.927, -2.143)
-            for c, n, ca in zip(pos[0, :, 2], pos[0, :, 0], pos[0, :, 1], strict=False)
-        ])
+        )
+        cbs = np.array(
+            [
+                extend(c, n, ca, 1.522, 1.927, -2.143)
+                for c, n, ca in zip(
+                    pos[0, :, 2], pos[0, :, 0], pos[0, :, 1], strict=False
+                )
+            ]
+        )
         pos[0, projected_cb, 3] = cbs[projected_cb]
         atom_mask[0, template_idxs, :5] = decoy_prot.atom_mask[:, :5]
         atom_mask[0, projected_cb, 3] = 1
@@ -150,7 +155,7 @@ Read in a PDB file from a path
 
 def pdb_to_string(pdb_file):
     lines = []
-    for line in open(pdb_file):
+    for line in open(pdb_file):  # noqa: SIM115
         if line[:6] == "HETATM" and line[17:20] == "MSE":
             line = "ATOM  " + line[6:17] + "MET" + line[20:]
         if line[:4] == "ATOM":
@@ -166,7 +171,9 @@ output: 4th coord
 
 
 def extend(a, b, c, L, A, D):
-    N = lambda x: x / np.sqrt(np.square(x).sum(-1, keepdims=True) + 1e-8)
+    def N(x):
+        return x / np.sqrt(np.square(x).sum(-1, keepdims=True) + 1e-08)
+
     bc = N(b - c)
     n = N(np.cross(b - a, bc))
     m = [bc, np.cross(n, bc), n]

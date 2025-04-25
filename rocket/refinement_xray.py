@@ -59,20 +59,17 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
         os.makedirs(output_directory_path, exist_ok=True)
     except FileExistsError:
         logger.info(
-            f"Warning: Directory '{output_directory_path}' already exists. Overwriting..."
+            f"Warning: Directory '{output_directory_path}' already exists. Overwriting."
         )
     logger.info(
-        f"System: {config.file_id}, refinment run ID: {refinement_run_uuid!s}, Note: {config.note}",
+        f"System: {config.file_id}, run ID: {refinement_run_uuid!s}, Note: {config.note}",  # noqa: E501
         flush=True,
     )
     if not config.verbose:
         warnings.filterwarnings("ignore")
 
     # If reference pdb exsits
-    if os.path.exists(true_pdb):
-        REFPDB = True
-    else:
-        REFPDB = False
+    REFPDB = bool(os.path.exists(true_pdb))
 
     # If there are additional chain in the system
     # TODO: make sure the following files exist in the new pattern
@@ -84,8 +81,8 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
             f"{config.path}/ROCKET_inputs/{config.file_id}_added_chain_atoms_asu.pt"
         ).to(device=device)
 
-        phitrue_path = f"{config.path}/ROCKET_inputs/{config.file_id}_allchains-phitrue-solvent{config.solvent}.npy"
-        Etrue_path = f"{config.path}/ROCKET_inputs/{config.file_id}_allchains-Etrue-solvent{config.solvent}.npy"
+        phitrue_path = f"{config.path}/ROCKET_inputs/{config.file_id}_allchains-phitrue-solvent{config.solvent}.npy"  # noqa: E501
+        Etrue_path = f"{config.path}/ROCKET_inputs/{config.file_id}_allchains-Etrue-solvent{config.solvent}.npy"  # noqa: E501
 
         if os.path.exists(phitrue_path) and os.path.exists(Etrue_path):
             SIGMA_TRUE = True
@@ -97,8 +94,8 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
         constant_fp_added_HKL = None
         constant_fp_added_asu = None
 
-        phitrue_path = f"{config.path}/ROCKET_inputs/{config.file_id}-phitrue-solvent{config.solvent}.npy"
-        Etrue_path = f"{config.path}/ROCKET_inputs/{config.file_id}-Etrue-solvent{config.solvent}.npy"
+        phitrue_path = f"{config.path}/ROCKET_inputs/{config.file_id}-phitrue-solvent{config.solvent}.npy"  # noqa: E501
+        Etrue_path = f"{config.path}/ROCKET_inputs/{config.file_id}-Etrue-solvent{config.solvent}.npy"  # noqa: E501
 
         if os.path.exists(phitrue_path) and os.path.exists(Etrue_path):
             SIGMA_TRUE = True
@@ -224,18 +221,20 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
 
         # MH edits @ Oct 19, 2024, support MSA subsampling at the beginning
         if config.msa_subratio is not None:
-            assert config.msa_subratio > 0.0 and config.msa_subratio <= 1.0, (
-                "msa_subratio should be None or between 0.0 and 1.0!"
-            )
+            assert (
+                config.msa_subratio > 0.0 and config.msa_subratio <= 1.0
+            ), "msa_subratio should be None or between 0.0 and 1.0!"
             # Do subsampling of msa, keep the first sequence
             if config.sub_msa_path is None:
                 idx = np.arange(feature_dict["msa"].shape[0] - 1) + 1
-                sub_idx = np.concatenate((
-                    np.array([0]),
-                    np.random.choice(
-                        idx, size=int(config.msa_subratio * len(idx)), replace=False
-                    ),
-                ))
+                sub_idx = np.concatenate(
+                    (
+                        np.array([0]),
+                        np.random.choice(
+                            idx, size=int(config.msa_subratio * len(idx)), replace=False
+                        ),
+                    )
+                )
                 feature_dict["msa"] = feature_dict["msa"][sub_idx]
                 feature_dict["deletion_matrix_int"] = feature_dict[
                     "deletion_matrix_int"
@@ -273,12 +272,14 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
                 :, :, 25:48
             ].clone()
             submsa_profile = processed_feature_dict["msa_feat"][:, :, 25:48].clone()
-            processed_feature_dict["msa_feat"][:, :, 25:48] = (
+            processed_feature_dict["msa_feat"][
+                :, :, 25:48
+            ] = (
                 fullmsa_profile.clone()
             )  # Use full msa's profile as basis for linear space -- higher rank (?)
             recombination_bias = (
                 submsa_profile[..., 0] - fullmsa_profile[..., 0]
-            )  # Use the difference as the initial bias, so we could start from the desired profile
+            )  # Use the difference as the initial bias, to start from a desired profile
         elif config.chimera_profile:
             fullmsa_dir = os.path.join(config.path, "alignments")
             fullmsa_feature_dict = rkrf_utils.generate_feature_dict(
@@ -347,7 +348,7 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
             mask_sidechains=True,
             max_recycling_iters=config.init_recycling,
         )
-        for key in device_processed_features_template.keys():
+        for key in device_processed_features_template:
             if key.startswith("template_"):
                 device_processed_features[key] = device_processed_features_template[key]
 
@@ -371,8 +372,6 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
         # List initialization for saving values
         mse_losses_by_epoch = []
         rbr_loss_by_epoch = []
-        sigmas_by_epoch = []
-        true_sigmas_by_epoch = []
         llg_losses = []
         rfree_by_epoch = []
         rwork_by_epoch = []
@@ -421,9 +420,6 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
             device_processed_features[feature_key] = (
                 features_at_it_start.detach().clone()
             )
-            # working_batch = copy.deepcopy(device_processed_features)
-            # for bias in bias_names:
-            #     working_batch[bias] = device_processed_features[bias].clone()
 
             # AF pass
             if iteration == 0:
@@ -487,7 +483,6 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
                     constant_fp_added_HKL=constant_fp_added_HKL,
                     constant_fp_added_asu=constant_fp_added_asu,
                 )
-                sigmas = llgloss.sigmaAs
             else:
                 if SIGMA_TRUE:
                     llgloss, llgloss_rbr = rkrf_utils.sigmaA_from_true(
@@ -614,7 +609,7 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
                 if early_stopper.early_stop(loss.item()):
                     break
 
-            # Do smooth in last several iterations of phase 1 instead of beginning of phase 2
+            # Smooth last several iterations of phase 1 instead of beginning of phase 2
             if ("phase1" in config.note) and (config.smooth_stage_epochs is not None):
                 if iteration > (config.iterations - smooth_stage_epochs):
                     lr_a = lr_a_initial * (decay_rate_stage1_add**iteration)
@@ -631,7 +626,8 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
             time_by_epoch.append(time.time() - start_time)
             memory_by_epoch.append(torch.cuda.max_memory_allocated() / 1024**3)
 
-            # Save the absolute difference in mean contribution from each residue channel from previous iteration
+            # Save the absolute difference in mean contribution
+            # from each residue channel from previous iteration
             if config.bias_version == 4:
                 features_at_step_end = (
                     device_processed_features["template_torsion_angles_sin_cos"][..., 0]

@@ -1,6 +1,7 @@
 """
 This module contains the configuration classes for the ROCKET refinement pipeline.
-The configuration is stored in a human-readable YAML file and can be loaded into a RocketRefinmentConfig object.
+The configuration is stored in a human-readable YAML file and
+can be loaded into a RocketRefinmentConfig object.
 """
 
 import os
@@ -95,15 +96,21 @@ class DataConfig(BaseModel):
 
     @field_validator("datamode", mode="before")
     @classmethod
-    def validate_datamode(cls, v):
+    def validate_datamode(cls, v: str) -> "DATAMODE":
+        """
+        Validates and converts the input to a DATAMODE enum member.
+
+        Raises:
+            ValueError: If `v` is not a valid DATAMODE value.
+        """
         if isinstance(v, str):
             try:
                 return DATAMODE(v)
-            except ValueError:
+            except ValueError as err:
                 valid_values = [e.value for e in DATAMODE]
                 raise ValueError(
                     f"Invalid datamode: {v}. Must be one of: {valid_values}"
-                )
+                ) from err
         return v
 
     model_config = {"use_enum_values": True}
@@ -146,7 +153,7 @@ class RocketRefinmentConfig(BaseModel):
         "domain_segs": "algorithm.domain_segs",
         # Optimization
         "additive_learning_rate": "algorithm.optimization.additive_learning_rate",
-        "multiplicative_learning_rate": "algorithm.optimization.multiplicative_learning_rate",
+        "multiplicative_learning_rate": "algorithm.optimization.multiplicative_learning_rate",  # noqa: E501
         "weight_decay": "algorithm.optimization.weight_decay",
         "batch_sub_ratio": "algorithm.optimization.batch_sub_ratio",
         "number_of_batches": "algorithm.optimization.number_of_batches",

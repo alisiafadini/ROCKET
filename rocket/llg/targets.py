@@ -29,11 +29,13 @@ class LLGloss(torch.nn.Module):
     loss = -llgloss(xyz_orth, bin_labels=[1,2,3], num_batch=10, sub_ratio=0.3)
 
     resol_min, resol_max: None | float
-        resolution cutoff for the used miller index. Will use resol_min <= dHKL <= resol_max
+        resolution cutoff for used miller index. Will use resol_min <= dHKL <= resol_max
 
     TODO:
-    Currently the initialization needs inputs like Eobs, Eps, Centric, Dobs, Feff, Bin_labels. We do so by loading the tng_data.
-    Later we should be able to calculate everything from SFcalculator, all necesary information is ready there.
+    Currently the initialization needs Eobs, Eps, Centric, Dobs, Feff, Bin_labels.
+    We do so by loading the tng_data.
+    Later we should be able to calculate everything from SFcalculator,
+    all necesary information is ready there.
 
     """
 
@@ -191,7 +193,7 @@ class LLGloss(torch.nn.Module):
         elif subset == "test":
             subset_boolean = (self.sfc.free_flag) & (~self.sfc.Outlier)
 
-        for n in range(n_steps):
+        for _n in range(n_steps):
             lps = []
             lpps = []
             ls = []
@@ -206,7 +208,7 @@ class LLGloss(torch.nn.Module):
                 Centric_i = self.Centric[subset_boolean][index_i]
                 Dobs_i = self.Dobs[subset_boolean][index_i]
                 sigmaA_i = self.sigmaAs[int(i)].detach().clone()
-                l, lp, lpp = llg_utils.llgItot_with_derivatives2sigmaA(
+                l, lp, lpp = llg_utils.llgItot_with_derivatives2sigmaA(  # noqa: E741
                     sigmaA=sigmaA_i,
                     dobs=Dobs_i,
                     Eeff=Eob_i,
@@ -307,7 +309,8 @@ class LLGloss(torch.nn.Module):
                 Orthogonal coordinates of proteins, coming from AF2 model, send to SFC
 
             bin_labels: None or List[int]
-                Labels of bins used in the loss calculation. If None, will use the whole miller indices.
+                Labels of bins used in the loss calculation.
+                If None, will use the whole miller indices.
                 Serve as a proxy for resolution selection
 
             num_batch: int
@@ -341,7 +344,7 @@ class LLGloss(torch.nn.Module):
             Dobs_i = self.Dobs[self.working_set][index_i]
 
             sigmaA_i = self.sigmaAs[int(i)]
-            for j in range(num_batch):
+            for _j in range(num_batch):
                 sub_boolean_mask = np.random.rand(len(Eob_i)) < sub_ratio
                 llg_ij = llg_utils.llgItot_calculate(
                     sigmaA_i,
@@ -350,53 +353,6 @@ class LLGloss(torch.nn.Module):
                     Ecalc_i[sub_boolean_mask],
                     Centric_i[sub_boolean_mask],
                 ).sum()
-                # print("Batch {}".format(j), llg_ij.item())
                 llg = llg + llg_ij
 
         return llg
-
-
-"""
-    def refine_sigmaA_newton(
-        self,
-        Ecalc,
-        n_steps=2,
-        initialize=True,
-        method="autodiff",
-        subset="working",
-        smooth_constraint=None,
-    ):
-
-        if initialize:
-            self.init_sigmaAs(Ecalc, subset=subset, requires_grad=False)
-            print(
-                "### sigmas initialized are",
-                [sigmaA.item() for sigmaA in self.sigmaAs],
-            )
-
-        if subset == "working":
-            subset_boolean = self.working_set
-        elif subset == "free":
-            subset_boolean = self.free_set
-
-        for i, label in enumerate(self.unique_bins):
-            index_i = self.bin_labels[subset_boolean] == label
-            Ecalc_i = Ecalc[subset_boolean][index_i]
-            Eob_i = self.Eobs[subset_boolean][index_i]
-            Centric_i = self.Centric[subset_boolean][index_i]
-            Dobs_i = self.Dobs[subset_boolean][index_i]
-            sigmaA_i = self.sigmaAs[i].detach().clone()
-            for _ in range(n_steps):
-                l, lp, lpp = llg_utils.llgItot_with_derivatives2sigmaA(
-                    sigmaA=sigmaA_i,
-                    dobs=Dobs_i,
-                    Eeff=Eob_i,
-                    Ec=Ecalc_i,
-                    centric_tensor=Centric_i,
-                    method=method,
-                )
-                ds = lp / lpp
-                sigmaA_i = torch.clamp(sigmaA_i - ds, 0.015, 0.99)
-            self.sigmaAs[i] = sigmaA_i.detach().clone()
-
-"""

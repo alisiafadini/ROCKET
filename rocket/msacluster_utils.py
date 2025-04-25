@@ -17,7 +17,7 @@ def lprint(string, f):
 
 def load_fasta(path):
     """
-    Extend to handle case where path is a folder with multiple a3ms from different databases
+    Handle case where path is a folder with multiple a3ms from different databases
     """
     seqs, IDs = [], []
     seen_sequences = set()
@@ -29,7 +29,7 @@ def load_fasta(path):
             file_path = os.path.join(path, file)
             with open(file_path) as handle:
                 for record in SeqIO.parse(handle, "fasta"):
-                    seq = "".join([x for x in record.seq])
+                    seq = "".join(list(record.seq))
                     if seq in seen_sequences:
                         continue
                     seen_sequences.add(seq)
@@ -41,7 +41,7 @@ def load_fasta(path):
             raise KeyError("Input alignment should be a3m or fasta format")
         with open(path) as handle:
             for record in SeqIO.parse(handle, "fasta"):
-                seq = "".join([x for x in record.seq])
+                seq = "".join(list(record.seq))
                 if seq in seen_sequences:
                     continue
                 seen_sequences.add(seq)
@@ -53,7 +53,7 @@ def load_fasta(path):
 def write_fasta(names, seqs, outfile="tmp.fasta"):
     with open(outfile, "w") as f:
         for nm, seq in list(zip(names, seqs, strict=False)):
-            f.write(">%s\n%s\n" % (nm, seq))
+            f.write(f">{nm}\n{seq}\n")
 
 
 def encode_seqs(seqs, max_len=108, alphabet=None):
