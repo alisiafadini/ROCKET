@@ -9,7 +9,7 @@ import torch
 import rocket
 from rocket import coordinates as rk_coordinates
 from rocket import utils as rk_utils
-from rocket.llg import utils as llg_utils
+from rocket.xtal import utils as llg_utils
 
 
 def generate_feature_dict(
@@ -197,7 +197,7 @@ def init_processed_dict(
 def init_llgloss(sfc, tng_file, min_resolution=None, max_resolution=None):
     resol_min = min(sfc.dHKL) if min_resolution is None else min_resolution
     resol_max = max(sfc.dHKL) if max_resolution is None else max_resolution
-    llgloss = rocket.llg.targets.LLGloss(
+    llgloss = rocket.xtal.targets.LLGloss(
         sfc, tng_file, sfc.device, resol_min, resol_max
     )
     return llgloss

@@ -18,7 +18,7 @@ import rocket
 from rocket import coordinates as rk_coordinates
 from rocket import refinement_utils as rkrf_utils
 from rocket import utils as rk_utils
-from rocket.llg import structurefactors as llg_sf
+from rocket.xtal import structurefactors as llg_sf
 
 PRESET = "model_1_ptm"
 
