@@ -41,7 +41,7 @@ def internal_mtz_labels(mtz_path, label_string):
     labels = [label.strip() for label in label_string.split(",")]
     if len(labels) != 2:
         raise ValueError(
-            "xray_data_label must contain exactly two labels separated by a comma (e.g., 'F,SIGF')."
+            "xray_data_label must contain exactly two labels separated by a comma (e.g., 'F,SIGF')."  # noqa: E501
         )
 
     ds = rs.read_mtz(mtz_path)
@@ -118,7 +118,8 @@ def run_openfold(
 
 
 def generate_seg_id_file(file_id, output_dir):
-    """Generates seg_id.txt using chain changes and >20-residue continuous stretches. Skips first seg_id, outputs None if only one domain."""
+    """Generates seg_id.txt using chain changes and >20-residue continuous stretches.
+    Skips first seg_id, outputs None if only one domain."""
     seg_id_path = os.path.join(output_dir, "ROCKET_inputs", "seg_id.txt")
     aligned_pdb_path = os.path.join(output_dir, "ROCKET_inputs", f"{file_id}-MRed.pdb")
 
@@ -359,7 +360,7 @@ def prepare_pred_aligned(output_dir, file_id):
         "phenix.superpose_pdbs",
         f"{mr_model_path}",
         f"{pred_model_path}",
-        f"output.file_name={os.path.join(output_dir, 'ROCKET_inputs', f'{file_id}-pred-aligned_unprocessed.pdb')}",
+        f"output.file_name={os.path.join(output_dir, 'ROCKET_inputs', f'{file_id}-pred-aligned_unprocessed.pdb')}",  # noqa: E501
     ]
     run_command(superpose_command, env_source=phenix_source)
     aligned_model_path = os.path.join(
@@ -412,7 +413,8 @@ def parse_args():
         "--use_deepspeed_evoformer_attention",
         action="store_true",
         default=False,
-        help="Whether to use the DeepSpeed evoformer attention layer. Must have deepspeed installed in the environment.",
+        help="Whether to use the DeepSpeed evoformer attention layer. "
+        "Must have deepspeed installed in the environment.",
     )
     parser.add_argument("--jax_params_path", default=None)
     parser.add_argument("--predocked_model", default=None)
@@ -433,13 +435,13 @@ def parse_args():
         ]
         if missing:
             parser.error(
-                f"The following arguments are required for 'cryoem' method: {', '.join(missing)}"
+                f"The following arguments are required for 'cryoem' method: {', '.join(missing)}"  # noqa: E501
             )
 
         # Require full_composition only if predocked_model is not provided
         if not args.predocked_model and args.full_composition is None:
             parser.error(
-                "--full_composition is required for cryoem when --predocked_model is not provided."
+                "--full_composition is required for cryoem when --predocked_model is not provided."  # noqa: E501
             )
 
     return args

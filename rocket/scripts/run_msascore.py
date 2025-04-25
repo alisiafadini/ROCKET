@@ -37,7 +37,7 @@ def main():
     p.add_argument(
         "-o",
         action="store",
-        help="name of output directory to write prediction and scoring to, path will prepend",
+        help="name of output directory to write prediction and scoring to, path will prepend",  # noqa: E501
     )
     p.add_argument(
         "--domain_segs",
@@ -305,7 +305,7 @@ def main():
 
         # # Edit by MH @ Nov 15, 2024, recombination of full msa and subset msa
         # recomb_feature_dict = fullmsa_processed_feature_dict.copy()
-        # recomb_feature_dict["msa_feat"][:, :, 25:48] =  processed_feature_dict["msa_feat"][:, :, 25:48]
+        # recomb_feature_dict["msa_feat"][:, :, 25:48] =  processed_feature_dict["msa_feat"][:, :, 25:48]  # noqa: E501
         # device_processed_features = rk_utils.move_tensors_to_device(
         #     recomb_feature_dict, device=device
         # )

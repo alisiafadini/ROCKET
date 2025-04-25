@@ -23,10 +23,10 @@ def int_or_none(value):
         return None
     try:
         return int(value)
-    except ValueError:
+    except ValueError as err:
         raise argparse.ArgumentTypeError(
             f"Invalid value: {value}. Must be an integer or 'None'."
-        )
+        ) from err
 
 
 def float_or_none(value):
@@ -34,10 +34,10 @@ def float_or_none(value):
         return None
     try:
         return float(value)
-    except ValueError:
+    except ValueError as err:
         raise argparse.ArgumentTypeError(
             f"Invalid value: {value}. Must be an float or 'None'."
-        )
+        ) from err
 
 
 def parse_arguments():
@@ -141,17 +141,14 @@ def run_plddt_optim(
     device = f"cuda:{cuda_device}"
     input_pdb = f"{working_path}/{file_root}/{file_root}-pred-aligned.pdb"
 
-    if uuid_hex is None:
-        run_uuid = uuid.uuid4().hex
-    else:
-        run_uuid = uuid_hex
+    run_uuid = uuid.uuid4().hex if uuid_hex is None else uuid_hex
 
     output_directory_path = f"{working_path}/{file_root}/outputs/{run_uuid}/{note}"
     try:
         os.makedirs(output_directory_path, exist_ok=True)
     except FileExistsError:
         print(
-            f"Warning: Directory '{output_directory_path}' already exists. Overwriting..."
+            f"Warning: Directory '{output_directory_path}' already exists. Overwriting..."  # noqa: E501
         )
     print(
         f"System: {file_root}, refinment run ID: {run_uuid!s}, Note: {note}",

@@ -1,9 +1,11 @@
 """
-Cluster sequences in a MSA using DBSCAN algorithm and write .a3m file for each cluster. Assumes first sequence in fasta is the query sequence.
+Cluster sequences in a MSA using DBSCAN algorithm and write .a3m file for each cluster.
+Assumes first sequence in fasta is the query sequence.
 
 rk.msacluster v1 -i alignments/ -o msaclusters --run_TSNE
 
-This script is modified from AF_cluster repo: https://github.com/HWaymentSteele/AF_Cluster/blob/main/scripts/ClusterMSA.py
+This script is modified from AF_cluster repo:
+https://github.com/HWaymentSteele/AF_Cluster/blob/main/scripts/ClusterMSA.py
 """
 
 import argparse
@@ -29,11 +31,11 @@ def main():
         description="""
     Cluster sequences in a MSA using DBSCAN algorithm and write .a3m file for each cluster.
     Assumes first sequence in fasta is the query sequence.
-    
+
     H Wayment-Steele, 2022
 
     Modified by Minhuan Li for ROCKET, 2024
-    """
+    """  # noqa: E501
     )
 
     p.add_argument(
@@ -72,7 +74,7 @@ def main():
     p.add_argument(
         "--resample",
         action="store_true",
-        help="If included, will resample the original MSA with replacement before writing.",
+        help="If included, will resample the original MSA with replacement before writing.",  # noqa: E501
     )
     p.add_argument(
         "--gap_cutoff",
@@ -103,18 +105,18 @@ def main():
         "--min_samples",
         action="store",
         default=10,
-        help="Default min_samples for DBSCAN (Default 3, recommended no lower than that).",
+        help="Default min_samples for DBSCAN (Default 3, recommended no lower than that).",  # noqa: E501
     )
 
     p.add_argument(
         "--run_PCA",
         action="store_true",
-        help="Run PCA on one-hot embedding of sequences and store in output_cluster_metadata.tsv",
+        help="Run PCA on one-hot embedding of sequences and store in output_cluster_metadata.tsv",  # noqa: E501
     )
     p.add_argument(
         "--run_TSNE",
         action="store_true",
-        help="Run TSNE on one-hot embedding of sequences and store in output_cluster_metadata.tsv",
+        help="Run TSNE on one-hot embedding of sequences and store in output_cluster_metadata.tsv",  # noqa: E501
     )
 
     args = p.parse_args()
@@ -126,7 +128,7 @@ def main():
         from sklearn.manifold import TSNE
 
     os.makedirs(args.o, exist_ok=True)
-    f = open("msacluster_%s.log" % args.keyword, "w")
+    f = open(f"msacluster_{args.keyword}.log", "w")  # noqa: SIM115
     IDs, seqs = load_fasta(args.i)
 
     seqs = [
@@ -142,7 +144,7 @@ def main():
         df = df.sample(frac=1)
 
     L = len(df.sequence.iloc[0])
-    N = len(df)
+    N = len(df)  # noqa: F841
 
     df["frac_gaps"] = [x.count("-") / L for x in df["sequence"]]
 
@@ -152,10 +154,10 @@ def main():
     new_len = len(df)
     lprint(args.keyword, f)
     lprint(
-        "%d seqs removed for containing more than %d%% gaps, %d remaining"
-        % (former_len - new_len, int(args.gap_cutoff * 100), new_len),
+        f"{former_len - new_len} seqs removed for containing more than {int(args.gap_cutoff * 100)}% gaps, {new_len} remaining",  # noqa: E501
         f,
     )
+
     ohe_seqs = encode_seqs(df.sequence.tolist(), max_len=L)
 
     n_clusters = []
@@ -171,7 +173,7 @@ def main():
             n_not_clustered = len(
                 clustering.labels_[np.where(clustering.labels_ == -1)]
             )
-            lprint("%.2f\t%d\t%d" % (eps, n_clust, n_not_clustered), f)
+            lprint("%.2f\t%d\t%d" % (eps, n_clust, n_not_clustered), f)  # noqa: UP031
             n_clusters.append(n_clust)
             if eps > 10 and n_clust == 1:
                 break
@@ -184,9 +186,9 @@ def main():
 
     clustering = DBSCAN(eps=eps_to_select, min_samples=args.min_samples).fit(ohe_seqs)
 
-    lprint("Selected eps=%.2f" % eps_to_select, f)
+    lprint("Selected eps={:.2f}".format(eps_to_select), f)  # noqa: UP032
 
-    lprint("%d total seqs" % len(df), f)
+    lprint("%d total seqs" % len(df), f)  # noqa: UP031
 
     df["dbscan_label"] = clustering.labels_
 
@@ -194,7 +196,7 @@ def main():
     unclustered = len(df.loc[df.dbscan_label == -1])
 
     lprint(
-        "%d clusters, %d of %d not clustered (%.2f)"
+        "%d clusters, %d of %d not clustered (%.2f)"  # noqa: UP031
         % (len(clusters), unclustered, len(df), unclustered / len(df)),
         f,
     )
@@ -203,13 +205,13 @@ def main():
         1 - levenshtein(x, query_["sequence"].iloc[0]) / L
         for x in df.loc[df.dbscan_label == -1]["sequence"].tolist()
     ])
-    lprint("avg identity to query of unclustered: %.2f" % avg_dist_to_query, f)
+    lprint("avg identity to query of unclustered: %.2f" % avg_dist_to_query, f)  # noqa: UP031
 
     avg_dist_to_query = np.mean([
         1 - levenshtein(x, query_["sequence"].iloc[0]) / L
         for x in df.loc[df.dbscan_label != -1]["sequence"].tolist()
     ])
-    lprint("avg identity to query of clustered: %.2f" % avg_dist_to_query, f)
+    lprint("avg identity to query of clustered: %.2f" % avg_dist_to_query, f)  # noqa: UP031
 
     cluster_metadata = []
     for clust in clusters:
@@ -226,7 +228,7 @@ def main():
         ])
 
         if args.verbose:
-            print("Cluster %d consensus seq, %d seqs:" % (clust, len(tmp)))
+            print("Cluster %d consensus seq, %d seqs:" % (clust, len(tmp)))  # noqa: UP031
             print(cs)
             print("#########################################")
             for _, row in tmp.iterrows():
@@ -238,15 +240,15 @@ def main():
         cluster_metadata.append({
             "cluster_ind": clust,
             "consensusSeq": cs,
-            "avg_lev_dist": "%.3f" % avg_dist_to_cs,
-            "avg_dist_to_query": "%.3f" % avg_dist_to_query,
+            "avg_lev_dist": "%.3f" % avg_dist_to_cs,  # noqa: UP031
+            "avg_dist_to_query": "%.3f" % avg_dist_to_query,  # noqa: UP031
             "size": len(tmp),
         })
 
         write_fasta(
             tmp.SequenceName.tolist(),
             tmp.sequence.tolist(),
-            outfile=args.o + "/" + args.keyword + "_" + "%03d" % clust + ".a3m",
+            outfile=args.o + "/" + args.keyword + "_" + "%03d" % clust + ".a3m",  # noqa: UP031
         )
 
     print(f"writing {args.n_controls} size-10 uniformly sampled clusters", flush=True)
@@ -256,7 +258,7 @@ def main():
         write_fasta(
             tmp.SequenceName.tolist(),
             tmp.sequence.tolist(),
-            outfile=args.o + "/" + "U10-" + args.keyword + "_" + "%03d" % i + ".a3m",
+            outfile=args.o + "/" + "U10-" + args.keyword + "_" + "%03d" % i + ".a3m",  # noqa: UP031
         )
     if len(df) > 100:
         print(
@@ -273,7 +275,7 @@ def main():
                 + "U100-"
                 + args.keyword
                 + "_"
-                + "%03d" % i
+                + "%03d" % i  # noqa: UP031
                 + ".a3m",
             )
 
@@ -318,13 +320,13 @@ def main():
         lprint("Saved TSNE plot to " + args.o + "/" + args.keyword + "_TSNE.pdf", f)
 
     outfile = args.o + "/" + args.keyword + "_clustering_assignments.tsv"
-    lprint("wrote clustering data to %s" % outfile, f)
+    lprint("wrote clustering data to %s" % outfile, f)  # noqa: UP031
     df.to_csv(outfile, index=False, sep="\t")
 
     metad_outfile = args.o + "/" + args.keyword + "_cluster_metadata.tsv"
-    lprint("wrote cluster metadata to %s" % metad_outfile, f)
+    lprint("wrote cluster metadata to %s" % metad_outfile, f)  # noqa: UP031
     metad_df = pd.DataFrame.from_records(cluster_metadata)
     metad_df.to_csv(metad_outfile, index=False, sep="\t")
 
-    print("Saved this output to msacluster_%s.log" % args.keyword)
+    print("Saved this output to msacluster_%s.log" % args.keyword)  # noqa: UP031
     f.close()

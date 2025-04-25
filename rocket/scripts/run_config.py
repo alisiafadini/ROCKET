@@ -3,7 +3,7 @@ import os
 
 from loguru import logger
 
-from ..refinement_config import DATAMODE, RUNMODE, gen_config
+from ..refinement_config import DATAMODE, RUNMODE, RocketRefinmentConfig, gen_config
 
 
 def parse_args():
@@ -42,7 +42,9 @@ def parse_args():
         if run_mode == RUNMODE.PHASE2 and not os.path.exists(args.pre_phase1_config):
             parser.error(f"Pre-phase1 config file not found: {args.pre_phase1_config}")
         # Load the config file
-        # pre_phase1_config_obj = RocketRefinmentConfig.from_yaml_file(args.pre_phase1_config)
+        pre_phase1_config_obj = RocketRefinmentConfig.from_yaml_file(
+            args.pre_phase1_config
+        )  # noqa: E501
     elif run_mode == RUNMODE.PHASE2:
         parser.error("--pre-phase1-config is required when mode is phase2")
 
@@ -69,18 +71,18 @@ def cli_runconfig():
     if args.get("mode") == RUNMODE.BOTH:
         phase1_config, phase2_config = result
         logger.info(
-            f"Generated Phase 1 config at: {os.path.join(args.get('working_dir'), 'ROCKET_config_phase1.yaml')}"
+            f"Generated Phase 1 config at: {os.path.join(args.get('working_dir'), 'ROCKET_config_phase1.yaml')}"  # noqa: E501
         )
         logger.info(
-            f"Generated Phase 2 config at: {os.path.join(args.get('working_dir'), 'ROCKET_config_phase2.yaml')}"
+            f"Generated Phase 2 config at: {os.path.join(args.get('working_dir'), 'ROCKET_config_phase2.yaml')}"  # noqa: E501
         )
     elif args.get("mode") == RUNMODE.PHASE1:
         logger.info(
-            f"Generated Phase 1 config at: {os.path.join(args.get('working_dir'), 'ROCKET_config_phase1.yaml')}"
+            f"Generated Phase 1 config at: {os.path.join(args.get('working_dir'), 'ROCKET_config_phase1.yaml')}"  # noqa: E501
         )
     else:  # PHASE2
         logger.info(
-            f"Generated Phase 2 config at: {os.path.join(result.working_dir, 'ROCKET_config_phase2.yaml')}"
+            f"Generated Phase 2 config at: {os.path.join(result.working_dir, 'ROCKET_config_phase2.yaml')}"  # noqa: E501
         )
 
 

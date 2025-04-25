@@ -1,5 +1,6 @@
 # Modified by Minhuan Li, for ROCKET, 2025
-# Remove the requirement template, remove single seq mode, read resources from the system environment variables
+# Remove the requirement template, remove single seq mode, read resources from
+# the system environment variables
 
 # Copyright 2021 AlQuraishi Laboratory
 # Copyright 2021 DeepMind Technologies Limited
@@ -25,22 +26,7 @@ import random
 import time
 
 import numpy as np
-
-logging.basicConfig()
-logger = logging.getLogger(__file__)
-logger.setLevel(level=logging.INFO)
-
 import torch
-
-torch_versions = torch.__version__.split(".")
-torch_major_version = int(torch_versions[0])
-torch_minor_version = int(torch_versions[1])
-if torch_major_version > 1 or (torch_major_version == 1 and torch_minor_version >= 12):
-    # Gives a large speedup on Ampere-class GPUs
-    torch.set_float32_matmul_precision("high")
-
-torch.set_grad_enabled(False)
-
 from openfold.config import model_config
 from openfold.data import data_pipeline, feature_pipeline, templates
 from openfold.data.tools import hhsearch, hmmsearch
@@ -60,6 +46,20 @@ from openfold.utils.trace_utils import (
 
 # from scripts.precompute_embeddings import EmbeddingGenerator
 from ..utils import get_params_path
+
+logging.basicConfig()
+logger = logging.getLogger(__file__)
+logger.setLevel(level=logging.INFO)
+
+torch_versions = torch.__version__.split(".")
+torch_major_version = int(torch_versions[0])
+torch_minor_version = int(torch_versions[1])
+if torch_major_version > 1 or (torch_major_version == 1 and torch_minor_version >= 12):
+    # Gives a large speedup on Ampere-class GPUs
+    torch.set_float32_matmul_precision("high")
+
+torch.set_grad_enabled(False)
+
 
 TRACING_INTERVAL = 50
 
@@ -210,11 +210,10 @@ def main(args):
             custom_config_dict = json.load(f)
         config.update_from_flattened_dict(custom_config_dict)
 
-    if args.trace_model:
-        if not config.data.predict.fixed_size:
-            raise ValueError(
-                "Tracing requires that fixed_size mode be enabled in the config"
-            )
+    if args.trace_model and not config.data.predict.fixed_size:
+        raise ValueError(
+            "Tracing requires that fixed_size mode be enabled in the config"
+        )
 
     is_multimer = "multimer" in args.config_preset
 
@@ -289,7 +288,7 @@ def main(args):
         tag_list.append((tag, tags))
         seq_list.append(seqs)
 
-    seq_sort_fn = lambda target: sum([len(s) for s in target[1]])
+    seq_sort_fn = lambda target: sum([len(s) for s in target[1]])  # noqa: E731
     sorted_targets = sorted(zip(tag_list, seq_list, strict=False), key=seq_sort_fn)
     feature_dicts = {}
     model_generator = load_models_from_command_line(
@@ -339,14 +338,13 @@ def main(args):
                 for k, v in processed_feature_dict.items()
             }
 
-            if args.trace_model:
-                if rounded_seqlen > cur_tracing_interval:
-                    logger.info(f"Tracing model at {rounded_seqlen} residues...")
-                    t = time.perf_counter()
-                    trace_model_(model, processed_feature_dict)
-                    tracing_time = time.perf_counter() - t
-                    logger.info(f"Tracing time: {tracing_time}")
-                    cur_tracing_interval = rounded_seqlen
+            if args.trace_model and rounded_seqlen > cur_tracing_interval:
+                logger.info(f"Tracing model at {rounded_seqlen} residues...")
+                t = time.perf_counter()
+                trace_model_(model, processed_feature_dict)
+                tracing_time = time.perf_counter() - t
+                logger.info(f"Tracing time: {tracing_time}")
+                cur_tracing_interval = rounded_seqlen
 
             out = run_model(model, processed_feature_dict, tag, args.output_dir)
 
@@ -430,7 +428,7 @@ def cli_runopenfold():
         "--use_precomputed_alignments",
         type=str,
         default=None,
-        help="""Path to alignment directory. If provided, alignment computation 
+        help="""Path to alignment directory. If provided, alignment computation
                 is skipped and database path arguments are ignored.""",
     )
     parser.add_argument(
@@ -463,14 +461,14 @@ def cli_runopenfold():
         type=str,
         default=None,
         help="""Path to JAX model parameters. If None, and openfold_checkpoint_path
-             is also None, parameters are selected automatically according to 
+             is also None, parameters are selected automatically according to
              the model name from openfold/resources/params""",
     )
     parser.add_argument(
         "--openfold_checkpoint_path",
         type=str,
         default=None,
-        help="""Path to OpenFold checkpoint. Can be either a DeepSpeed 
+        help="""Path to OpenFold checkpoint. Can be either a DeepSpeed
              checkpoint directory or a .pt file""",
     )
     parser.add_argument(
@@ -527,24 +525,26 @@ def cli_runopenfold():
         "--long_sequence_inference",
         action="store_true",
         default=False,
-        help="""enable options to reduce memory usage at the cost of speed, helps longer sequences fit into GPU memory, see the README for details""",
+        help="""enable options to reduce memory usage at the cost of speed, helps longer
+        sequences fit into GPU memory, see the README for details""",
     )
     parser.add_argument(
         "--cif_output",
         action="store_true",
         default=False,
-        help="Output predicted models in ModelCIF format instead of PDB format (default)",
+        help="Output predicted models in ModelCIF format instead of PDB format (default)",  # noqa: E501
     )
     parser.add_argument(
         "--experiment_config_json",
         default="",
-        help="Path to a json file with custom config values to overwrite config setting",
+        help="Path to a json file with custom config values to overwrite config setting",  # noqa: E501
     )
     parser.add_argument(
         "--use_deepspeed_evoformer_attention",
         action="store_true",
         default=False,
-        help="Whether to use the DeepSpeed evoformer attention layer. Must have deepspeed installed in the environment.",
+        help="Whether to use the DeepSpeed evoformer attention layer."
+        "Must have deepspeed installed in the environment.",
     )
     # add_data_args(parser)
     args = parser.parse_args()
@@ -556,7 +556,7 @@ def cli_runopenfold():
 
     if args.model_device == "cpu" and torch.cuda.is_available():
         logging.warning(
-            """The model is being run on CPU. Consider specifying 
+            """The model is being run on CPU. Consider specifying
             --model_device for better performance"""
         )
 

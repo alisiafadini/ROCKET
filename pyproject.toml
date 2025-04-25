@@ -88,6 +88,7 @@ exclude = [
     "dist",
     "node_modules",
     "*.egg-info",
+    "**/archived_scripts"
 ]
 
 [tool.ruff.lint]
