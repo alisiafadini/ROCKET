@@ -11,8 +11,6 @@ to_mock = [
     "openfold.np",
     "openfold.utils.import_weights",
     "openfold.utils.script_utils",
-    "reciprocalspaceship",
-    "SFC_Torch",
 ]
 
 for mod in to_mock:
