@@ -221,11 +221,11 @@ def llgItot_with_derivatives2sigmaA(
     """
     if method == "autodiff":
         sA = sigmaA.detach().clone().requires_grad_(True)
-        l = llgItot_calculate(sA, dobs, Eeff, Ec, centric_tensor)
+        l = llgItot_calculate(sA, dobs, Eeff, Ec, centric_tensor)  # noqa: E741
         lp = torch.autograd.grad(l, sA, create_graph=True)[0]
         lpp = torch.autograd.grad(lp, sA, create_graph=True, allow_unused=True)[0]
     elif method == "analytical":
-        l = llgItot_calculate(sigmaA, dobs, Eeff, Ec, centric_tensor)
+        l = llgItot_calculate(sigmaA, dobs, Eeff, Ec, centric_tensor)  # noqa: E741
         lp = llgItot_firstdev(
             sigmaA, dobs.detach(), Eeff.detach(), Ec.detach(), centric_tensor.detach()
         )
@@ -458,9 +458,10 @@ def find_bin_dHKL(dHKLs, bin_labels):
     return torch.tensor(bin_dHKLs)
 
 
-def load_tng_data(tng_file, device=utils.try_gpu()):
+def load_tng_data(tng_file, device=None):
+    if device is None:
+        device = utils.try_gpu()
     tng = utils.load_mtz(tng_file).dropna()
-
     # Generate PhaserTNG tensors
     eps = torch.tensor(tng["EPS"].values, device=device)
     centric = torch.tensor(tng["CENT"].values, device=device).bool()
@@ -505,7 +506,7 @@ def load_tng_data(tng_file, device=utils.try_gpu()):
 #         bin_Ecalc = Ecalc[bin_indices]
 
 #         # initialize sigmaA values with correlation coefficient
-#         corr_coefs[i] = torch.corrcoef(torch.stack((bin_Eobs, bin_Ecalc), dim=0))[1][0]
+#         corr_coefs[i] = torch.corrcoef(torch.stack((bin_Eobs, bin_Ecalc), dim=0))[1][0]  # noqa: E501
 #         corr_coefs[i] = torch.clamp(corr_coefs[i], min=0.001, max=0.999)
 #         print("correlation coeff", corr_coefs[i])
 #         sigma_As[i] = np.sqrt(corr_coefs[i].item())
