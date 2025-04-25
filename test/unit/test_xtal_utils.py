@@ -1,26 +1,24 @@
 import numpy as np
 import torch
-import pytest
 
 from rocket.xtal.utils import (
-    newton_step,
-    llgIa_firstdev,
-    llgIc_firstdev,
-    llgItot_firstdev,
-    llgIa_seconddev,
-    llgIc_seconddev,
-    llgItot_seconddev,
-    interpolate_smooth,
-    llgItot_with_derivatives2sigmaA,
     Ak_approx,
-    ub_Ak,
+    compute_sigmaA_true,
+    find_bin_dHKL,
+    interpolate_smooth,
     lb_Ak,
     llgIa_calculate,
+    llgIa_firstdev,
+    llgIa_seconddev,
     llgIc_calculate,
+    llgIc_firstdev,
+    llgIc_seconddev,
     llgItot_calculate,
+    llgItot_firstdev,
+    llgItot_with_derivatives2sigmaA,
     logcosh,
-    find_bin_dHKL,
-    compute_sigmaA_true,
+    newton_step,
+    ub_Ak,
 )
 
 
