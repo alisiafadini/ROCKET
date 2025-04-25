@@ -110,19 +110,15 @@ def move_tensors_to_device(processed_features, device=None):
     """
     if device is None:
         device = try_gpu()
-    # Create a new dictionary to store processed features, tensors moved to the device
     processed_features_on_device = {}
 
-    # Iterate through the keys and values in the input dictionary
     for key, value in processed_features.items():
-        # Check if the value is a PyTorch tensor
         if isinstance(value, torch.Tensor):
-            # Move the tensor to the specified device
             device_value = value.clone().to(device)
-        # Add the key-value pair to the new dictionary
+        else:
+            device_value = value
         processed_features_on_device[key] = device_value
 
-    # Return the new dictionary with tensors moved to the device
     return processed_features_on_device
 
 
