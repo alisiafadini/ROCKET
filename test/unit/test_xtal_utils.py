@@ -1,3 +1,6 @@
+import sys
+from unittest.mock import MagicMock
+
 import numpy as np
 import torch
 
@@ -20,6 +23,10 @@ from rocket.xtal.utils import (
     newton_step,
     ub_Ak,
 )
+
+sys.modules["openfold"] = MagicMock()
+sys.modules["reciprocalspaceship"] = MagicMock()
+sys.modules["SFC_Torch"] = MagicMock()
 
 
 def test_newton_step_identity():

@@ -1,4 +1,5 @@
 # Mock external dependencies before importing utils
+import sys
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -22,6 +23,10 @@ from rocket.utils import (
     weighting,
     weighting_torch,
 )
+
+sys.modules["openfold"] = MagicMock()
+sys.modules["reciprocalspaceship"] = MagicMock()
+sys.modules["SFC_Torch"] = MagicMock()
 
 
 def test_plddt2pseudoB_basic():
