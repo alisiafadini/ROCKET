@@ -22,10 +22,9 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pytest pytest-cov
-
-      - name: Run tests with coverage
+      
+      - name: Test with pytest
         run: |
-          pytest --cov=rocket tests/
+          pip install '.[tests]'
+          pytest test/
 
