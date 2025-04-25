@@ -26,6 +26,7 @@ classifiers = [ # Optional: PyPI classifiers, see https://pypi.org/classifiers/
 dependencies = [
     "scikit-bio",
     "ruff",
+    "mypy",
     "loguru",
     "SFcalculator-torch>=0.2.2",
     "matplotlib",
