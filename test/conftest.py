@@ -1,16 +1,19 @@
 import sys
 from unittest.mock import MagicMock
 
-# Mock the package and all submodules you import from
-sys.modules["openfold"] = MagicMock()
-sys.modules["openfold.model"] = MagicMock()
-sys.modules["openfold.utils"] = MagicMock()
-sys.modules["openfold.config"] = MagicMock()
-sys.modules["openfold.data"] = MagicMock()
-sys.modules["openfold.model.model"] = MagicMock()
-sys.modules["openfold.np"] = MagicMock()
-sys.modules["openfold.utils.import_weights"] = MagicMock()
-sys.modules["openfold.utils.script_utils"] = MagicMock()
+to_mock = [
+    "openfold",
+    "openfold.model",
+    "openfold.utils",
+    "openfold.config",
+    "openfold.data",
+    "openfold.model.model",
+    "openfold.np",
+    "openfold.utils.import_weights",
+    "openfold.utils.script_utils",
+    "reciprocalspaceship",
+    "SFC_Torch",
+]
 
-sys.modules["reciprocalspaceship"] = MagicMock()
-sys.modules["SFC_Torch"] = MagicMock()
+for mod in to_mock:
+    sys.modules[mod] = MagicMock()

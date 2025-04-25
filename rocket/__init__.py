@@ -11,7 +11,7 @@ __all__ = [
     "base",
     "coordinates",
     "cryo",
-    "llg",
+    "xtal",
     "utils",
     # List specific classes/functions you want to expose directly
     "MSABiasAFv1",
