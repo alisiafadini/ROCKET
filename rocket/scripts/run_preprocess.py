@@ -1,14 +1,15 @@
 import argparse
-import subprocess
+import glob
 import os
 import shutil
-import glob
+import subprocess
+
 import reciprocalspaceship as rs
 from loguru import logger
+from SFC_Torch import PDBParser
 
 from ..refinement_config import gen_config_phase1, gen_config_phase2
 from ..utils import plddt2pseudoB
-from SFC_Torch import PDBParser
 
 ### Phenix variables
 # phenix_directory = "/dev/shm/alisia/phenix-2.0rc1-5641/"
@@ -127,7 +128,7 @@ def generate_seg_id_file(file_id, output_dir):
     # Collect residues per chain in order of appearance
     chain_residues = {}
     chain_order = []
-    with open(aligned_pdb_path, "r") as f:
+    with open(aligned_pdb_path) as f:
         for line in f:
             if line.startswith("ATOM"):
                 try:
@@ -351,9 +352,9 @@ def prepare_pred_aligned(output_dir, file_id):
     pred_model_path = os.path.join(
         output_dir, "predictions", f"{file_id}_model_1_ptm_unrelaxed.pdb"
     )
-    assert os.path.exists(
-        pred_model_path
-    ), f"Predicted model not found: {pred_model_path}"
+    assert os.path.exists(pred_model_path), (
+        f"Predicted model not found: {pred_model_path}"
+    )
     superpose_command = [
         "phenix.superpose_pdbs",
         f"{mr_model_path}",
@@ -364,9 +365,9 @@ def prepare_pred_aligned(output_dir, file_id):
     aligned_model_path = os.path.join(
         output_dir, "ROCKET_inputs", f"{file_id}-pred-aligned_unprocessed.pdb"
     )
-    assert os.path.exists(
-        aligned_model_path
-    ), f"Failed to superpose models: {aligned_model_path}"
+    assert os.path.exists(aligned_model_path), (
+        f"Failed to superpose models: {aligned_model_path}"
+    )
 
     mr_model = PDBParser(mr_model_path)
     align_model = PDBParser(aligned_model_path)

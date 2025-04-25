@@ -1,29 +1,27 @@
-import uuid
-import copy
-import warnings
-import torch
-import numpy as np
-from tqdm import tqdm
-import rocket
-import os, glob, shutil
+import glob
+import os
+import shutil
 import time
+import uuid
+import warnings
 
-from rocket.llg import utils as llg_utils
+import numpy as np
+import torch
+from loguru import logger
+from openfold.config import model_config
+from openfold.data import data_pipeline, feature_pipeline
+from tqdm import tqdm
+
+import rocket
 from rocket import coordinates as rk_coordinates
-from rocket import utils as rk_utils
 from rocket import refinement_utils as rkrf_utils
+from rocket import utils as rk_utils
 from rocket.llg import structurefactors as llg_sf
 from rocket.refinement_config import RocketRefinmentConfig
 
-
-from openfold.config import model_config
-from openfold.data import feature_pipeline, data_pipeline
-
-from loguru import logger
-
-
 PRESET = "model_1_ptm"
 EXCLUDING_RES = None
+
 
 def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentConfig:
     if isinstance(config, str):
@@ -32,7 +30,7 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
 
     ############ 1. Global settings ############
     # Device
-    device = "cuda:{}".format(config.cuda_device)
+    device = f"cuda:{config.cuda_device}"
 
     # Using LBFGS or Adam in RBR
     if config.rbr_opt_algorithm == "lbfgs":
@@ -43,9 +41,9 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
         raise ValueError("rbr_opt only supports lbfgs or adam")
 
     # Configure input paths
-    tng_file = "{p}/ROCKET_inputs/{r}-Edata.mtz".format(p=config.path, r=config.file_id)
-    input_pdb = "{p}/ROCKET_inputs/{r}-pred-aligned.pdb".format(p=config.path, r=config.file_id)
-    true_pdb = "{p}/ROCKET_inputs/{r}_noalts.pdb".format(p=config.path, r=config.file_id)
+    tng_file = f"{config.path}/ROCKET_inputs/{config.file_id}-Edata.mtz"
+    input_pdb = f"{config.path}/ROCKET_inputs/{config.file_id}-pred-aligned.pdb"
+    true_pdb = f"{config.path}/ROCKET_inputs/{config.file_id}_noalts.pdb"
 
     # Configure output path
     # Generate uuid for this run
@@ -80,22 +78,14 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
     # TODO: make sure the following files exist in the new pattern
     if config.additional_chain:
         constant_fp_added_HKL = torch.load(
-            "{p}/ROCKET_inputs/{r}_added_chain_atoms_HKL.pt".format(
-                p=config.path, r=config.file_id
-            )
+            f"{config.path}/ROCKET_inputs/{config.file_id}_added_chain_atoms_HKL.pt"
         ).to(device=device)
         constant_fp_added_asu = torch.load(
-            "{p}/ROCKET_inputs/{r}_added_chain_atoms_asu.pt".format(
-                p=config.path, r=config.file_id
-            )
+            f"{config.path}/ROCKET_inputs/{config.file_id}_added_chain_atoms_asu.pt"
         ).to(device=device)
 
-        phitrue_path = "{p}/ROCKET_inputs/{r}_allchains-phitrue-solvent{s}.npy".format(
-            p=config.path, r=config.file_id, s=config.solvent
-        )
-        Etrue_path = "{p}/ROCKET_inputs/{r}_allchains-Etrue-solvent{s}.npy".format(
-            p=config.path, r=config.file_id, s=config.solvent
-        )
+        phitrue_path = f"{config.path}/ROCKET_inputs/{config.file_id}_allchains-phitrue-solvent{config.solvent}.npy"
+        Etrue_path = f"{config.path}/ROCKET_inputs/{config.file_id}_allchains-Etrue-solvent{config.solvent}.npy"
 
         if os.path.exists(phitrue_path) and os.path.exists(Etrue_path):
             SIGMA_TRUE = True
@@ -107,12 +97,8 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
         constant_fp_added_HKL = None
         constant_fp_added_asu = None
 
-        phitrue_path = "{p}/ROCKET_inputs/{r}-phitrue-solvent{s}.npy".format(
-            p=config.path, r=config.file_id, s=config.solvent
-        )
-        Etrue_path = "{p}/ROCKET_inputs/{r}-Etrue-solvent{s}.npy".format(
-            p=config.path, r=config.file_id, s=config.solvent
-        )
+        phitrue_path = f"{config.path}/ROCKET_inputs/{config.file_id}-phitrue-solvent{config.solvent}.npy"
+        Etrue_path = f"{config.path}/ROCKET_inputs/{config.file_id}-Etrue-solvent{config.solvent}.npy"
 
         if os.path.exists(phitrue_path) and os.path.exists(Etrue_path):
             SIGMA_TRUE = True
@@ -238,20 +224,18 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
 
         # MH edits @ Oct 19, 2024, support MSA subsampling at the beginning
         if config.msa_subratio is not None:
-            assert (
-                config.msa_subratio > 0.0 and config.msa_subratio <= 1.0
-            ), "msa_subratio should be None or between 0.0 and 1.0!"
+            assert config.msa_subratio > 0.0 and config.msa_subratio <= 1.0, (
+                "msa_subratio should be None or between 0.0 and 1.0!"
+            )
             # Do subsampling of msa, keep the first sequence
             if config.sub_msa_path is None:
                 idx = np.arange(feature_dict["msa"].shape[0] - 1) + 1
-                sub_idx = np.concatenate(
-                    (
-                        np.array([0]),
-                        np.random.choice(
-                            idx, size=int(config.msa_subratio * len(idx)), replace=False
-                        ),
-                    )
-                )
+                sub_idx = np.concatenate((
+                    np.array([0]),
+                    np.random.choice(
+                        idx, size=int(config.msa_subratio * len(idx)), replace=False
+                    ),
+                ))
                 feature_dict["msa"] = feature_dict["msa"][sub_idx]
                 feature_dict["deletion_matrix_int"] = feature_dict[
                     "deletion_matrix_int"
@@ -289,9 +273,7 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
                 :, :, 25:48
             ].clone()
             submsa_profile = processed_feature_dict["msa_feat"][:, :, 25:48].clone()
-            processed_feature_dict["msa_feat"][
-                :, :, 25:48
-            ] = (
+            processed_feature_dict["msa_feat"][:, :, 25:48] = (
                 fullmsa_profile.clone()
             )  # Use full msa's profile as basis for linear space -- higher rank (?)
             recombination_bias = (
@@ -329,7 +311,9 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
                 rk_utils.assert_numpy(features_at_it_start[..., 0]),
             )
         else:
-            msa_feat_init_np = np.load(glob.glob(config.msa_feat_init_path)[0], allow_pickle=True)
+            msa_feat_init_np = np.load(
+                glob.glob(config.msa_feat_init_path)[0], allow_pickle=True
+            )
             features_at_it_start_np = np.repeat(
                 np.expand_dims(msa_feat_init_np, -1), config.init_recycling + 1, -1
             )
@@ -368,7 +352,6 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
                 device_processed_features[key] = device_processed_features_template[key]
 
     for n in range(config.num_of_runs):
-
         run_id = rkrf_utils.number_to_letter(n)
         best_pos = reference_pos
 
@@ -534,9 +517,9 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
 
             # Update SFC and save
             llgloss.sfc.atom_pos_orth = aligned_xyz.detach().clone()
-            #llgloss.sfc.savePDB(
+            # llgloss.sfc.savePDB(
             #    f"{output_directory_path!s}/{run_id}_{iteration}_preRBR.pdb"
-            #)
+            # )
 
             # Rigid body refinement (RBR) step
             optimized_xyz, loss_track_pose = rk_coordinates.rigidbody_refine_quat(
@@ -595,7 +578,7 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
                 LLG=f"{llg_estimate:.2f}",
                 r_work=f"{llgloss.sfc.r_work.item():.3f}",
                 r_free=f"{llgloss.sfc.r_free.item():.3f}",
-                memory=f"{torch.cuda.max_memory_allocated()/1024**3:.1f}G",
+                memory=f"{torch.cuda.max_memory_allocated() / 1024**3:.1f}G",
             )
 
             # if config.alignment_mode == "B":

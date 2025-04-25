@@ -2,10 +2,10 @@
 Functions relating model structure factor manipulation and normalization
 """
 
-import torch
 import numpy as np
-from SFC_Torch import SFcalculator
 import SFC_Torch as SFC
+import torch
+from SFC_Torch import SFcalculator
 
 
 def initial_SFC(

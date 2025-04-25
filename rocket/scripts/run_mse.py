@@ -1,6 +1,6 @@
-import argparse, os
+import argparse
+
 from rocket.refinement_mse import RocketMSERefinmentConfig, run_refinement_mse
-from typing import Union
 
 
 def parse_arguments():
@@ -20,7 +20,7 @@ def parse_arguments():
     parser.add_argument(
         "-sys",
         "--systems",
-        nargs='+',
+        nargs="+",
         help=("PDB codes or filename roots for the dataset"),
     )
 
@@ -96,7 +96,6 @@ def generate_mse_config(
     mul_lr: float = 1.0,
     init_recycling: int = 20,
 ) -> RocketMSERefinmentConfig:
-
     mse_config = RocketMSERefinmentConfig(
         file_root=file_root,
         path=working_path,
@@ -111,26 +110,30 @@ def generate_mse_config(
         multiplicative_learning_rate=mul_lr,
         free_flag=free_flag,
         testset_value=testset_value,
-        note="mse"+note,
+        note="mse" + note,
     )
 
     return mse_config
+
 
 def run_mse_all_datasets() -> None:
     args = parse_arguments()
     datasets = args.systems
     for file_root in datasets:
-        mse_config = generate_mse_config(working_path=args.path, 
-                                            file_root=file_root, 
-                                            note=args.note, 
-                                            add_lr=args.add_lr,
-                                            mul_lr=args.mul_lr,
-                                            num_of_runs=args.num_of_runs,
-                                            n_step=args.n_step,
-                                            free_flag=args.free_flag,
-                                            testset_value=args.testset_value,
-                                            init_recycling=args.init_recycling)
+        mse_config = generate_mse_config(
+            working_path=args.path,
+            file_root=file_root,
+            note=args.note,
+            add_lr=args.add_lr,
+            mul_lr=args.mul_lr,
+            num_of_runs=args.num_of_runs,
+            n_step=args.n_step,
+            free_flag=args.free_flag,
+            testset_value=args.testset_value,
+            init_recycling=args.init_recycling,
+        )
         phase1_uuid = run_refinement_mse(config=mse_config)
+
 
 if __name__ == "__main__":
     run_mse_all_datasets()

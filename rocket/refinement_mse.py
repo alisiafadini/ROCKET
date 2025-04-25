@@ -1,22 +1,20 @@
-import uuid
-import copy
-import warnings
-import torch
-import pickle
-import numpy as np
-from tqdm import tqdm
-import rocket
 import os
 import time
-import yaml
-from SFC_Torch import PDBParser
-from rocket import coordinates as rk_coordinates
-from rocket import utils as rk_utils
-from rocket import refinement_utils as rkrf_utils
-from openfold.config import model_config
-from typing import Union, List
-from pydantic import BaseModel
+import uuid
+import warnings
 
+import numpy as np
+import torch
+import yaml
+from openfold.config import model_config
+from pydantic import BaseModel
+from SFC_Torch import PDBParser
+from tqdm import tqdm
+
+import rocket
+from rocket import coordinates as rk_coordinates
+from rocket import refinement_utils as rkrf_utils
+from rocket import utils as rk_utils
 
 PRESET = "model_1"
 # THRESH_B = None
@@ -28,22 +26,22 @@ class RocketMSERefinmentConfig(BaseModel):
     file_root: str
     bias_version: int
     iterations: int
-    template_pdb: Union[str, None] = None
+    template_pdb: str | None = None
     cuda_device: int = (0,)
     num_of_runs: int = 1
     init_recycling: int = (1,)
     additive_learning_rate: float
     multiplicative_learning_rate: float
-    weight_decay: Union[float, None] = 0.0001  # TODO: should default be 0.0?
+    weight_decay: float | None = 0.0001  # TODO: should default be 0.0?
     rbr_opt_algorithm: str
     rbr_lbfgs_learning_rate: float
     note: str = ""
     free_flag: str
     testset_value: int
     verbose: bool = False
-    starting_bias: Union[str, None] = None
-    starting_weights: Union[str, None] = None
-    uuid_hex: Union[str, None] = None
+    starting_bias: str | None = None
+    starting_weights: str | None = None
+    uuid_hex: str | None = None
 
     # intercept them upload load/save and cast to string as appropriate
     def to_yaml_file(self, file_path: str) -> None:
@@ -52,16 +50,15 @@ class RocketMSERefinmentConfig(BaseModel):
 
     @classmethod
     def from_yaml_file(self, file_path: str):
-        with open(file_path, "r") as file:
+        with open(file_path) as file:
             payload = yaml.safe_load(file)
         return RocketMSERefinmentConfig.model_validate(payload)
 
 
 def run_refinement_mse(*, config: RocketMSERefinmentConfig) -> str:
-
     ############ 1. Global settings ############
     # Device
-    device = "cuda:{}".format(config.cuda_device)
+    device = f"cuda:{config.cuda_device}"
 
     # Using LBFGS or Adam in RBR
     if config.rbr_opt_algorithm == "lbfgs":
@@ -72,7 +69,7 @@ def run_refinement_mse(*, config: RocketMSERefinmentConfig) -> str:
         raise ValueError("rbr_opt only supports lbfgs or adam")
 
     # Configure input paths
-    input_pdb = "{p}/{r}/{r}-pred-aligned.pdb".format(p=config.path, r=config.file_root)
+    input_pdb = f"{config.path}/{config.file_root}/{config.file_root}-pred-aligned.pdb"
 
     # Configure output path
     # Generate uuid for this run
@@ -96,21 +93,24 @@ def run_refinement_mse(*, config: RocketMSERefinmentConfig) -> str:
     if not config.verbose:
         warnings.filterwarnings("ignore")
 
-
     ############ 2. Initializations ############
     target_pdb = PDBParser(input_pdb)
-    reference_pos = torch.tensor(target_pdb.atom_pos, dtype=torch.float32, device=device)
+    reference_pos = torch.tensor(
+        target_pdb.atom_pos, dtype=torch.float32, device=device
+    )
     mseloss = rocket.MSElossBB(target_pdb, target_pdb, device)
 
     # CA mask and residue numbers for track
-    cra_calphas_list, calphas_mask = rk_coordinates.select_CA_from_craname(target_pdb.cra_name)
-    residue_numbers = [int(name.split("-")[1]) for name in cra_calphas_list]
-    
-    # Use initial pos B factor instead of best pos B factor for weighted L2
-    init_pos_bfactor = torch.tensor(target_pdb.atom_b_iso, dtype=torch.float32, device=device)
-    bfactor_weights = rk_utils.weighting_torch(
-        init_pos_bfactor, cutoff2=20.0
+    cra_calphas_list, calphas_mask = rk_coordinates.select_CA_from_craname(
+        target_pdb.cra_name
     )
+    residue_numbers = [int(name.split("-")[1]) for name in cra_calphas_list]
+
+    # Use initial pos B factor instead of best pos B factor for weighted L2
+    init_pos_bfactor = torch.tensor(
+        target_pdb.atom_b_iso, dtype=torch.float32, device=device
+    )
+    bfactor_weights = rk_utils.weighting_torch(init_pos_bfactor, cutoff2=20.0)
 
     # Model initialization
     version_to_class = {
@@ -137,7 +137,6 @@ def run_refinement_mse(*, config: RocketMSERefinmentConfig) -> str:
     best_pos = reference_pos
 
     for n in range(config.num_of_runs):
-
         run_id = rkrf_utils.number_to_letter(n)
 
         # Initialize the processed dict space
@@ -209,17 +208,14 @@ def run_refinement_mse(*, config: RocketMSERefinmentConfig) -> str:
                 device_processed_features=device_processed_features,
                 cra_name=target_pdb.cra_name,
                 best_pos=best_pos,
-                exclude_res=EXCLUDING_RES
+                exclude_res=EXCLUDING_RES,
             )
 
             all_pldtts.append(plddts_res)
             mean_it_plddts.append(np.mean(plddts_res))
-            
+
             # MSE loss
-            loss = mseloss.forward(
-                aligned_xyz,
-                bfactor_weights
-            )
+            loss = mseloss.forward(aligned_xyz, bfactor_weights)
 
             mse_losses.append(loss.item())
 
@@ -236,7 +232,6 @@ def run_refinement_mse(*, config: RocketMSERefinmentConfig) -> str:
                 best_iter = iteration
                 best_pos = aligned_xyz.detach().clone()
 
-            
             # Save postRBR PDB
             mseloss.pdb_obj.atom_b_iso = rk_utils.assert_numpy(pseudo_Bs)
             mseloss.pdb_obj.atom_pos = rk_utils.assert_numpy(aligned_xyz)
@@ -246,14 +241,14 @@ def run_refinement_mse(*, config: RocketMSERefinmentConfig) -> str:
 
             progress_bar.set_postfix(
                 MSE=f"{loss.item():.2f}",
-                memory=f"{torch.cuda.max_memory_allocated()/1024**3:.1f}G",
+                memory=f"{torch.cuda.max_memory_allocated() / 1024**3:.1f}G",
             )
 
             loss.backward()
 
             if early_stopper.early_stop(loss.item()):
                 break
-            
+
             optimizer.step()
 
             time_by_epoch.append(time.time() - start_time)

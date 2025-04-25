@@ -1,9 +1,11 @@
-import os, argparse
-import torch
+import os
+from functools import partial
+
 import numpy as np
 import reciprocalspaceship as rs
-from functools import partial
+import torch
 from SFC_Torch import PDBParser
+
 
 def plddt2pseudoB(plddts):
     # Use Tom Terwilliger's formula to convert plddt to Bfactor and update sfcalculator instance
@@ -15,27 +17,27 @@ def plddt2pseudoB(plddts):
 def weighting(x, cutoff1=11.5, cutoff2=30.0):
     """
     Convert B factor to weights for L2 loss and Kabsch Alignment
-    w(B) = 
+    w(B) =
     1.0                                           B <= cutoff1
     1.0 - 0.5*(B-cutoff1)/(cutoff2-cutoff1)       cutoff1 < B <= cutoff2
     0.5 * exp(-sqrt(B-cutoff2))                   cutoff2 < B
     """
-    a = np.where(x<=cutoff1, 1.0, 1.0-0.5*(x-cutoff1)/(cutoff2-cutoff1))
-    b = 0.5*np.exp(-np.sqrt(np.where(x<=cutoff2, 1.0, x-cutoff2)))
-    return np.where(a>=0.5, a, b)
+    a = np.where(x <= cutoff1, 1.0, 1.0 - 0.5 * (x - cutoff1) / (cutoff2 - cutoff1))
+    b = 0.5 * np.exp(-np.sqrt(np.where(x <= cutoff2, 1.0, x - cutoff2)))
+    return np.where(a >= 0.5, a, b)
 
 
 def weighting_torch(x, cutoff1=11.5, cutoff2=30.0):
     """
     pytorch implementation of the weighting function:
-    w(B) = 
+    w(B) =
     1.0                                           B <= cutoff1
     1.0 - 0.5*(B-cutoff1)/(cutoff2-cutoff1)       cutoff1 < B <= cutoff2
     0.5 * exp(-sqrt(B-cutoff2))                   cutoff2 < B
     """
-    a = torch.where(x<=cutoff1, 1.0, 1.0-0.5*(x-cutoff1)/(cutoff2-cutoff1))
-    b = 0.5*torch.exp(-torch.sqrt(torch.where(x<=cutoff2, 1.0, x-cutoff2)))
-    return torch.where(a>=0.5, a, b) 
+    a = torch.where(x <= cutoff1, 1.0, 1.0 - 0.5 * (x - cutoff1) / (cutoff2 - cutoff1))
+    b = 0.5 * torch.exp(-torch.sqrt(torch.where(x <= cutoff2, 1.0, x - cutoff2)))
+    return torch.where(a >= 0.5, a, b)
 
 
 def dict_map(fn, dic, leaf_type, exclude_keys={"msa_feat_bias", "msa_feat_weights"}):
@@ -66,6 +68,8 @@ def tree_map(fn, tree, leaf_type):
     else:
         print(type(tree))
         raise ValueError("Not supported")
+
+
 tensor_tree_map = partial(tree_map, leaf_type=torch.Tensor)
 
 
@@ -144,6 +148,7 @@ def assert_numpy(x, arr_type=None):
         x = x.astype(arr_type)
     return x
 
+
 def assert_tensor(x, arr_type=None, device="cuda:0"):
     if isinstance(x, np.ndarray):
         x = torch.tensor(x, device=device)
@@ -154,6 +159,7 @@ def assert_tensor(x, arr_type=None, device="cuda:0"):
     if arr_type is not None:
         x = x.to(arr_type)
     return x
+
 
 def d2q(d):
     return 2 * np.pi / d
@@ -174,8 +180,9 @@ def get_params_path():
     resources_path = os.environ.get("OPENFOLD_RESOURCES", None)
     if resources_path is None:
         raise ValueError("Please set OPENFOLD_RESOURCES environment variable")
-    params_path = os.path.join(resources_path,  "params")
+    params_path = os.path.join(resources_path, "params")
     return params_path
+
 
 # def add_data_args(parser: argparse.ArgumentParser):
 #     """

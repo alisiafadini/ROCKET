@@ -3,13 +3,15 @@ LLG targets for xtal data
 """
 
 import time
-import torch
-import numpy as np
-from SFC_Torch import SFcalculator
-from rocket.llg import utils as llg_utils
-from rocket.llg import structurefactors as llg_sf
-from rocket import utils
 from functools import partial
+
+import numpy as np
+import torch
+from SFC_Torch import SFcalculator
+
+from rocket import utils
+from rocket.llg import structurefactors as llg_sf
+from rocket.llg import utils as llg_utils
 
 
 class LLGloss(torch.nn.Module):
@@ -77,7 +79,6 @@ class LLGloss(torch.nn.Module):
         self.free_set = (self.sfc.free_flag) & (~self.sfc.Outlier) & (resol_bool)
 
     def init_sigmaAs(self, Ecalc, subset="working", requires_grad=True):
-
         if subset == "working":
             subset_boolean = (~self.sfc.free_flag) & (~self.sfc.Outlier)
         elif subset == "free":
@@ -120,7 +121,6 @@ class LLGloss(torch.nn.Module):
         self, Ecalc, n_steps=50, lr=0.01, sub_ratio=0.3, initialize=True, verbose=False
     ):
         def adam_opt_i(i, index_i, n_steps, sub_ratio, lr, verbose):
-
             def adam_stepopt(sub_boolean_mask):
                 loss = -llg_utils.llgTot_calculate(
                     self.sigmaAs[i],

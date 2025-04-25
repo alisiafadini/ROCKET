@@ -2,15 +2,16 @@
 Include modified subclasses of AlphaFold
 """
 
-import re, os
-from openfold.model.model import AlphaFold
+import os
+import re
 
-# from openfold.utils.tensor_utils import tensor_tree_map
-from rocket.utils import tensor_tree_map, get_params_path
+import torch
+from openfold.model.model import AlphaFold
 from openfold.utils.import_weights import import_jax_weights_
 from openfold.utils.script_utils import get_model_basename
 
-import torch
+# from openfold.utils.tensor_utils import tensor_tree_map
+from rocket.utils import get_params_path, tensor_tree_map
 
 
 class MSABiasAFv1(AlphaFold):
@@ -77,7 +78,6 @@ class MSABiasAFv1(AlphaFold):
         return super(MSABiasAFv1, self).iteration(feats, prevs, _recycle)
 
     def forward(self, batch, prevs=[None, None, None], num_iters=1, bias=True):
-
         is_grad_enabled = torch.is_grad_enabled()
 
         # Main recycling loop

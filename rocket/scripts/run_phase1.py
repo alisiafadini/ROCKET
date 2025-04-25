@@ -1,24 +1,31 @@
-import argparse, os, glob
+import argparse
+import glob
+import os
+
 from rocket.refinement_xray import RocketRefinmentConfig, run_refinement
-from typing import Union, List
 
 
 def int_or_none(value):
-    if value.lower() == 'none':
+    if value.lower() == "none":
         return None
     try:
         return int(value)
     except ValueError:
-        raise argparse.ArgumentTypeError(f"Invalid value: {value}. Must be an integer or 'None'.")
-    
+        raise argparse.ArgumentTypeError(
+            f"Invalid value: {value}. Must be an integer or 'None'."
+        )
+
 
 def float_or_none(value):
-    if value.lower() == 'none':
+    if value.lower() == "none":
         return None
     try:
         return float(value)
     except ValueError:
-        raise argparse.ArgumentTypeError(f"Invalid value: {value}. Must be an float or 'None'.")
+        raise argparse.ArgumentTypeError(
+            f"Invalid value: {value}. Must be an float or 'None'."
+        )
+
 
 def parse_arguments():
     """Parse commandline arguments"""
@@ -37,7 +44,7 @@ def parse_arguments():
     parser.add_argument(
         "-sys",
         "--systems",
-        nargs='+',
+        nargs="+",
         help=("PDB codes or filename roots for the dataset"),
     )
 
@@ -70,9 +77,7 @@ def parse_arguments():
     )
 
     parser.add_argument(
-        "--additional_chain", 
-        action="store_true",
-        help=("Additional Chain in ASU")
+        "--additional_chain", action="store_true", help=("Additional Chain in ASU")
     )
 
     parser.add_argument(
@@ -103,9 +108,7 @@ def parse_arguments():
         help=("multiplicative learning rate"),
     )
 
-    parser.add_argument(
-        "--mse_uuid", default=None, help=("uuid for mse run")
-    )
+    parser.add_argument("--mse_uuid", default=None, help=("uuid for mse run"))
 
     parser.add_argument(
         "--phase2_final_lr",
@@ -134,11 +137,7 @@ def parse_arguments():
         help=("number of steps"),
     )
 
-    parser.add_argument(
-        "--refine_sigmaA", 
-        action="store_true",
-        help=("refine sigmaAs")
-    )
+    parser.add_argument("--refine_sigmaA", action="store_true", help=("refine sigmaAs"))
 
     parser.add_argument(
         "--min_resolution",
@@ -171,27 +170,29 @@ def parse_arguments():
         "--msa_subratio",
         default=None,
         type=float_or_none,
-        help=("MSA subsampling ratio, between 0.0 and 1.0. Default None, no subsampling."),
+        help=(
+            "MSA subsampling ratio, between 0.0 and 1.0. Default None, no subsampling."
+        ),
     )
 
     parser.add_argument(
         "--input_msa",
         default=None,
-        help=("path to msa file .a3m/.fasta for use, working path and system will prepend"),
+        help=(
+            "path to msa file .a3m/.fasta for use, working path and system will prepend"
+        ),
     )
 
     parser.add_argument(
-        "--bias_from_fullmsa", 
+        "--bias_from_fullmsa",
         action="store_true",
-        help=("Generate initial profile via biasing from full msa profile")
+        help=("Generate initial profile via biasing from full msa profile"),
     )
 
     parser.add_argument(
-        "--chimera_profile", 
-        action="store_true",
-        help=("Use chimera profile")
-    )  
-    
+        "--chimera_profile", action="store_true", help=("Use chimera profile")
+    )
+
     return parser.parse_args()
 
 
@@ -205,39 +206,36 @@ def generate_phase1_config(
     additional_chain: bool = False,
     w_l2: float = 1e-11,
     num_of_runs: int = 1,
-    sub_ratio: float = 0.7, 
+    sub_ratio: float = 0.7,
     n_step: int = 50,
     init_recycling: int = 20,
     min_resol: float = 3.0,
     note: str = "",
     refine_sigmaA: bool = True,
-    input_msa: Union[str, None] = None,
+    input_msa: str | None = None,
     bias_from_fullmsa: bool = False,
     chimera_profile: bool = False,
-    template_pdb: Union[str, None] = None,
-    domain_segs: Union[List[int], None] = None,
+    template_pdb: str | None = None,
+    domain_segs: list[int] | None = None,
     add_lr: float = 0.05,
     mul_lr: float = 1.0,
     phase2_final_lr: float = 1e-3,
     smooth_stage_epochs: int = 50,
-    mse_uuid: Union[str, None] = None,
+    mse_uuid: str | None = None,
     voxel_spacing: float = 4.5,
-    msa_subratio: Union[float, None] = None,
+    msa_subratio: float | None = None,
 ) -> RocketRefinmentConfig:
-
     if mse_uuid is None:
         starting_bias_path = None
         starting_weights_path = None
     else:
         output_directory_path = f"{working_path}/{file_root}/outputs/{mse_uuid}"
         mse_path = glob.glob(f"{output_directory_path}/mse*/")[0]
-        starting_bias_path = glob.glob(os.path.join(mse_path, "best_msa_bias*.pt"))[
-            0
-        ]
+        starting_bias_path = glob.glob(os.path.join(mse_path, "best_msa_bias*.pt"))[0]
         starting_weights_path = glob.glob(
             os.path.join(mse_path, "best_feat_weights*.pt")
         )[0]
-    
+
     if template_pdb is not None:
         template_pdb = f"{working_path}/{file_root}/{template_pdb}"
 
@@ -274,7 +272,7 @@ def generate_phase1_config(
         min_resolution=min_resol,
         starting_bias=starting_bias_path,
         starting_weights=starting_weights_path,
-        note="phase1"+note,
+        note="phase1" + note,
         voxel_spacing=voxel_spacing,
         msa_subratio=msa_subratio,
     )
@@ -282,38 +280,39 @@ def generate_phase1_config(
     return phase1_config
 
 
-
 def run_phase1_all_datasets() -> None:
     args = parse_arguments()
     datasets = args.systems
     for file_root in datasets:
-        phase1_config = generate_phase1_config(working_path=args.path, 
-                                               file_root=file_root, 
-                                               note=args.note,
-                                               free_flag=args.free_flag,
-                                               testset_value=args.testset_value, 
-                                               additional_chain=args.additional_chain,
-                                               domain_segs=args.domain_segs,
-                                               init_recycling=args.init_recycling,
-                                               w_l2=args.w_l2,
-                                               sub_ratio=args.sub_ratio,
-                                               add_lr=args.add_lr,
-                                               mul_lr=args.mul_lr,
-                                               num_of_runs=args.num_of_runs,
-                                               n_step=args.n_step,
-                                               input_msa=args.input_msa,
-                                               bias_from_fullmsa=args.bias_from_fullmsa,
-                                               chimera_profile=args.chimera_profile,
-                                               template_pdb=args.template_pdb,
-                                               refine_sigmaA=args.refine_sigmaA,
-                                               min_resol=args.min_resolution,
-                                               phase2_final_lr=args.phase2_final_lr,
-                                               smooth_stage_epochs=args.smooth_stage_epochs,
-                                               mse_uuid=args.mse_uuid,
-                                               voxel_spacing=args.voxel_spacing,
-                                               msa_subratio=args.msa_subratio,
-                                               )
+        phase1_config = generate_phase1_config(
+            working_path=args.path,
+            file_root=file_root,
+            note=args.note,
+            free_flag=args.free_flag,
+            testset_value=args.testset_value,
+            additional_chain=args.additional_chain,
+            domain_segs=args.domain_segs,
+            init_recycling=args.init_recycling,
+            w_l2=args.w_l2,
+            sub_ratio=args.sub_ratio,
+            add_lr=args.add_lr,
+            mul_lr=args.mul_lr,
+            num_of_runs=args.num_of_runs,
+            n_step=args.n_step,
+            input_msa=args.input_msa,
+            bias_from_fullmsa=args.bias_from_fullmsa,
+            chimera_profile=args.chimera_profile,
+            template_pdb=args.template_pdb,
+            refine_sigmaA=args.refine_sigmaA,
+            min_resol=args.min_resolution,
+            phase2_final_lr=args.phase2_final_lr,
+            smooth_stage_epochs=args.smooth_stage_epochs,
+            mse_uuid=args.mse_uuid,
+            voxel_spacing=args.voxel_spacing,
+            msa_subratio=args.msa_subratio,
+        )
         phase1_uuid = run_refinement(config=phase1_config)
+
 
 if __name__ == "__main__":
     run_phase1_all_datasets()

@@ -65,21 +65,6 @@ target-version = "py310"
 # Set the maximum line length. 88 is common (used by Black).
 line-length = 88
 
-# Select the rule sets you want to enable.
-# A good starting point includes:
-# E/W: pycodestyle errors/warnings (style)
-# F: Pyflakes (logical errors like unused imports/variables)
-# I: isort (import sorting)
-# UP: pyupgrade (suggests modern Python syntax)
-# B: flake8-bugbear (finds potential bugs and design problems)
-# C4: flake8-comprehensions (helps write better comprehensions)
-# SIM: flake8-simplify (simplification suggestions)
-select = ["E", "W", "F", "I", "UP", "B", "C4", "SIM"]
-
-# Optionally ignore specific rules if they conflict with your style or needs.
-# Example: ignore = ["E501"] # To ignore line length errors if you don't want to enforce it strictly yet.
-ignore = []
-
 # Exclude directories or files from linting.
 # Common examples include virtual environments, build artifacts, etc.
 exclude = [
@@ -106,9 +91,36 @@ exclude = [
 ]
 
 [tool.ruff.lint]
+# Select the rule sets you want to enable.
+# A good starting point includes:
+# E/W: pycodestyle errors/warnings (style)
+# F: Pyflakes (logical errors like unused imports/variables)
+# I: isort (import sorting)
+# UP: pyupgrade (suggests modern Python syntax)
+# B: flake8-bugbear (finds potential bugs and design problems)
+# C4: flake8-comprehensions (helps write better comprehensions)
+# SIM: flake8-simplify (simplification suggestions)
+select = ["E", "W", "F", "I", "UP", "B", "C4", "SIM"]
+
+# Optionally ignore specific rules if they conflict with your style or needs.
+# Example: ignore = ["E501"] # To ignore line length errors if you don't want to enforce it strictly yet.
+ignore = []
+
 [tool.ruff.lint.isort]
 known-first-party = ["rocket"] # Tell isort that 'rocket' is your own package
 
 [tool.ruff.format]
-preview = true # Enable preview features for the formatter if desired
+# Use preview features for the latest stable formatting behavior (recommended)
+preview = true
+
+# Choose your preferred quote style (double is Black-compatible)
 quote-style = "double"
+
+# Use spaces for indentation (standard)
+indent-style = "space"
+
+# Respect magic trailing commas (like Black) - helps reduce diff noise
+skip-magic-trailing-comma = false
+
+# Auto-detect line endings (usually best)
+line-ending = "auto"

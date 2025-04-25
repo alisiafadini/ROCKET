@@ -2,11 +2,11 @@
 Functions relating to sigmaa calculation and refinement
 """
 
-import torch
-from rocket.llg import structurefactors
-from rocket import utils
-from tqdm import tqdm
 import numpy as np
+import torch
+
+from rocket import utils
+from rocket.llg import structurefactors
 
 
 def newton_step(tensor_pre_update, gradient, Hessian):
@@ -182,7 +182,6 @@ def llgItot_seconddev(sigmaA, dobs, Eeff, Ec, centric_tensor):
 
 
 def interpolate_smooth(sigmaAs_tensor, edge_weights=0.25, total_weight=200.0):
-
     # Calculate loss for internal values
     internal_loss = (
         (sigmaAs_tensor[1:-1] - (sigmaAs_tensor[:-2] + sigmaAs_tensor[2:]) / 2) ** 2
@@ -439,7 +438,6 @@ def compute_sigmaA_true(Eobs, phiobs, Ecalc, phicalc, bin_labels):
 
 
 def find_bin_dHKL(dHKLs, bin_labels):
-
     unique_bins = bin_labels.unique()
 
     bin_dHKLs = []

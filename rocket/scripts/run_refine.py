@@ -1,8 +1,8 @@
-from ..refinement_config import RocketRefinmentConfig
-from ..refinement_xray import run_xray_refinement
-from ..refinement_cryoem import run_cryoem_refinement
-
 import argparse
+
+from ..refinement_config import RocketRefinmentConfig
+from ..refinement_cryoem import run_cryoem_refinement
+from ..refinement_xray import run_xray_refinement
 
 
 def run_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentConfig:
@@ -13,7 +13,7 @@ def run_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentConfig
         return run_xray_refinement(config)
     elif config.datamode == "cryoem":
         return run_cryoem_refinement(config)
-    
+
 
 def cli_runrefine():
     parser = argparse.ArgumentParser(description="Run ROCKET refinement")

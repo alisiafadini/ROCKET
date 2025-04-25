@@ -2,13 +2,12 @@
 LLG targets for cryoEM data
 """
 
-import torch
 import numpy as np
+import torch
 from SFC_Torch import SFcalculator
-from rocket.cryo import utils as cryo_utils
+
 from rocket import utils as rk_utils
-from functools import partial
-import math
+from rocket.cryo import utils as cryo_utils
 
 
 class LLGloss(torch.nn.Module):
@@ -144,7 +143,6 @@ class LLGloss(torch.nn.Module):
         # added_chain_HKL=None,
         # added_chain_asu=None,
     ) -> torch.Tensor:
-
         self.sfc.calc_fprotein(atoms_position_tensor=xyz_orth)
 
         # if added_chain_HKL is not None:

@@ -1,39 +1,43 @@
-import argparse, os, glob, time
-import uuid, warnings
+import argparse
+import glob
+import os
+import time
+import uuid
+import warnings
+
+import numpy as np
+import torch
+from openfold.config import model_config
+from SFC_Torch import PDBParser
 from tqdm import tqdm
-from typing import Union, List
 
 import rocket
-import torch
-import numpy as np
-from SFC_Torch import PDBParser
-from rocket.llg import utils as llg_utils
-from rocket import coordinates as rk_coordinates
-from rocket import utils as rk_utils
 from rocket import refinement_utils as rkrf_utils
-from rocket.llg import structurefactors as llg_sf
-
-from openfold.config import model_config
-
+from rocket import utils as rk_utils
 
 PRESET = "model_1"
 
+
 def int_or_none(value):
-    if value.lower() == 'none':
+    if value.lower() == "none":
         return None
     try:
         return int(value)
     except ValueError:
-        raise argparse.ArgumentTypeError(f"Invalid value: {value}. Must be an integer or 'None'.")
+        raise argparse.ArgumentTypeError(
+            f"Invalid value: {value}. Must be an integer or 'None'."
+        )
 
 
 def float_or_none(value):
-    if value.lower() == 'none':
+    if value.lower() == "none":
         return None
     try:
         return float(value)
     except ValueError:
-        raise argparse.ArgumentTypeError(f"Invalid value: {value}. Must be an float or 'None'.")
+        raise argparse.ArgumentTypeError(
+            f"Invalid value: {value}. Must be an float or 'None'."
+        )
 
 
 def parse_arguments():
@@ -115,35 +119,34 @@ def parse_arguments():
 
     return parser.parse_args()
 
+
 def run_plddt_optim(
-        working_path: str, 
-        file_root: str,
-        note: str,
-        lr_a: float,
-        lr_m: float,
-        iterations: int,
-        init_recycling: int = 20,
-        phase2_final_lr: float = 1e-3, 
-        weight_decay: Union[float, None] = 0.0001,
-        smooth_stage_epochs: Union[int, None] = 50,
-        l2_weight: float = 0.0, 
-        cuda_device: int = 0,
-        starting_bias = None,
-        starting_weights = None,
-        uuid_hex = None,
-        domain_segs = None
-        ):
-    device = "cuda:{}".format(cuda_device)
-    input_pdb = "{p}/{r}/{r}-pred-aligned.pdb".format(p=working_path, r=file_root)
+    working_path: str,
+    file_root: str,
+    note: str,
+    lr_a: float,
+    lr_m: float,
+    iterations: int,
+    init_recycling: int = 20,
+    phase2_final_lr: float = 1e-3,
+    weight_decay: float | None = 0.0001,
+    smooth_stage_epochs: int | None = 50,
+    l2_weight: float = 0.0,
+    cuda_device: int = 0,
+    starting_bias=None,
+    starting_weights=None,
+    uuid_hex=None,
+    domain_segs=None,
+):
+    device = f"cuda:{cuda_device}"
+    input_pdb = f"{working_path}/{file_root}/{file_root}-pred-aligned.pdb"
 
     if uuid_hex is None:
         run_uuid = uuid.uuid4().hex
     else:
         run_uuid = uuid_hex
-    
-    output_directory_path = (
-        f"{working_path}/{file_root}/outputs/{run_uuid}/{note}"
-    )
+
+    output_directory_path = f"{working_path}/{file_root}/outputs/{run_uuid}/{note}"
     try:
         os.makedirs(output_directory_path, exist_ok=True)
     except FileExistsError:
@@ -157,15 +160,15 @@ def run_plddt_optim(
     warnings.filterwarnings("ignore")
 
     initial_model = PDBParser(input_pdb)
-    reference_pos = rk_utils.assert_tensor(initial_model.atom_pos, arr_type=torch.float32, device=device).clone()
-    init_pos_bfactor = rk_utils.assert_tensor(initial_model.atom_b_iso, arr_type=torch.float32, device=device).clone()
-    bfactor_weights = rk_utils.weighting_torch(
-        init_pos_bfactor, cutoff2=20.0
-    )
+    reference_pos = rk_utils.assert_tensor(
+        initial_model.atom_pos, arr_type=torch.float32, device=device
+    ).clone()
+    init_pos_bfactor = rk_utils.assert_tensor(
+        initial_model.atom_b_iso, arr_type=torch.float32, device=device
+    ).clone()
+    bfactor_weights = rk_utils.weighting_torch(init_pos_bfactor, cutoff2=20.0)
 
-    af_bias = rocket.MSABiasAFv3(
-        model_config(PRESET, train=True), PRESET
-    ).to(device)
+    af_bias = rocket.MSABiasAFv3(model_config(PRESET, train=True), PRESET).to(device)
     af_bias.freeze()  # Free all AF2 parameters to save time
 
     device_processed_features, feature_key, features_at_it_start = (
@@ -191,17 +194,17 @@ def run_plddt_optim(
         starting_weights=starting_weights,
         recombination_bias=None,
     )
-    
+
     L_plddt_it = []
     all_pldtts = []
     time_by_epoch = []
     memory_by_epoch = []
     best_plddt = 0.0
     progress_bar = tqdm(
-            range(iterations),
-            desc=f"{file_root}, uuid: {run_uuid[:4]}",
-        )
-    
+        range(iterations),
+        desc=f"{file_root}, uuid: {run_uuid[:4]}",
+    )
+
     # Run smooth stage in phase 1
     w_L2 = l2_weight
     early_stopper = rkrf_utils.EarlyStopper(patience=100, min_delta=1.0)
@@ -218,12 +221,10 @@ def run_plddt_optim(
 
     for iteration in progress_bar:
         start_time = time.time()
-        optimizer.zero_grad()  
+        optimizer.zero_grad()
 
         # Avoid passing through graph a second time
-        device_processed_features[feature_key] = (
-            features_at_it_start.detach().clone()
-        )
+        device_processed_features[feature_key] = features_at_it_start.detach().clone()
         # working_batch = copy.deepcopy(device_processed_features)
         # for bias in bias_names:
         #     working_batch[bias] = device_processed_features[bias].clone()
@@ -256,8 +257,8 @@ def run_plddt_optim(
         )
 
         # pLDDT loss
-        L_plddt = - torch.mean(af2_output["plddt"])
-        
+        L_plddt = -torch.mean(af2_output["plddt"])
+
         # Position Kabsch Alignment
         aligned_xyz, plddts_res, pseudo_Bs = rkrf_utils.position_alignment(
             af2_output=af2_output,
@@ -273,9 +274,7 @@ def run_plddt_optim(
 
         initial_model.set_positions(rk_utils.assert_numpy(aligned_xyz.detach().clone()))
         initial_model.set_biso(rk_utils.assert_numpy(pseudo_Bs.detach().clone()))
-        initial_model.savePDB(
-            f"{output_directory_path!s}/{iteration}_preRBR.pdb"
-        )
+        initial_model.savePDB(f"{output_directory_path!s}/{iteration}_preRBR.pdb")
 
         if L_plddt_it[-1] < best_plddt:
             best_plddt = L_plddt_it[-1]
@@ -287,7 +286,7 @@ def run_plddt_optim(
             )
             best_iter = iteration
             # best_pos = aligned_xyz.detach().clone()
-        
+
         if w_L2 > 0.0:
             # use
             L2_loss = torch.sum(
@@ -300,27 +299,25 @@ def run_plddt_optim(
             loss.backward()
             if early_stopper.early_stop(loss.item()):
                 break
-        
-        # Do smooth in last several iterations of phase 1 instead of beginning of phase 2 
+
+        # Do smooth in last several iterations of phase 1 instead of beginning of phase 2
         if ("phase1" in note) and (smooth_stage_epochs is not None):
             if iteration > (iterations - smooth_stage_epochs):
                 lr_a = lr_a_initial * (decay_rate_stage1_add**iteration)
                 lr_m = lr_m_initial * (decay_rate_stage1_mul**iteration)
-                w_L2 = w_L2_initial * (
-                    1 - (iteration / smooth_stage_epochs)
-                )
+                w_L2 = w_L2_initial * (1 - (iteration / smooth_stage_epochs))
             # Update the learning rates in the optimizer
             optimizer.param_groups[0]["lr"] = lr_a
             optimizer.param_groups[1]["lr"] = lr_m
             optimizer.step()
         else:
             optimizer.step()
-        
+
         time_by_epoch.append(time.time() - start_time)
         memory_by_epoch.append(torch.cuda.max_memory_allocated() / 1024**3)
         progress_bar.set_postfix(
             plddt=f"{L_plddt.item():.2f}",
-            memory=f"{torch.cuda.max_memory_allocated()/1024**3:.1f}G",
+            memory=f"{torch.cuda.max_memory_allocated() / 1024**3:.1f}G",
         )
 
     np.save(
@@ -364,16 +361,16 @@ def main():
     for file_root in datasets:
         phase1_uuid = run_plddt_optim(
             working_path=args.path,
-            file_root = file_root,
-            note = "phase1" + args.note,
-            iterations = 100,
-            lr_a = args.phase1_add_lr,
-            lr_m = args.phase1_mul_lr,
+            file_root=file_root,
+            note="phase1" + args.note,
+            iterations=100,
+            lr_a=args.phase1_add_lr,
+            lr_m=args.phase1_mul_lr,
             init_recycling=args.init_recycling,
-            weight_decay = 0.0001,
+            weight_decay=0.0001,
             smooth_stage_epochs=args.smooth_stage_epochs,
-            l2_weight = args.phase1_w_l2,
-            cuda_device = 0,
+            l2_weight=args.phase1_w_l2,
+            cuda_device=0,
             phase2_final_lr=args.phase2_final_lr,
             starting_bias=None,
             starting_weights=None,
@@ -392,16 +389,16 @@ def main():
 
         phase2_uuid = run_plddt_optim(
             working_path=args.path,
-            file_root = file_root,
-            note = "phase2" + args.note,
-            iterations = 500,
-            lr_a = args.phase2_final_lr,
-            lr_m = args.phase2_final_lr,
+            file_root=file_root,
+            note="phase2" + args.note,
+            iterations=500,
+            lr_a=args.phase2_final_lr,
+            lr_m=args.phase2_final_lr,
             init_recycling=args.init_recycling,
-            weight_decay = None,
-            smooth_stage_epochs = None,
-            l2_weight = 0.0,
-            cuda_device = 0,
+            weight_decay=None,
+            smooth_stage_epochs=None,
+            l2_weight=0.0,
+            cuda_device=0,
             phase2_final_lr=args.phase2_final_lr,
             starting_bias=starting_bias_path,
             starting_weights=starting_weights_path,
