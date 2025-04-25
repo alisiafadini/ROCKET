@@ -7,10 +7,18 @@ import torch
 from SFC_Torch import PDBParser
 
 
-def plddt2pseudoB(plddts):
+def plddt2pseudoB_np(plddts):
     # Use Tom Terwilliger's formula to convert plddt to Bfactor
     deltas = 1.5 * np.exp(4 * (0.7 - 0.01 * plddts))
     b_factors = (8 * np.pi**2 * deltas**2) / 3
+    return b_factors
+
+
+def plddt2pseudoB_pt(plddts):
+    # Use Terwilliger's formula to convert plddt to pseudoB
+    deltas = 1.5 * torch.exp(4 * (0.7 - 0.01 * plddts))
+    b_factors = (8 * torch.pi**2 * deltas**2) / 3
+
     return b_factors
 
 

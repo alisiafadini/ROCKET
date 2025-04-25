@@ -17,7 +17,7 @@ from rocket.utils import (
     load_pdb,
     move_tensors_to_device,
     move_tensors_to_device_inplace,
-    plddt2pseudoB,
+    plddt2pseudoB_np,
     tree_map,
     try_gpu,
     weighting,
@@ -27,7 +27,7 @@ from rocket.utils import (
 
 def test_plddt2pseudoB_basic():
     arr = np.array([0, 50, 100])
-    out = plddt2pseudoB(arr)
+    out = plddt2pseudoB_np(arr)
     assert out.shape == arr.shape
     assert np.all(out > 0)
     assert np.isfinite(out).all()
@@ -35,7 +35,7 @@ def test_plddt2pseudoB_basic():
 
 def test_plddt2pseudoB_empty():
     arr = np.array([])
-    out = plddt2pseudoB(arr)
+    out = plddt2pseudoB_np(arr)
     assert out.shape == arr.shape
 
 
