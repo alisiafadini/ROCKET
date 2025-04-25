@@ -6,7 +6,6 @@ on:
   push:
     branches: [ "main" ] # Adjust branch names if needed (e.g., "master")
   pull_request:
-    branches: [ "main" ] # Adjust branch names if needed
 
 # Allow only one concurrent run for the same workflow, branch/PR
 concurrency:
@@ -35,10 +34,6 @@ jobs:
 
     - name: Run Ruff Linter Check
       run: ruff check --output-format=github .
-      # Optional: If your pyproject.toml is not in the root:
-      # run: ruff check --config path/to/pyproject.toml .
 
     - name: Run Ruff Formatter Check
       run: ruff format --check .
-      # Optional: If your pyproject.toml is not in the root:
-      # run: ruff format --config path/to/pyproject.toml --check .
