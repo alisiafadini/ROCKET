@@ -125,3 +125,7 @@ skip-magic-trailing-comma = false
 
 # Auto-detect line endings (usually best)
 line-ending = "auto"
+
+[tool.mypy]
+ignore_missing_imports = true
+strict = true
