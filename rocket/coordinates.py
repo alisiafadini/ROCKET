@@ -3,48 +3,33 @@ Functions relating model coordinates/PDB file modificaitons
 """
 
 import time
-import torch
-import torch.nn as nn
+
 import numpy as np
+import torch
+from openfold.np import residue_constants
+from scipy.spatial.transform import Rotation
+from SFC_Torch import SFcalculator
 
 from rocket import utils
-from openfold.np import residue_constants
-from SFC_Torch import SFcalculator
-from scipy.spatial.transform import Rotation
 
 
-"""
-def rigidbody_refine(xyz, llgloss):
-    initial_model = utils.assert_numpy(xyz)
-    propose_rmcom = torch.tensor(
-        initial_model - np.mean(initial_model, axis=0),
-        device=llgloss.device,
-        dtype=torch.float32,
-    )
-    propose_com = torch.tensor(
-        np.mean(initial_model, axis=0), device=llgloss.device, dtype=torch.float32
-    )
-
-    # llgloss.sfc.get_scales_lbfgs()
-    trans_vec, rot_v1, rot_v2, loss_track_pose = find_rigidbody_matrix(
-            llgloss, propose_com, propose_rmcom, llgloss.device
-        )
-
-    
-    transform = construct_SO3(rot_v1, rot_v2)
-    optimized_xyz = torch.matmul(propose_rmcom, transform) + propose_com + trans_vec
-
-    return optimized_xyz, loss_track_pose
-"""
-
-def rigidbody_refine_quat(xyz, llgloss, cra_name, lbfgs=False, added_chain_HKL=None, added_chain_asu=None, lbfgs_lr=150.0, verbose=True, domain_segs=None):
-    
-    resid = [int(i.split('-')[1])+1 for i in cra_name]
+def rigidbody_refine_quat(
+    xyz,
+    llgloss,
+    cra_name,
+    lbfgs=False,
+    added_chain_HKL=None,
+    added_chain_asu=None,
+    lbfgs_lr=150.0,
+    verbose=True,
+    domain_segs=None,
+):
+    resid = [int(i.split("-")[1]) + 1 for i in cra_name]
     minid = min(resid)
     maxid = max(resid)
-    
+
     if domain_segs is None:
-        domain_ranges = [[minid, maxid+1]]
+        domain_ranges = [[minid, maxid + 1]]
     else:
         domain_ranges = []
         start = minid
@@ -52,11 +37,13 @@ def rigidbody_refine_quat(xyz, llgloss, cra_name, lbfgs=False, added_chain_HKL=N
             domain_ranges.append([start, seg])
             start = seg
             if i == len(domain_segs) - 1:
-                domain_ranges.append([start, maxid+1])
-    
+                domain_ranges.append([start, maxid + 1])
+
     domain_bools = []
     for domain_start, domain_end_notin in domain_ranges:
-        domain_bools.append(np.array([(i>=domain_start) and (i<domain_end_notin) for i in resid]))
+        domain_bools.append(
+            np.array([(i >= domain_start) and (i < domain_end_notin) for i in resid])
+        )
     n_domains = len(domain_bools)
 
     # llgloss.sfc.get_scales_lbfgs()
@@ -81,25 +68,42 @@ def rigidbody_refine_quat(xyz, llgloss, cra_name, lbfgs=False, added_chain_HKL=N
         #     added_chain_HKL=added_chain_HKL,
         #     added_chain_asu=added_chain_asu,
         #     verbose=verbose
-        # ) 
+        # )
     optimized_xyz = torch.ones_like(xyz)
     for i in range(n_domains):
         propose_rmcom = xyz[domain_bools[i]] - torch.mean(xyz[domain_bools[i]], dim=0)
         propose_com = torch.mean(xyz[domain_bools[i]], dim=0)
         transform_i = quaternions_to_SO3(qs[i]).detach()
-        optimized_xyz[domain_bools[i]] = torch.matmul(propose_rmcom, transform_i) + propose_com + trans_vecs[i].detach()
+        optimized_xyz[domain_bools[i]] = (
+            torch.matmul(propose_rmcom, transform_i)
+            + propose_com
+            + trans_vecs[i].detach()
+        )
 
     return optimized_xyz, loss_track_pose
 
 
 def find_rigidbody_matrix_lbfgs_quat(
-    llgloss, xyz, device, domain_bools, added_chain_HKL=None, added_chain_asu=None, lbfgs_lr=150.0, verbose=True
+    llgloss,
+    xyz,
+    device,
+    domain_bools,
+    added_chain_HKL=None,
+    added_chain_asu=None,
+    lbfgs_lr=150.0,
+    verbose=True,
 ):
     n_domains = len(domain_bools)
-    qs = [torch.tensor(
-        [1.0, 0.0, 0.0, 0.0], dtype=torch.float32, device=device, requires_grad=True
-    ) for _ in range(n_domains)]
-    trans_vecs = [torch.tensor([0.0, 0.0, 0.0], device=device, requires_grad=True) for _ in range(n_domains)]
+    qs = [
+        torch.tensor(
+            [1.0, 0.0, 0.0, 0.0], dtype=torch.float32, device=device, requires_grad=True
+        )
+        for _ in range(n_domains)
+    ]
+    trans_vecs = [
+        torch.tensor([0.0, 0.0, 0.0], device=device, requires_grad=True)
+        for _ in range(n_domains)
+    ]
 
     loss_track_pose = pose_train_lbfgs_quat(
         llgloss,
@@ -117,7 +121,13 @@ def find_rigidbody_matrix_lbfgs_quat(
 
 
 def find_rigidbody_matrix_adam_quat(
-    llgloss, propose_com, propose_rmcom, device, added_chain_HKL=None, added_chain_asu=None, verbose=True
+    llgloss,
+    propose_com,
+    propose_rmcom,
+    device,
+    added_chain_HKL=None,
+    added_chain_asu=None,
+    verbose=True,
 ):
     q = torch.tensor(
         [1.0, 0.0, 0.0, 0.0], dtype=torch.float32, device=device, requires_grad=True
@@ -145,17 +155,24 @@ def pose_train_lbfgs_quat(
     domain_bools,
     lr=150.0,
     n_steps=15,
-    loss_track=[],
+    loss_track=None,
     added_chain_HKL=None,
     added_chain_asu=None,
-    verbose=True
+    verbose=True,
 ):
+    if loss_track is None:
+        loss_track = []
+
     def closure():
         optimizer.zero_grad()
         temp_model = torch.zeros_like(xyz)
         for i in range(n_domains):
             temp_R = quaternions_to_SO3(qs[i])
-            temp_model[domain_bools[i]] = torch.matmul(propose_rmcoms[i], temp_R) + propose_coms[i] + trans_vecs[i]
+            temp_model[domain_bools[i]] = (
+                torch.matmul(propose_rmcoms[i], temp_R)
+                + propose_coms[i]
+                + trans_vecs[i]
+            )
         loss = -llgloss(
             temp_model,
             bin_labels=None,
@@ -182,39 +199,17 @@ def pose_train_lbfgs_quat(
         propose_rmcoms.append(xyz[domain_bool] - torch.mean(xyz[domain_bool], dim=0))
         propose_coms.append(torch.mean(xyz[domain_bool], dim=0))
     start_time = time.time()
-    for k in range(n_steps):
+    for _ in range(n_steps):
         temp = optimizer.step(closure)
         loss_track.append(temp.item())
     elapsed_time = time.time() - start_time
     if verbose:
-        print(f"LBFGS RBR, {n_steps} steps, time taken: {elapsed_time:.4f} seconds", flush=True)
+        print(
+            f"LBFGS RBR, {n_steps} steps, time taken: {elapsed_time:.4f} seconds",
+            flush=True,
+        )
     return loss_track
 
-
-# def rigidbody_refine(xyz, llgloss, lbfgs=False):
-#     propose_rmcom = xyz - torch.mean(xyz, dim=0)
-#     propose_com = torch.mean(xyz, dim=0)
-
-#     # llgloss.sfc.get_scales_lbfgs()
-#     if lbfgs:
-#         trans_vec, rot_v1, rot_v2, loss_track_pose = find_rigidbody_matrix_lbfgs(
-#             llgloss,
-#             propose_com.clone().detach(),
-#             propose_rmcom.clone().detach(),
-#             llgloss.device,
-#         )
-#     else:
-#         trans_vec, rot_v1, rot_v2, loss_track_pose = find_rigidbody_matrix(
-#             llgloss,
-#             propose_com.clone().detach(),
-#             propose_rmcom.clone().detach(),
-#             llgloss.device,
-#         )
-
-#     transform = construct_SO3(rot_v1, rot_v2)
-#     optimized_xyz = torch.matmul(propose_rmcom, transform) + propose_com + trans_vec
-
-#     return optimized_xyz, loss_track_pose
 
 def pose_train_adam_quat(
     llgloss,
@@ -224,11 +219,14 @@ def pose_train_adam_quat(
     propose_rmcom,
     lr=1e-3,
     n_steps=100,
-    loss_track=[],
+    loss_track=None,
     added_chain_HKL=None,
     added_chain_asu=None,
     verbose=True,
 ):
+    if loss_track is None:
+        loss_track = []
+
     def pose_steptrain(optimizer):
         optimizer.zero_grad()
         temp_R = quaternions_to_SO3(q)
@@ -241,20 +239,22 @@ def pose_train_adam_quat(
             solvent=False,
             added_chain_HKL=added_chain_HKL,
             added_chain_asu=added_chain_asu,
-            )
+        )
         loss.backward()
         optimizer.step()
         return loss.item()
+
     start_time = time.time()
     optimizer = torch.optim.Adam([q, trans_vec], lr=lr)
-    for k in range(n_steps):
-        # start_time = time.time()
+    for _ in range(n_steps):
         temp = pose_steptrain(optimizer)
-        # elapsed_time = time.time() - start_time
         loss_track.append(temp)
     elapsed_time = time.time() - start_time
     if verbose:
-        print(f"Adam RBR, {n_steps} steps, time taken: {elapsed_time:.4f} seconds", flush=True)
+        print(
+            f"Adam RBR, {n_steps} steps, time taken: {elapsed_time:.4f} seconds",
+            flush=True,
+        )
     return loss_track
 
 
@@ -267,9 +267,12 @@ def pose_train_adam_matrix(
     propose_rmcom,
     lr=1e-3,
     n_steps=100,
-    loss_track=[],
-    added_chain=None
+    loss_track=None,
+    added_chain=None,
 ):
+    if loss_track is None:
+        loss_track = []
+
     def pose_steptrain(optimizer):
         optimizer.zero_grad()
         temp_R = construct_SO3(rot_v1, rot_v2)
@@ -281,7 +284,7 @@ def pose_train_adam_matrix(
             sub_ratio=1.0,
             solvent=False,
             added_chain=added_chain,
-            )
+        )
         loss.backward()
         optimizer.step()
         return loss.item()
@@ -289,13 +292,11 @@ def pose_train_adam_matrix(
     start_time = time.time()
     optimizer = torch.optim.Adam([rot_v1, rot_v2, trans_vec], lr=lr)
     for k in range(n_steps):
-        # start_time = time.time()
         temp = pose_steptrain(optimizer)
-        # elapsed_time = time.time() - start_time
         loss_track.append(temp)
 
-    elapsed_time = time.time() - start_time
-    print(f"Step {k+1}/{n_steps} - Time taken: {elapsed_time:.4f} seconds, Loss: {temp:.3f}")
+        elapsed_time = time.time() - start_time
+        print(f"Step {k + 1}/{n_steps} - Time: {elapsed_time:.4f} s, Loss: {temp:.3f}")
 
     return loss_track
 
@@ -309,10 +310,12 @@ def pose_train_lbfgs(
     propose_rmcom,
     lr=0.005,
     n_steps=50,
-    loss_track=[],
+    loss_track=None,
 ):
+    if loss_track is None:
+        loss_track = []
+
     def closure():
-        start_time_loop = time.time()
         optimizer.zero_grad()
         temp_R = construct_SO3(rot_v1, rot_v2)
         temp_model = torch.matmul(propose_rmcom, temp_R) + propose_com + trans_vec
@@ -333,70 +336,14 @@ def pose_train_lbfgs(
     for k in range(n_steps):
         temp = optimizer.step(closure)
         loss_track.append(temp.item())
-    elapsed_time = time.time() - start_time
-    print(f"Step {k+1}/{n_steps} - Time taken optimizer: {elapsed_time:.4f} seconds")
+        elapsed_time = time.time() - start_time
+        print(f"Step {k + 1}/{n_steps} - Time by optimizer: {elapsed_time:.4f} s")
     return loss_track
 
 
-"""
-def pose_train(
-    llgloss,
-    rot_v1,
-    rot_v2,
-    trans_vec,
-    propose_com,
-    propose_rmcom,
-    lr=1e-4,
-    max_epochs_total=500,
-    max_epochs_without_improvement=10,
-    loss_threshold=0.1,
-    loss_track=[],
+def find_rigidbody_matrix_adam(
+    llgloss, propose_com, propose_rmcom, device, added_chain
 ):
-    def pose_steptrain(optimizer):
-        temp_R = construct_SO3(rot_v1, rot_v2)
-        temp_model = torch.matmul(propose_rmcom, temp_R) + propose_com + trans_vec
-
-        loss = -llgloss(temp_model, bin_labels=None, num_batch=1, sub_ratio=1.1)
-
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-        return loss.item()
-
-    optimizer = torch.optim.Adam([rot_v1, rot_v2, trans_vec], lr=lr)
-
-    best_loss = float("inf")
-    epochs_without_improvement = 0
-
-    # start_time = time.time()
-    for epoch in range(max_epochs_total):
-        temp = pose_steptrain(optimizer)
-        loss_track.append(temp)
-
-        # Check if the loss has improved
-        if temp < best_loss - loss_threshold:
-            best_loss = temp
-            epochs_without_improvement = 0
-        else:
-            epochs_without_improvement += 1
-
-        if epochs_without_improvement == max_epochs_without_improvement:
-            # print(
-            #    f"Stopping optimization as the loss has not improved for {max_epochs_without_improvement} epochs."
-            # )
-            break
-
-    # elapsed_time = time.time() - start_time
-    # print(
-    #        f"Epoch {epoch + 1} - Loss: {temp:.4f} - Time taken: {elapsed_time:.4f} seconds"
-    #    )
-
-    return loss_track
-
-"""
-
-
-def find_rigidbody_matrix_adam(llgloss, propose_com, propose_rmcom, device, added_chain):
     q = torch.tensor([1.0, 0.0, 0.0, 0.0], dtype=torch.float32)
     unit_R = quaternions_to_SO3(q)
     v1, v2 = decompose_SO3(unit_R)
@@ -412,7 +359,7 @@ def find_rigidbody_matrix_adam(llgloss, propose_com, propose_rmcom, device, adde
         propose_com,
         propose_rmcom,
         loss_track=[],
-        added_chain=added_chain
+        added_chain=added_chain,
     )
     return trans_vec, rot_v1, rot_v2, loss_track_pose
 
@@ -460,7 +407,8 @@ def construct_SO3(v1, v2):
 def decompose_SO3(R, a=1, b=1, c=1):
     """
     Decompose the rotation matrix into the two vector representation
-    This decomposition is not unique, so a, b, c can be set as arbitray constants you like
+    This decomposition is not unique
+    a, b, c can be set as arbitrary constants you like
     C != 0
     Parameters
     ----------
@@ -468,7 +416,7 @@ def decompose_SO3(R, a=1, b=1, c=1):
         Real-valued rotation matrix
     Returns
     -------
-    v1, v2: Two real-valued 3D tensors, as the continuous representation of the rotation matrix
+    v1, v2: Two real-valued 3D tensors, continuous representation of the rotation matrix
     """
     assert c != 0, "Give a nonzero c!"
     v1 = a * R[:, 0]
@@ -510,22 +458,15 @@ def select_CA_elements(data):
 def select_CA_from_craname(cra_name_list):
     boolean_mask = select_CA_elements(cra_name_list)
     cra_CAs_list = [
-        element for element, mask in zip(cra_name_list, boolean_mask) if mask
+        element
+        for element, mask in zip(cra_name_list, boolean_mask, strict=False)
+        if mask
     ]
     return cra_CAs_list, boolean_mask
 
 
-def update_bfactors(plddts):
-    # Use Tom Terwilliger's formula to convert plddt to Bfactor and update sfcalculator instance
-    deltas = 1.5 * torch.exp(4 * (0.7 - 0.01 * plddts))
-    b_factors = (8 * torch.pi**2 * deltas**2) / 3
-
-    return b_factors
-
-
 def calculate_mse_loss_per_residue(tensor1, tensor2, residue_numbers):
     mse_losses = []
-    mse_criterion = nn.MSELoss(reduction="mean")
 
     for residue in set(residue_numbers):
         # Find indices of atoms with the current residue number in tensor1
@@ -538,8 +479,7 @@ def calculate_mse_loss_per_residue(tensor1, tensor2, residue_numbers):
             # Extract coordinates for atoms with the current residue number in tensor2
             coords2 = tensor2[indices1, :]
 
-            # Calculate MSE loss for the coordinates of atoms with the same residue number
-            # mse_loss = mse_criterion(coords1, coords2)
+            # Calculate MSE loss for coordinates of atoms with the same residue number
             mse_loss = torch.sqrt(torch.sum((coords1 - coords2) ** 2))
             mse_losses.append(mse_loss.item())
 
@@ -549,7 +489,7 @@ def calculate_mse_loss_per_residue(tensor1, tensor2, residue_numbers):
 def write_pdb_with_positions(input_pdb_file, positions, output_pdb_file):
     # positions here expected to be rounded to 3 decimal points
 
-    with open(input_pdb_file, "r") as f_in, open(output_pdb_file, "w") as f_out:
+    with open(input_pdb_file) as f_in, open(output_pdb_file, "w") as f_out:
         for line in f_in:
             if line.startswith("ATOM"):
                 atom_info = line[
@@ -567,7 +507,7 @@ def write_pdb_with_positions(input_pdb_file, positions, output_pdb_file):
                 f_out.write(line)
 
 
-def fractionalize_torch(atom_pos_orth, unitcell, device=utils.try_gpu()):
+def fractionalize_torch(atom_pos_orth, unitcell, device=None):
     """
     Apply symmetry operations to real space asu model coordinates
 
@@ -580,8 +520,10 @@ def fractionalize_torch(atom_pos_orth, unitcell, device=utils.try_gpu()):
 
     Return
     ------
-    atom_pos_sym_oped, [N_atoms, N_ops, 3] tensor in either fractional or orthogonal coordinates
+    atom_pos_sym_oped, [N_atoms, N_ops, 3] tensor, fractional or orthogonal coordinates
     """
+    if device is None:
+        device = utils.try_gpu()
     atom_pos_orth.to(device=device)
     orth2frac_tensor = torch.tensor(
         unitcell.fractionalization_matrix.tolist(), device=device
@@ -611,9 +553,9 @@ def extract_allatoms(outputs, feats, cra_name_sfc: list):
         "aatype"
     ]  # TODO: tackle the match between UNK and real non-standard aa name from SFC
     aatype_1d = res_names[utils.assert_numpy(aatype[:, 0], arr_type=int)]
-    chain_resid = np.array(
-        ["A-" + str(i) + "-" for i in range(n_res)]
-    )  # TODO: here we assume all residues in same chain A
+    chain_resid = np.array([
+        "A-" + str(i) + "-" for i in range(n_res)
+    ])  # TODO: here we assume all residues in same chain A
     crname_repeats = (
         np.char.add(chain_resid, aatype_1d).reshape(-1, 1).repeat(37, axis=-1)
     )  # [n_res, 37]
@@ -649,7 +591,9 @@ def extract_atoms_and_backbone(outputs, feats):
 
     n = aatype.shape[0]
     for i in range(n):
-        for atom_name, pos, mask in zip(atom_types, atom_positions[i], atom_mask[i]):
+        for atom_name, pos, mask in zip(
+            atom_types, atom_positions[i], atom_mask[i], strict=False
+        ):
             if mask < 0.5:
                 continue
             pdb_lines.append(pos)
@@ -672,13 +616,14 @@ def extract_bfactors(prot):
     n = aatype.shape[0]
     # Add all atom sites.
     for i in range(n):
-        for mask, b_factor in zip(atom_mask[i], b_factors[i]):
+        for mask, b_factor in zip(atom_mask[i], b_factors[i], strict=False):
             if mask < 0.5:
                 continue
 
             b_factor_lines.append(b_factor)
 
     return np.array(b_factor_lines)
+
 
 def kabsch_align_matrices(tensor1, tensor2):
     # Center the atoms by subtracting their centroids
@@ -737,7 +682,14 @@ def align_tensors(tensor1, centroid1, centroid2, rotation_matrix):
     return aligned_tensor1
 
 
-def weighted_kabsch(moving_tensor, ref_tensor, cra_name, weights=None, exclude_res=None, domain_segs=None):
+def weighted_kabsch(
+    moving_tensor,
+    ref_tensor,
+    cra_name,
+    weights=None,
+    exclude_res=None,
+    domain_segs=None,
+):
     """
     Weighted Kabsch Alignment, using scipy implementation
     'scipy.spatial.transform.Rotation.align_vectors'
@@ -745,40 +697,40 @@ def weighted_kabsch(moving_tensor, ref_tensor, cra_name, weights=None, exclude_r
     Args:
         moving_tensor: torch.Tensor, [n_points, 3]
             coordinates you want to move
-        
+
         ref_tensor: torch.Tensor, [n_points, 3]
             reference coordinates you want to align to
-        
+
         cra_name: List[str], [n_points]
             chain-residue-atom name of each atom
-        
+
         weights: torch.Tensor | np.ndarray, [n_points]
             weights used in the Kabsch Alignment
-        
+
         exclude_res: List[int] or None
             list of resid you want to exclude from the alignment
-        
+
         domain_segs: List[int] or None
-            List of resid as boundary between different domains, 
+            List of resid as boundary between different domains,
             i.e. domain_segs = [196] means there are two domains, [0-195] and [196-END]
-    
+
     Returns:
         aligned_tensor: torch.Tensor, [n_points, 3]
     """
     # use only backbone atoms
-    backbone_bool = np.array([i.split("-")[-1] in ['N', 'CA', 'C'] for i in cra_name])
-        
+    backbone_bool = np.array([i.split("-")[-1] in ["N", "CA", "C"] for i in cra_name])
+
     # exclude some residues, by default 5 residues on both ends
-    resid = [int(i.split('-')[1])+1 for i in cra_name]
+    resid = [int(i.split("-")[1]) + 1 for i in cra_name]
     minid = min(resid)
     maxid = max(resid)
-    if exclude_res is None:    
-        residue_bool = np.array([(i>minid+4) and (i<(maxid-4)) for i in resid])
+    if exclude_res is None:
+        residue_bool = np.array([(i > minid + 4) and (i < (maxid - 4)) for i in resid])
     else:
         residue_bool = np.array([i not in exclude_res for i in resid])
-        
+
     if domain_segs is None:
-        domain_ranges = [[minid, maxid+1]]
+        domain_ranges = [[minid, maxid + 1]]
     else:
         domain_ranges = []
         start = minid
@@ -786,11 +738,13 @@ def weighted_kabsch(moving_tensor, ref_tensor, cra_name, weights=None, exclude_r
             domain_ranges.append([start, seg])
             start = seg
             if i == len(domain_segs) - 1:
-                domain_ranges.append([start, maxid+1]) 
+                domain_ranges.append([start, maxid + 1])
     aligned_pos = torch.ones_like(moving_tensor)
     for domain_range in domain_ranges:
         domain_start, domain_end_notin = domain_range
-        domain_bool = np.array([(i>=domain_start) and (i<domain_end_notin) for i in resid])
+        domain_bool = np.array([
+            (i >= domain_start) and (i < domain_end_notin) for i in resid
+        ])
         working_set = backbone_bool & residue_bool & domain_bool
         moving_tensor_np = utils.assert_numpy(moving_tensor)[working_set]
         ref_tensor_np = utils.assert_numpy(ref_tensor)[working_set]
@@ -798,28 +752,34 @@ def weighted_kabsch(moving_tensor, ref_tensor, cra_name, weights=None, exclude_r
             weights_np = None
         else:
             weights_np = utils.assert_numpy(weights)[working_set]
-        
+
         com_moving = np.average(moving_tensor_np, axis=0, weights=weights_np)
         com_ref = np.average(ref_tensor_np, axis=0, weights=weights_np)
-        C, _ = Rotation.align_vectors(ref_tensor_np-com_ref, moving_tensor_np-com_moving, weights=weights_np)
-        
+        C, _ = Rotation.align_vectors(
+            ref_tensor_np - com_ref, moving_tensor_np - com_moving, weights=weights_np
+        )
+
         rotation_matrix = torch.tensor(C.as_matrix()).to(moving_tensor)
         centroid1 = torch.tensor(com_moving).to(moving_tensor)
         centroid2 = torch.tensor(com_ref).to(moving_tensor)
-        aligned_pos[domain_bool] = align_tensors(moving_tensor[domain_bool], centroid1, centroid2, rotation_matrix)
+        aligned_pos[domain_bool] = align_tensors(
+            moving_tensor[domain_bool], centroid1, centroid2, rotation_matrix
+        )
     return aligned_pos
 
 
-def cutoff_kabsch(moving_tensor, ref_tensor, cra_name, pseudoB, threshB=None, exclude_res=None):
+def cutoff_kabsch(
+    moving_tensor, ref_tensor, cra_name, pseudoB, threshB=None, exclude_res=None
+):
     # use only backbone atoms
-    backbone_bool = np.array([i.split("-")[-1] in ['N', 'CA', 'C'] for i in cra_name])
-        
+    backbone_bool = np.array([i.split("-")[-1] in ["N", "CA", "C"] for i in cra_name])
+
     # exclude some residues, by default 5 residues on both ends
-    resid = [int(i.split('-')[1]) for i in cra_name]
+    resid = [int(i.split("-")[1]) for i in cra_name]
     if exclude_res is None:
         minid = min(resid)
-        maxid= max(resid)
-        residue_bool = np.array([(i>minid+4) and (i<(maxid-4)) for i in resid])
+        maxid = max(resid)
+        residue_bool = np.array([(i > minid + 4) and (i < (maxid - 4)) for i in resid])
     else:
         residue_bool = np.array([i not in exclude_res for i in resid])
 
@@ -827,23 +787,27 @@ def cutoff_kabsch(moving_tensor, ref_tensor, cra_name, pseudoB, threshB=None, ex
         bfactor_bool = np.ones_like(backbone_bool, dtype=bool)
     else:
         bfactor_bool = pseudoB < threshB
-        
+
     working_set = backbone_bool & residue_bool & bfactor_bool
-    centroid1, centroid2, rotation_matrix = kabsch_align_matrices(moving_tensor[working_set].detach(), ref_tensor[working_set].detach())
+    centroid1, centroid2, rotation_matrix = kabsch_align_matrices(
+        moving_tensor[working_set].detach(), ref_tensor[working_set].detach()
+    )
     aligned_pos = align_tensors(moving_tensor, centroid1, centroid2, rotation_matrix)
-    
+
     return aligned_pos
 
 
-def set_new_positions(orth_pos, frac_pos, sfmodel, device=utils.try_gpu()):
+def set_new_positions(orth_pos, frac_pos, sfmodel, device=None):
+    if device is None:
+        device = utils.try_gpu()
     sfmodel.atom_pos_orth = torch.squeeze(orth_pos, dim=1).to(device)
     sfmodel.atom_pos_frac = torch.squeeze(frac_pos, dim=1).to(device)
     return sfmodel
 
 
-def transfer_positions(
-    aligned_pos, sfcalculator_model, device=utils.try_gpu()
-):
+def transfer_positions(aligned_pos, sfcalculator_model, device=None):
+    if device is None:
+        device = utils.try_gpu()
     # Transfer positions to sfcalculator
     frac_pos = fractionalize_torch(
         aligned_pos,
@@ -871,7 +835,9 @@ def update_sfcalculator(sfmodel):
     return sfmodel
 
 
-def initialize_model_frac_pos(model_file, tng_file, device=utils.try_gpu()):
+def initialize_model_frac_pos(model_file, tng_file, device=None):
+    if device is None:
+        device = utils.try_gpu()
     sfcalculator_model = SFcalculator(
         model_file,
         tng_file,

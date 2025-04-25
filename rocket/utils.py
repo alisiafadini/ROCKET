@@ -1,12 +1,14 @@
-import os, argparse
-import torch
+import os
+from functools import partial
+
 import numpy as np
 import reciprocalspaceship as rs
-from functools import partial
+import torch
 from SFC_Torch import PDBParser
 
+
 def plddt2pseudoB(plddts):
-    # Use Tom Terwilliger's formula to convert plddt to Bfactor and update sfcalculator instance
+    # Use Tom Terwilliger's formula to convert plddt to Bfactor
     deltas = 1.5 * np.exp(4 * (0.7 - 0.01 * plddts))
     b_factors = (8 * np.pi**2 * deltas**2) / 3
     return b_factors
@@ -15,38 +17,38 @@ def plddt2pseudoB(plddts):
 def weighting(x, cutoff1=11.5, cutoff2=30.0):
     """
     Convert B factor to weights for L2 loss and Kabsch Alignment
-    w(B) = 
+    w(B) =
     1.0                                           B <= cutoff1
     1.0 - 0.5*(B-cutoff1)/(cutoff2-cutoff1)       cutoff1 < B <= cutoff2
     0.5 * exp(-sqrt(B-cutoff2))                   cutoff2 < B
     """
-    a = np.where(x<=cutoff1, 1.0, 1.0-0.5*(x-cutoff1)/(cutoff2-cutoff1))
-    b = 0.5*np.exp(-np.sqrt(np.where(x<=cutoff2, 1.0, x-cutoff2)))
-    return np.where(a>=0.5, a, b)
+    a = np.where(x <= cutoff1, 1.0, 1.0 - 0.5 * (x - cutoff1) / (cutoff2 - cutoff1))
+    b = 0.5 * np.exp(-np.sqrt(np.where(x <= cutoff2, 1.0, x - cutoff2)))
+    return np.where(a >= 0.5, a, b)
 
 
 def weighting_torch(x, cutoff1=11.5, cutoff2=30.0):
     """
     pytorch implementation of the weighting function:
-    w(B) = 
+    w(B) =
     1.0                                           B <= cutoff1
     1.0 - 0.5*(B-cutoff1)/(cutoff2-cutoff1)       cutoff1 < B <= cutoff2
     0.5 * exp(-sqrt(B-cutoff2))                   cutoff2 < B
     """
-    a = torch.where(x<=cutoff1, 1.0, 1.0-0.5*(x-cutoff1)/(cutoff2-cutoff1))
-    b = 0.5*torch.exp(-torch.sqrt(torch.where(x<=cutoff2, 1.0, x-cutoff2)))
-    return torch.where(a>=0.5, a, b) 
+    a = torch.where(x <= cutoff1, 1.0, 1.0 - 0.5 * (x - cutoff1) / (cutoff2 - cutoff1))
+    b = 0.5 * torch.exp(-torch.sqrt(torch.where(x <= cutoff2, 1.0, x - cutoff2)))
+    return torch.where(a >= 0.5, a, b)
 
 
-def dict_map(fn, dic, leaf_type, exclude_keys={"msa_feat_bias", "msa_feat_weights"}):
+def dict_map(fn, dic, leaf_type, exclude_keys=None):
     if exclude_keys is None:
-        exclude_keys = set()
+        exclude_keys = {"msa_feat_bias", "msa_feat_weights"}
 
     new_dict = {}
     for k, v in dic.items():
         if k in exclude_keys:
             new_dict[k] = v  # Keep the key-value pair as it is
-        elif type(v) is dict:
+        elif isinstance(v, dict):
             new_dict[k] = dict_map(fn, v, leaf_type, exclude_keys)
         else:
             new_dict[k] = tree_map(fn, v, leaf_type)
@@ -66,6 +68,8 @@ def tree_map(fn, tree, leaf_type):
     else:
         print(type(tree))
         raise ValueError("Not supported")
+
+
 tensor_tree_map = partial(tree_map, leaf_type=torch.Tensor)
 
 
@@ -75,7 +79,7 @@ def try_gpu(i=0):
     return torch.device("cpu")
 
 
-def move_tensors_to_device_inplace(processed_features, device=try_gpu()):
+def move_tensors_to_device_inplace(processed_features, device=None):
     """
     Moves PyTorch tensors in a dictionary to the specified device in-place.
 
@@ -83,6 +87,8 @@ def move_tensors_to_device_inplace(processed_features, device=try_gpu()):
         processed_features (dict): Dictionary containing tensors.
         device (str): Device to move tensors to (e.g., "cuda:0", "cpu").
     """
+    if device is None:
+        device = try_gpu()
     # Iterate through the keys and values in the input dictionary
     for key, value in processed_features.items():
         # Check if the value is a PyTorch tensor
@@ -91,7 +97,7 @@ def move_tensors_to_device_inplace(processed_features, device=try_gpu()):
             processed_features[key] = value.to(device)
 
 
-def move_tensors_to_device(processed_features, device=try_gpu()):
+def move_tensors_to_device(processed_features, device=None):
     """
     Moves PyTorch tensors in a dictionary to the specified device.
 
@@ -102,7 +108,9 @@ def move_tensors_to_device(processed_features, device=try_gpu()):
     Returns:
         dict: Dictionary with tensors moved to the specified device.
     """
-    # Create a new dictionary to store processed features with tensors moved to the device
+    if device is None:
+        device = try_gpu()
+    # Create a new dictionary to store processed features, tensors moved to the device
     processed_features_on_device = {}
 
     # Iterate through the keys and values in the input dictionary
@@ -129,7 +137,7 @@ def convert_feat_tensors_to_numpy(dictionary):
 
 
 def is_list_or_tuple(x):
-    return isinstance(x, list) or isinstance(x, tuple)
+    return isinstance(x, list | tuple)
 
 
 def assert_numpy(x, arr_type=None):
@@ -144,6 +152,7 @@ def assert_numpy(x, arr_type=None):
         x = x.astype(arr_type)
     return x
 
+
 def assert_tensor(x, arr_type=None, device="cuda:0"):
     if isinstance(x, np.ndarray):
         x = torch.tensor(x, device=device)
@@ -154,6 +163,7 @@ def assert_tensor(x, arr_type=None, device="cuda:0"):
     if arr_type is not None:
         x = x.to(arr_type)
     return x
+
 
 def d2q(d):
     return 2 * np.pi / d
@@ -174,62 +184,5 @@ def get_params_path():
     resources_path = os.environ.get("OPENFOLD_RESOURCES", None)
     if resources_path is None:
         raise ValueError("Please set OPENFOLD_RESOURCES environment variable")
-    params_path = os.path.join(resources_path,  "params")
+    params_path = os.path.join(resources_path, "params")
     return params_path
-
-# def add_data_args(parser: argparse.ArgumentParser):
-#     """
-#     Inherited from OpenFold/scripts/utils.py
-#     """
-#     parser.add_argument(
-#         '--uniref90_database_path', type=str, default=None,
-#     )
-#     parser.add_argument(
-#         '--mgnify_database_path', type=str, default=None,
-#     )
-#     parser.add_argument(
-#         '--pdb70_database_path', type=str, default=None,
-#     )
-#     parser.add_argument(
-#         '--pdb_seqres_database_path', type=str, default=None,
-#     )
-#     parser.add_argument(
-#         '--uniref30_database_path', type=str, default=None,
-#     )
-#     parser.add_argument(
-#         '--uniclust30_database_path', type=str, default=None,
-#     )
-#     parser.add_argument(
-#         '--uniprot_database_path', type=str, default=None,
-#     )
-#     parser.add_argument(
-#         '--bfd_database_path', type=str, default=None,
-#     )
-#     parser.add_argument(
-#         '--jackhmmer_binary_path', type=str, default=str(CONDA_ENV_BINARY_PATH / 'jackhmmer'),
-#     )
-#     parser.add_argument(
-#         '--hhblits_binary_path', type=str, default=str(CONDA_ENV_BINARY_PATH / 'hhblits'),
-#     )
-#     parser.add_argument(
-#         '--hhsearch_binary_path', type=str, default=str(CONDA_ENV_BINARY_PATH / 'hhsearch'),
-#     )
-#     parser.add_argument(
-#         '--hmmsearch_binary_path', type=str, default=str(CONDA_ENV_BINARY_PATH / 'hmmsearch'),
-#     )
-#     parser.add_argument(
-#         '--hmmbuild_binary_path', type=str, default=str(CONDA_ENV_BINARY_PATH / 'hmmbuild'),
-#     )
-#     parser.add_argument(
-#         '--kalign_binary_path', type=str, default=str(CONDA_ENV_BINARY_PATH / 'kalign'),
-#     )
-#     parser.add_argument(
-#         '--max_template_date', type=str,
-#         default=date.today().strftime("%Y-%m-%d"),
-#     )
-#     parser.add_argument(
-#         '--obsolete_pdbs_path', type=str, default=None
-#     )
-#     parser.add_argument(
-#         '--release_dates_path', type=str, default=None
-#     )

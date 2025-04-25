@@ -2,11 +2,11 @@
 Functions relating to sigmaa calculation and refinement
 """
 
-import torch
-from rocket.llg import structurefactors
-from rocket import utils
-from tqdm import tqdm
 import numpy as np
+import torch
+
+from rocket import utils
+from rocket.llg import structurefactors
 
 
 def newton_step(tensor_pre_update, gradient, Hessian):
@@ -182,7 +182,6 @@ def llgItot_seconddev(sigmaA, dobs, Eeff, Ec, centric_tensor):
 
 
 def interpolate_smooth(sigmaAs_tensor, edge_weights=0.25, total_weight=200.0):
-
     # Calculate loss for internal values
     internal_loss = (
         (sigmaAs_tensor[1:-1] - (sigmaAs_tensor[:-2] + sigmaAs_tensor[2:]) / 2) ** 2
@@ -222,11 +221,11 @@ def llgItot_with_derivatives2sigmaA(
     """
     if method == "autodiff":
         sA = sigmaA.detach().clone().requires_grad_(True)
-        l = llgItot_calculate(sA, dobs, Eeff, Ec, centric_tensor)
+        l = llgItot_calculate(sA, dobs, Eeff, Ec, centric_tensor)  # noqa: E741
         lp = torch.autograd.grad(l, sA, create_graph=True)[0]
         lpp = torch.autograd.grad(lp, sA, create_graph=True, allow_unused=True)[0]
     elif method == "analytical":
-        l = llgItot_calculate(sigmaA, dobs, Eeff, Ec, centric_tensor)
+        l = llgItot_calculate(sigmaA, dobs, Eeff, Ec, centric_tensor)  # noqa: E741
         lp = llgItot_firstdev(
             sigmaA, dobs.detach(), Eeff.detach(), Ec.detach(), centric_tensor.detach()
         )
@@ -439,7 +438,6 @@ def compute_sigmaA_true(Eobs, phiobs, Ecalc, phicalc, bin_labels):
 
 
 def find_bin_dHKL(dHKLs, bin_labels):
-
     unique_bins = bin_labels.unique()
 
     bin_dHKLs = []
@@ -460,9 +458,10 @@ def find_bin_dHKL(dHKLs, bin_labels):
     return torch.tensor(bin_dHKLs)
 
 
-def load_tng_data(tng_file, device=utils.try_gpu()):
+def load_tng_data(tng_file, device=None):
+    if device is None:
+        device = utils.try_gpu()
     tng = utils.load_mtz(tng_file).dropna()
-
     # Generate PhaserTNG tensors
     eps = torch.tensor(tng["EPS"].values, device=device)
     centric = torch.tensor(tng["CENT"].values, device=device).bool()
@@ -507,7 +506,7 @@ def load_tng_data(tng_file, device=utils.try_gpu()):
 #         bin_Ecalc = Ecalc[bin_indices]
 
 #         # initialize sigmaA values with correlation coefficient
-#         corr_coefs[i] = torch.corrcoef(torch.stack((bin_Eobs, bin_Ecalc), dim=0))[1][0]
+#         corr_coefs[i] = torch.corrcoef(torch.stack((bin_Eobs, bin_Ecalc), dim=0))[1][0]  # noqa: E501
 #         corr_coefs[i] = torch.clamp(corr_coefs[i], min=0.001, max=0.999)
 #         print("correlation coeff", corr_coefs[i])
 #         sigma_As[i] = np.sqrt(corr_coefs[i].item())

@@ -2,14 +2,15 @@
 Functions relating to sigmaa calculation and refinement for cryoEM
 """
 
-import torch
-from rocket.llg import structurefactors
-from rocket import utils
-from tqdm import tqdm
-import numpy as np
 import math
+
 import matplotlib.pyplot as plt
+import numpy as np
 import reciprocalspaceship as rs
+import torch
+
+from rocket import utils
+
 
 def downsample_data(mtz_path, downsample_ratio: int):
     """
@@ -19,14 +20,20 @@ def downsample_data(mtz_path, downsample_ratio: int):
     # Get the h, k, l values
     hkls = df.get_hkls()
     # Create a boolean mask where all h, k, l values are divisible by the ratio
-    mask = (hkls[:, 0] % downsample_ratio == 0) & (hkls[:, 1] % downsample_ratio == 0) & (hkls[:, 2] % downsample_ratio == 0)
+    mask = (
+        (hkls[:, 0] % downsample_ratio == 0)
+        & (hkls[:, 1] % downsample_ratio == 0)
+        & (hkls[:, 2] % downsample_ratio == 0)
+    )
     # Apply the mask to the DataFrame
     downsampled_df = df[mask].copy()
-    
+
     return downsampled_df
 
 
-def load_tng_data(tng_file, device=utils.try_gpu()):
+def load_tng_data(tng_file, device=None):
+    if device is None:
+        device = utils.try_gpu()
     tng = utils.load_mtz(tng_file).dropna()
 
     # Generate PhaserTNG tensors
@@ -113,9 +120,9 @@ def combine_sigmaA(slope, intercept, xdat, ydat, wdat, sigma_linlog):
         linlogsiga.append(linlog)
         sigma_sigmaA = 1.0 / math.sqrt(wdat[i])
         sigma_lnsigmaA = math.exp(-ydat[i]) * sigma_sigmaA
-        combined_logsiga = (
-            ydat[i] / sigma_lnsigmaA**2 + linlog / sigma_linlog**2
-        ) / (1.0 / sigma_lnsigmaA**2 + 1.0 / sigma_linlog**2)
+        combined_logsiga = (ydat[i] / sigma_lnsigmaA**2 + linlog / sigma_linlog**2) / (
+            1.0 / sigma_lnsigmaA**2 + 1.0 / sigma_linlog**2
+        )
         logsiga_combined.append(combined_logsiga)
 
     return linlogsiga, logsiga_combined
@@ -162,7 +169,7 @@ def sigmaA_from_model_in_map(
             over_sampling_factor,
         )
 
-        ssqr = np.mean(np.square((1 / dhkl[bin_mask])))
+        ssqr = np.mean(np.square(1 / dhkl[bin_mask]))
         xdat.append(ssqr)
         ydat.append(math.log(sigmaA))
         wdat.append(abs(1.0 / sigma_sigmaA**2))
@@ -207,7 +214,6 @@ def plot_sigmaA(xdat, ydat, linlogsiga, logsiga_combined):
 
 
 def llgcryo_calculate(E_amp, E_phi, Ec_amp, Ec_phi, sigmaA, dobs):
-
     cos_phi_diff = torch.cos(Ec_phi - E_phi)
     term1 = (
         2 / (1 - dobs**2 * sigmaA**2) * dobs * sigmaA * E_amp * Ec_amp * cos_phi_diff

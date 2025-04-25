@@ -1,12 +1,15 @@
-import pickle
-import torch
-import numpy as np
-import rocket
-from rocket import utils as rk_utils
-from rocket import coordinates as rk_coordinates
-from rocket.llg import utils as llg_utils
-import skbio, re
 import glob
+import pickle
+import re
+
+import numpy as np
+import skbio
+import torch
+
+import rocket
+from rocket import coordinates as rk_coordinates
+from rocket import utils as rk_utils
+from rocket.llg import utils as llg_utils
 
 
 def generate_feature_dict(
@@ -44,7 +47,7 @@ def get_identical_indices(A, B):
     ind_B = []
     ai = 0
     bi = 0
-    for a, b in zip(A, B):
+    for a, b in zip(A, B, strict=False):
         if a == "-":
             bi += 1
             continue
@@ -166,7 +169,7 @@ def init_processed_dict(
 ):
     if bias_version == 4:
         device_processed_features = rocket.make_processed_dict_from_template(
-            template_pdb="{p}/ROCKET_inputs/{t}".format(p=path, t=template_pdb),
+            template_pdb=f"{path}/ROCKET_inputs/{template_pdb}",
             target_seq=target_seq,
             config_preset=PRESET,
             device=device,
@@ -179,9 +182,7 @@ def init_processed_dict(
         )
         feature_key = "template_torsion_angles_sin_cos"
     else:
-        with open(
-            glob.glob("{p}/predictions/*{f}".format(p=path, f=postfix))[0], "rb"
-        ) as file:
+        with open(glob.glob(f"{path}/predictions/*{postfix}")[0], "rb") as file:
             # Load the data from the pickle file
             processed_features = pickle.load(file)
 
@@ -194,15 +195,8 @@ def init_processed_dict(
 
 
 def init_llgloss(sfc, tng_file, min_resolution=None, max_resolution=None):
-    if min_resolution is None:
-        resol_min = min(sfc.dHKL)
-    else:
-        resol_min = min_resolution
-
-    if max_resolution is None:
-        resol_max = max(sfc.dHKL)
-    else:
-        resol_max = max_resolution
+    resol_min = min(sfc.dHKL) if min_resolution is None else min_resolution
+    resol_max = max(sfc.dHKL) if max_resolution is None else max_resolution
     llgloss = rocket.llg.targets.LLGloss(
         sfc, tng_file, sfc.device, resol_min, resol_max
     )
@@ -234,16 +228,14 @@ def init_bias(
             )
         )
         if weight_decay is None:
-            optimizer = torch.optim.Adam(
-                [
-                    {
-                        "params": device_processed_features[
-                            "template_torsion_angles_sin_cos_bias"
-                        ],
-                        "lr": lr_a,
-                    },
-                ]
-            )
+            optimizer = torch.optim.Adam([
+                {
+                    "params": device_processed_features[
+                        "template_torsion_angles_sin_cos_bias"
+                    ],
+                    "lr": lr_a,
+                },
+            ])
         else:
             optimizer = torch.optim.AdamW(
                 [
@@ -284,15 +276,13 @@ def init_bias(
             )
 
         if weight_decay is None:
-            optimizer = torch.optim.Adam(
-                [
-                    {"params": device_processed_features["msa_feat_bias"], "lr": lr_a},
-                    {
-                        "params": device_processed_features["msa_feat_weights"],
-                        "lr": lr_m,
-                    },
-                ]
-            )
+            optimizer = torch.optim.Adam([
+                {"params": device_processed_features["msa_feat_bias"], "lr": lr_a},
+                {
+                    "params": device_processed_features["msa_feat_weights"],
+                    "lr": lr_m,
+                },
+            ])
         else:
             optimizer = torch.optim.AdamW(
                 [
@@ -312,15 +302,13 @@ def init_bias(
         )
 
         if weight_decay is None:
-            optimizer = torch.optim.Adam(
-                [
-                    {"params": device_processed_features["msa_feat_bias"], "lr": lr_a},
-                    {
-                        "params": device_processed_features["msa_feat_weights"],
-                        "lr": lr_m,
-                    },
-                ]
-            )
+            optimizer = torch.optim.Adam([
+                {"params": device_processed_features["msa_feat_bias"], "lr": lr_a},
+                {
+                    "params": device_processed_features["msa_feat_weights"],
+                    "lr": lr_m,
+                },
+            ])
         else:
             optimizer = torch.optim.AdamW(
                 [
@@ -336,11 +324,9 @@ def init_bias(
 
     elif bias_version == 1:
         if weight_decay is None:
-            optimizer = torch.optim.Adam(
-                [
-                    {"params": device_processed_features["msa_feat_bias"], "lr": lr_a},
-                ]
-            )
+            optimizer = torch.optim.Adam([
+                {"params": device_processed_features["msa_feat_bias"], "lr": lr_a},
+            ])
         else:
             optimizer = torch.optim.AdamW(
                 [
@@ -373,9 +359,9 @@ def position_alignment(
     if reference_bfactor is None:
         weights = rk_utils.weighting(rk_utils.assert_numpy(pseudo_Bs))
     else:
-        assert (
-            reference_bfactor.shape == pseudo_Bs.shape
-        ), "Reference bfactor should have same shape as model bfactor!"
+        assert reference_bfactor.shape == pseudo_Bs.shape, (
+            "Reference bfactor should have same shape as model bfactor!"
+        )
         weights = rk_utils.weighting(rk_utils.assert_numpy(reference_bfactor))
     # plddts_np = rk_utils.assert_numpy(plddts)
     # weights = np.ones_like(plddts_np)

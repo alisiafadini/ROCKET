@@ -2,13 +2,12 @@
 LLG targets for cryoEM data
 """
 
-import torch
 import numpy as np
+import torch
 from SFC_Torch import SFcalculator
-from rocket.cryo import utils as cryo_utils
+
 from rocket import utils as rk_utils
-from functools import partial
-import math
+from rocket.cryo import utils as cryo_utils
 
 
 class LLGloss(torch.nn.Module):
@@ -25,11 +24,14 @@ class LLGloss(torch.nn.Module):
     loss = -llgloss(xyz_orth, bin_labels=[1,2,3], num_batch=10, sub_ratio=0.3)
 
     resol_min, resol_max: None | float
-        resolution cutoff for the used miller index. Will use resol_min <= dHKL <= resol_max
+        resolution cutoff for the used miller index.
+        Will use resol_min <= dHKL <= resol_max
 
     TODO:
-    Currently the initialization needs inputs like Eobs, Eps, Centric, Dobs, Feff, Bin_labels. We do so by loading the tng_data.
-    Later we should be able to calculate everything from SFcalculator, all necesary information is ready there.
+    Currently the initialization needs Eobs, Eps, Centric, Dobs, Feff, Bin_labels.
+    We load them through tng_data.
+    Later we should be able to calculate everything from SFcalculator,
+    all necesary information is ready there.
 
     """
 
@@ -141,15 +143,8 @@ class LLGloss(torch.nn.Module):
         update_scales=False,
         scale_steps=10,
         scale_initialize=False,
-        # added_chain_HKL=None,
-        # added_chain_asu=None,
     ) -> torch.Tensor:
-
         self.sfc.calc_fprotein(atoms_position_tensor=xyz_orth)
-
-        # if added_chain_HKL is not None:
-        #     self.sfc.Fprotein_HKL = self.sfc.Fprotein_HKL + added_chain_HKL
-        #     self.sfc.Fprotein_asu = self.sfc.Fprotein_asu + added_chain_asu
 
         if update_scales:
             # We used Emean to override the Fo attribute in SFC,
@@ -173,11 +168,7 @@ class LLGloss(torch.nn.Module):
         self.sfc.Fprotein_HKL = Ep
         Fc_HKL = self.sfc.calc_ftotal()
         Ec_HKL = self.sfc.calc_Ec(Fc_HKL)
-        ###
-
-        self.sigmaAs = self.assign_sigmaAs_read(
-            Ec_HKL
-        )  # torch.full((111471,), 0.15)  #
+        self.sigmaAs = self.assign_sigmaAs_read(Ec_HKL)
 
         return Ec_HKL
 
@@ -187,10 +178,7 @@ class LLGloss(torch.nn.Module):
         bin_labels=None,
         num_batch=1,
         sub_ratio=1.0,
-        solvent=True,
         update_scales=False,
-        added_chain_HKL=None,
-        added_chain_asu=None,
     ):
         """
         TODO: Use rfree label in the LLG calculation
@@ -199,7 +187,8 @@ class LLGloss(torch.nn.Module):
                 Orthogonal coordinates of proteins, coming from AF2 model, send to SFC
 
             bin_labels: None or List[int]
-                Labels of bins used in the loss calculation. If None, will use the whole miller indices.
+                Labels of bins used in the loss calculation.
+                If None, will use the whole miller indices.
                 Serve as a proxy for resolution selection
 
             num_batch: int
@@ -213,23 +202,16 @@ class LLGloss(torch.nn.Module):
 
         Ecalc = self.compute_Ecalc(
             xyz_ort,
-            # solvent=solvent,
             update_scales=update_scales,
-            # added_chain_HKL=added_chain_HKL,
-            # added_chain_asu=added_chain_asu,
         )
         llg = 0.0
 
         if bin_labels is None:
-            # bin_labels = self.unique_bins
             bin_labels = self.sfc.n_bins
 
         # for i, label in enumerate(bin_labels):
         for i, label in enumerate(range(bin_labels)):
-            # index_i = self.bin_labels[self.working_set] == label
             index_i = self.sfc.bins[self.working_set] == label
-            # if sum(index_i) == 0:
-            #    continue
             Ecalc_i = torch.abs(Ecalc[self.working_set][index_i])
             Ecalc_phi_i = torch.angle(Ecalc[self.working_set][index_i])
             Eob_i = self.Emean[self.working_set][index_i]
@@ -237,7 +219,7 @@ class LLGloss(torch.nn.Module):
             Dobs_i = self.Dobs[self.working_set][index_i]
 
             sigmaA_i = self.sigmaAs[int(i)]
-            for j in range(num_batch):
+            for _ in range(num_batch):
                 sub_boolean_mask = np.random.rand(len(Eob_i)) < sub_ratio
                 llg_ij = cryo_utils.llgcryo_calculate(
                     Eob_i[sub_boolean_mask],
@@ -247,6 +229,5 @@ class LLGloss(torch.nn.Module):
                     sigmaA_i,
                     Dobs_i[sub_boolean_mask],
                 ).sum()
-                # print("Batch {}".format(j), llg_ij.item())
                 llg = llg + llg_ij
         return llg

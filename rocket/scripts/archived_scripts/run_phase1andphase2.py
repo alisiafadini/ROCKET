@@ -1,25 +1,32 @@
-import argparse, os, glob
+import argparse
+import glob
+import os
+
 from rocket.refinement_xray import RocketRefinmentConfig, run_refinement
-from typing import Union, List
+
 
 # WORKING_DIRECTORY = Path("/net/cci/alisia/openfold_tests/run_openfold/test_cases")
 # ALL_DATASETS = ["6lzm"]
 def int_or_none(value):
-    if value.lower() == 'none':
+    if value.lower() == "none":
         return None
     try:
         return int(value)
     except ValueError:
-        raise argparse.ArgumentTypeError(f"Invalid value: {value}. Must be an integer or 'None'.")
+        raise argparse.ArgumentTypeError(
+            f"Invalid value: {value}. Must be an integer or 'None'."
+        )
 
 
 def float_or_none(value):
-    if value.lower() == 'none':
+    if value.lower() == "none":
         return None
     try:
         return float(value)
     except ValueError:
-        raise argparse.ArgumentTypeError(f"Invalid value: {value}. Must be an float or 'None'.")
+        raise argparse.ArgumentTypeError(
+            f"Invalid value: {value}. Must be an float or 'None'."
+        )
 
 
 def parse_arguments():
@@ -58,7 +65,9 @@ def parse_arguments():
     parser.add_argument(
         "--input_msa",
         default=None,
-        help=("path to msa file .a3m/.fasta for use, working path and system will prepend"),
+        help=(
+            "path to msa file .a3m/.fasta for use, working path and system will prepend"
+        ),
     )
 
     parser.add_argument(
@@ -85,13 +94,9 @@ def parse_arguments():
         help=("Turn off phase 1 refinement in the pipeline"),
     )
 
-    parser.add_argument(
-        "--phase1_uuid", default=None, help=("uuid for phase 1 run")
-    )
+    parser.add_argument("--phase1_uuid", default=None, help=("uuid for phase 1 run"))
 
-    parser.add_argument(
-        "--mse_uuid", default=None, help=("uuid for mse run")
-    )
+    parser.add_argument("--mse_uuid", default=None, help=("uuid for mse run"))
 
     parser.add_argument(
         "--init_recycling",
@@ -168,14 +173,16 @@ def parse_arguments():
         default=0.0,
         type=float,
         help=("Weights for plddt loss"),
-    ) 
+    )
 
     parser.add_argument(
         "--msa_subratio",
         default=None,
         type=float_or_none,
-        help=("MSA subsampling ratio, between 0.0 and 1.0. Default None, no subsampling."),
-    ) 
+        help=(
+            "MSA subsampling ratio, between 0.0 and 1.0. Default None, no subsampling."
+        ),
+    )
 
     return parser.parse_args()
 
@@ -187,8 +194,8 @@ def generate_phase1_config(
     cuda_device: int = 0,
     free_flag: str = "R-free-flags",
     testset_value: int = 1,
-    template_pdb: Union[str, None] = None,
-    input_msa: Union[str, None] = None,
+    template_pdb: str | None = None,
+    input_msa: str | None = None,
     additional_chain: bool = False,
     additive_learning_rate: float = 0.05,
     multiplicative_learning_rate: float = 1.0,
@@ -196,30 +203,27 @@ def generate_phase1_config(
     phase1_min_resol: float = 4.0,
     phase1_w_l2: float = 1e-3,
     phase2_final_lr: float = 1e-3,
-    smooth_stage_epochs: Union[int, None] = 50,
-    domain_segs: Union[List[int], None] = None,
+    smooth_stage_epochs: int | None = 50,
+    domain_segs: list[int] | None = None,
     note: str = "",
-    mse_uuid: Union[str, None] = None,
+    mse_uuid: str | None = None,
     voxel_spacing: float = 4.5,
-    msa_subratio: Union[float, None] = None,
+    msa_subratio: float | None = None,
 ) -> RocketRefinmentConfig:
-
     if mse_uuid is None:
         starting_bias_path = None
         starting_weights_path = None
     else:
         output_directory_path = f"{working_path}/{file_root}/outputs/{mse_uuid}"
         mse_path = glob.glob(f"{output_directory_path}/mse*/")[0]
-        starting_bias_path = glob.glob(os.path.join(mse_path, "best_msa_bias*.pt"))[
-            0
-        ]
+        starting_bias_path = glob.glob(os.path.join(mse_path, "best_msa_bias*.pt"))[0]
         starting_weights_path = glob.glob(
             os.path.join(mse_path, "best_feat_weights*.pt")
         )[0]
-    
+
     if template_pdb is not None:
         template_pdb = f"{working_path}/{file_root}/{template_pdb}"
-    
+
     phase1_config = RocketRefinmentConfig(
         file_root=file_root,
         path=working_path,
@@ -262,7 +266,7 @@ def generate_phase1_config(
 
 def generate_phase2_config(
     *,
-    phase1_uuid: Union[str, None],
+    phase1_uuid: str | None,
     working_path: str,
     file_root: str,
     cuda_device: int = 0,
@@ -273,16 +277,15 @@ def generate_phase2_config(
     phase1_mul_lr: float = 1.0,
     phase1_w_l2: float = 1e-3,
     phase2_final_lr: float = 1e-3,
-    input_msa: Union[str, None] = None,
-    template_pdb: Union[str, None] = None,
-    domain_segs: Union[List[int], None] = None,
+    input_msa: str | None = None,
+    template_pdb: str | None = None,
+    domain_segs: list[int] | None = None,
     voxel_spacing: float = 4.5,
     init_recycling: int = 20,
     note: str = "",
     w_plddt: float = 0.0,
     # msa_subratio: Union[float, None] = None,
 ) -> RocketRefinmentConfig:
-
     if phase1_uuid is None:
         starting_bias_path = None
         starting_weights_path = None
@@ -295,11 +298,11 @@ def generate_phase2_config(
         starting_weights_path = glob.glob(
             os.path.join(phase1_path, "best_feat_weights*.pt")
         )[0]
-    
+
     if input_msa is not None:
-        msa_feat_init_path = glob.glob(
-            os.path.join(phase1_path, "msa_feat_start.npy")
-        )[0]
+        msa_feat_init_path = glob.glob(os.path.join(phase1_path, "msa_feat_start.npy"))[
+            0
+        ]
     else:
         msa_feat_init_path = None
         # best_runid = os.path.basename(starting_bias_path).split("_")[-2]
@@ -309,7 +312,7 @@ def generate_phase2_config(
         # else:
         #     sub_msa_path = None
         #     sub_delmat_path = None
-    
+
     if template_pdb is not None:
         template_pdb = f"{working_path}/{file_root}/{template_pdb}"
 
@@ -357,9 +360,28 @@ def generate_phase2_config(
 
 
 def run_both_phases_single_dataset(
-    *, working_path, file_root, note, free_flag, testset_value, additional_chain, phase1_add_lr, phase1_mul_lr, phase1_w_l2, w_plddt, phase2_final_lr, smooth_stage_epochs, init_recycling, phase1_min_resol, domain_segs, mse_uuid, voxel_spacing, template_pdb, msa_subratio, input_msa
+    *,
+    working_path,
+    file_root,
+    note,
+    free_flag,
+    testset_value,
+    additional_chain,
+    phase1_add_lr,
+    phase1_mul_lr,
+    phase1_w_l2,
+    w_plddt,
+    phase2_final_lr,
+    smooth_stage_epochs,
+    init_recycling,
+    phase1_min_resol,
+    domain_segs,
+    mse_uuid,
+    voxel_spacing,
+    template_pdb,
+    msa_subratio,
+    input_msa,
 ) -> None:
-
     phase1_config = generate_phase1_config(
         working_path=working_path,
         file_root=file_root,
@@ -406,7 +428,6 @@ def run_both_phases_single_dataset(
 
 
 def run_both_phases_all_datasets() -> None:
-
     args = parse_arguments()
     datasets = args.systems
 
@@ -480,6 +501,7 @@ def run_both_phases_all_datasets() -> None:
                 msa_subratio=args.msa_subratio,
                 input_msa=args.input_msa,
             )
+
 
 if __name__ == "__main__":
     run_both_phases_all_datasets()

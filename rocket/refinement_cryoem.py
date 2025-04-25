@@ -1,36 +1,36 @@
-import uuid
-import torch
-import pickle
-import numpy as np
-from tqdm import tqdm
-import rocket
-import os, glob, shutil
+import glob
+import os
+import shutil
 import time
-from rocket import coordinates as rk_coordinates
-from rocket import utils as rk_utils
-from rocket import refinement_utils as rkrf_utils
+import uuid
+
+import numpy as np
+import torch
+from loguru import logger
 from openfold.config import model_config
-from openfold.data import feature_pipeline, data_pipeline
+from openfold.data import data_pipeline, feature_pipeline
+from tqdm import tqdm
 
-
-from rocket.cryo import targets as cryo_targets
+import rocket
+from rocket import coordinates as rk_coordinates
+from rocket import refinement_utils as rkrf_utils
+from rocket import utils as rk_utils
 from rocket.cryo import structurefactors as cryo_sf
+from rocket.cryo import targets as cryo_targets
 from rocket.cryo import utils as cryo_utils
 from rocket.refinement_config import RocketRefinmentConfig
-
-from loguru import logger
-
 
 PRESET = "model_1_ptm"
 EXCLUDING_RES = None
 N_BINS = 20
+
 
 def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentConfig:
     if isinstance(config, str):
         config = RocketRefinmentConfig.from_yaml_file(config)
     assert config.datamode == "cryoem", "Make sure to set datamode to 'cryoem'!"
     device = f"cuda:{config.cuda_device}" if torch.cuda.is_available() else "cpu"
-    
+
     target_id = config.file_id
     path = config.path
     mtz_file = f"{path}/ROCKET_inputs/{target_id}-Edata.mtz"
@@ -50,10 +50,10 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
         os.makedirs(output_directory_path, exist_ok=True)
     except FileExistsError:
         logger.info(
-            f"Warning: Directory '{output_directory_path}' already exists. Overwriting..."
+            f"Warning: Directory '{output_directory_path}' already exists. Overwriting."
         )
         logger.info(
-            f"System: {target_id}, refinment run ID: {refinement_run_uuid!s}, Note: {note}",
+            f"System: {target_id}, run ID: {refinement_run_uuid!s}, Note: {note}",
         )
 
     ############ 2. Initializations ############
@@ -62,9 +62,11 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
         if config.downsample_ratio == 1:
             logger.info("Downsampling ratio is 1. Skipping downsampling...")
         else:
-            logger.info(f"Downsampling in reciprocal space, ratio per axis: {config.downsample_ratio}")
+            logger.info(
+                f"Downsampling reciprocal space, axis ratio: {config.downsample_ratio}"
+            )
             mtz_file = cryo_utils.downsample_data(mtz_file, config.downsample_ratio)
-            
+
     # Initialize SFC
     cryo_sfc = cryo_sf.initial_cryoSFC(
         input_pdb, mtz_file, "Emean", "PHIEmean", device, N_BINS
@@ -84,12 +86,11 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
     init_pos_bfactor = cryo_sfc.atom_b_iso.clone()
     bfactor_weights = rk_utils.weighting_torch(init_pos_bfactor, cutoff2=20.0)
 
-    #residue_numbers = [int(name.split("-")[1]) for name in cra_calphas_list]
+    # residue_numbers = [int(name.split("-")[1]) for name in cra_calphas_list]
 
     # LLG initialization
     cryo_llgloss = cryo_targets.LLGloss(cryo_sfc, mtz_file)
     cryo_llgloss_rbr = cryo_targets.LLGloss(cryo_sfc, mtz_file)
-
 
     # Model initialization
     version_to_class = {
@@ -98,9 +99,9 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
         3: rocket.MSABiasAFv3,
         4: rocket.TemplateBiasAF,
     }
-    af_bias = version_to_class[bias_version](model_config(PRESET, train=True), PRESET).to(
-        device
-    )
+    af_bias = version_to_class[bias_version](
+        model_config(PRESET, train=True), PRESET
+    ).to(device)
     af_bias.freeze()
 
     # Optimizer settings and initialization
@@ -155,20 +156,18 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
 
         # MH edits @ Oct 19, 2024, support MSA subsampling at the beginning
         if config.msa_subratio is not None:
-            assert (
-                config.msa_subratio > 0.0 and config.msa_subratio <= 1.0
-            ), "msa_subratio should be None or between 0.0 and 1.0!"
+            assert config.msa_subratio > 0.0 and config.msa_subratio <= 1.0, (
+                "msa_subratio should be None or between 0.0 and 1.0!"
+            )
             # Do subsampling of msa, keep the first sequence
             if config.sub_msa_path is None:
                 idx = np.arange(feature_dict["msa"].shape[0] - 1) + 1
-                sub_idx = np.concatenate(
-                    (
-                        np.array([0]),
-                        np.random.choice(
-                            idx, size=int(config.msa_subratio * len(idx)), replace=False
-                        ),
-                    )
-                )
+                sub_idx = np.concatenate((
+                    np.array([0]),
+                    np.random.choice(
+                        idx, size=int(config.msa_subratio * len(idx)), replace=False
+                    ),
+                ))
                 feature_dict["msa"] = feature_dict["msa"][sub_idx]
                 feature_dict["deletion_matrix_int"] = feature_dict[
                     "deletion_matrix_int"
@@ -206,14 +205,12 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
                 :, :, 25:48
             ].clone()
             submsa_profile = processed_feature_dict["msa_feat"][:, :, 25:48].clone()
-            processed_feature_dict["msa_feat"][
-                :, :, 25:48
-            ] = (
+            processed_feature_dict["msa_feat"][:, :, 25:48] = (
                 fullmsa_profile.clone()
             )  # Use full msa's profile as basis for linear space -- higher rank (?)
             recombination_bias = (
                 submsa_profile[..., 0] - fullmsa_profile[..., 0]
-            )  # Use the difference as the initial bias, so we could start from the desired profile
+            )  # Use difference as the initial bias so we can start from desired profile
         elif config.chimera_profile:
             fullmsa_dir = os.path.join(config.path, "alignments")
             fullmsa_feature_dict = rkrf_utils.generate_feature_dict(
@@ -246,7 +243,9 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
                 rk_utils.assert_numpy(features_at_it_start[..., 0]),
             )
         else:
-            msa_feat_init_np = np.load(glob.glob(config.msa_feat_init_path)[0], allow_pickle=True)
+            msa_feat_init_np = np.load(
+                glob.glob(config.msa_feat_init_path)[0], allow_pickle=True
+            )
             features_at_it_start_np = np.repeat(
                 np.expand_dims(msa_feat_init_np, -1), config.init_recycling + 1, -1
             )
@@ -280,16 +279,13 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
             mask_sidechains=True,
             max_recycling_iters=config.init_recycling,
         )
-        for key in device_processed_features_template.keys():
+        for key in device_processed_features_template:
             if key.startswith("template_"):
                 device_processed_features[key] = device_processed_features_template[key]
 
-
     for n in range(num_of_runs):
-
         run_id = rkrf_utils.number_to_letter(n)
         best_pos = reference_pos
-
 
         # Initialize bias
         device_processed_features, optimizer, bias_names = rkrf_utils.init_bias(
@@ -305,7 +301,7 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
         )
 
         # List initialization for saving values
-        #sigmas_by_epoch = []
+        # sigmas_by_epoch = []
         llg_losses = []
         time_by_epoch = []
         memory_by_epoch = []
@@ -317,7 +313,7 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
             desc=f"{target_id}, uuid: {refinement_run_uuid[:4]}, run: {run_id}",
         )
 
-                # Run smooth stage in phase 1
+        # Run smooth stage in phase 1
         if "phase1" in config.note:
             w_L2 = config.l2_weight
         elif "phase2" in config.note:
@@ -348,7 +344,9 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
             optimizer.zero_grad()
 
             # Avoid passing through graph a second time
-            device_processed_features[feature_key] = features_at_it_start.detach().clone()
+            device_processed_features[feature_key] = (
+                features_at_it_start.detach().clone()
+            )
 
             # AF pass
             if iteration == 0:
@@ -380,9 +378,14 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
             )
             # Rigid body refinement (RBR) step
             optimized_xyz, loss_track_pose = rk_coordinates.rigidbody_refine_quat(
-                aligned_xyz, cryo_llgloss_rbr, sfc_rbr.cra_name, lbfgs=True, verbose=False, 
+                aligned_xyz,
+                cryo_llgloss_rbr,
+                sfc_rbr.cra_name,
+                lbfgs=True,
+                verbose=False,
+                domain_segs=config.domain_segs,
             )
-            
+
             cryo_llgloss.sfc.atom_b_iso = pseudo_Bs.detach().clone()
             all_pldtts.append(plddts_res)
             mean_it_plddts.append(np.mean(plddts_res))
@@ -395,13 +398,11 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
 
             # LLG loss
             L_llg = -cryo_llgloss(
-                optimized_xyz, 
+                optimized_xyz,
             )
 
             L_llg = L_llg  # + 30 * L_plddt
 
-            sigmas = cryo_llgloss.sigmaAs
-            # print("mean sigmaA", np.mean(rk_utils.assert_numpy(sigmas)))
             llg_losses.append(L_llg.clone().item())
 
             # check if current loss is the best so far
@@ -415,13 +416,12 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
                 )
                 best_run = run_id
                 best_iter = iteration
-                best_pos = optimized_xyz.detach().clone()  
+                best_pos = optimized_xyz.detach().clone()
 
             progress_bar.set_postfix(
                 LLG=f"{L_llg.clone().item():.2f}",
-                memory=f"{torch.cuda.max_memory_allocated()/1024**3:.1f}G",
+                memory=f"{torch.cuda.max_memory_allocated() / 1024**3:.1f}G",
             )
-
 
             #### add an L2 loss to constrain confident atoms ###
             if w_L2 > 0.0:
@@ -438,7 +438,7 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
                 if early_stopper.early_stop(loss.item()):
                     break
 
-            # Do smooth in last several iterations of phase 1 instead of beginning of phase 2
+            # Smooth in last part of phase 1 instead of beginning of phase 2
             if ("phase1" in config.note) and (config.smooth_stage_epochs is not None):
                 if iteration > (config.iterations - smooth_stage_epochs):
                     lr_a = lr_a_initial * (decay_rate_stage1_add**iteration)
@@ -466,7 +466,6 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
             f"{output_directory_path!s}/LLG_it_{run_id}.npy",
             rk_utils.assert_numpy(llg_losses),
         )
-
 
     torch.save(
         best_msa_bias,

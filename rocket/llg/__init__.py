@@ -1,3 +1,3 @@
-from . import utils
-from . import structurefactors
-from . import targets
+from . import structurefactors, targets, utils
+
+__all__ = ["structurefactors", "targets", "utils"]

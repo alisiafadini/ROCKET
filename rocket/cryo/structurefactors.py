@@ -1,7 +1,4 @@
-import torch
-import numpy as np
 from SFC_Torch import SFcalculator
-import SFC_Torch as SFC
 
 
 def initial_cryoSFC(

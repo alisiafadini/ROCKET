@@ -3,34 +3,42 @@ Run LLG scoring for system with different msas
 """
 
 import argparse
+import glob
+import os
+import shutil
+
 import pandas as pd
-import numpy as np
 import torch
-import sys, os
-import rocket
-import os, glob, shutil
-from tqdm import tqdm
-from rocket import coordinates as rk_coordinates
-from rocket import utils as rk_utils
-from rocket import refinement_utils as rkrf_utils
-from rocket.llg import structurefactors as llg_sf
-from openfold.config import model_config
-from openfold.data import feature_pipeline, data_pipeline
-
 from loguru import logger
+from openfold.config import model_config
+from openfold.data import data_pipeline, feature_pipeline
+from tqdm import tqdm
 
+import rocket
+from rocket import coordinates as rk_coordinates
+from rocket import refinement_utils as rkrf_utils
+from rocket import utils as rk_utils
+from rocket.llg import structurefactors as llg_sf
 
 PRESET = "model_1_ptm"
 
+
 def main():
-    p = argparse.ArgumentParser(description=
-    """
+    p = argparse.ArgumentParser(
+        description="""
     Run LLG scoring for system with different msas
-    """)
+    """
+    )
     p.add_argument("path", action="store", help="Path to parent folder")
     p.add_argument("system", action="store", help="file_id for the dataset")
-    p.add_argument("-i", action='store', help='prefix for msas to use, path will prepend')
-    p.add_argument("-o", action="store", help='name of output directory to write prediction and scoring to, path will prepend')
+    p.add_argument(
+        "-i", action="store", help="prefix for msas to use, path will prepend"
+    )
+    p.add_argument(
+        "-o",
+        action="store",
+        help="name of output directory to write prediction and scoring to, path will prepend",  # noqa: E501
+    )
     p.add_argument(
         "--domain_segs",
         type=int,
@@ -73,15 +81,11 @@ def main():
         help=("min resolution cut"),
     )
     p.add_argument(
-        "--chimera_profile", 
-        action="store_true",
-        help=("Use chimera profile")
+        "--chimera_profile", action="store_true", help=("Use chimera profile")
     )
 
     p.add_argument(
-        "--score_fullmsa", 
-        action="store_true",
-        help=("Also score the full msa")
+        "--score_fullmsa", action="store_true", help=("Also score the full msa")
     )
 
     config = p.parse_args()
@@ -90,22 +94,20 @@ def main():
 
     output_directory_path = os.path.join(config.path, config.o)
     os.makedirs(output_directory_path, exist_ok=True)
-    
+
     # Configure input paths
     logger.info(f"Working with system {config.system}", flush=True)
     tng_file = os.path.join(config.path, "ROCKET_inputs", f"{config.system}-Edata.mtz")
-    input_pdb = os.path.join(config.path, "ROCKET_inputs", f"{config.system}-pred-aligned.pdb")
+    input_pdb = os.path.join(
+        config.path, "ROCKET_inputs", f"{config.system}-pred-aligned.pdb"
+    )
 
     if config.additional_chain:
         constant_fp_added_HKL = torch.load(
-            "{p}/ROCKET_inputs/{r}_added_chain_atoms_HKL.pt".format(
-                p=config.path, r=config.system
-            )
+            f"{config.path}/ROCKET_inputs/{config.system}_added_chain_atoms_HKL.pt"
         ).to(device=device)
         constant_fp_added_asu = torch.load(
-            "{p}/ROCKET_inputs/{r}_added_chain_atoms_asu.pt".format(
-                p=config.path, r=config.system
-            )
+            f"{config.path}/ROCKET_inputs/{config.system}_added_chain_atoms_asu.pt"
         ).to(device=device)
 
     else:
@@ -113,7 +115,7 @@ def main():
         constant_fp_added_asu = None
 
     # Initialize SFC
-    logger.info(f"Initialize SFC and LLGloss...", flush=True)
+    logger.info("Initialize SFC and LLGloss...", flush=True)
     sfc = llg_sf.initial_SFC(
         input_pdb,
         tng_file,
@@ -126,7 +128,7 @@ def main():
         added_chain_asu=constant_fp_added_asu,
         spacing=config.voxel_spacing,
     )
-    
+
     init_pos_bfactor = sfc.atom_b_iso.clone()
     reference_pos = sfc.atom_pos_orth.clone()
 
@@ -145,48 +147,45 @@ def main():
     )
 
     # LLG initialization with resol cut
-    llgloss = rkrf_utils.init_llgloss(
-        sfc, tng_file, config.min_resolution, None
-    )
+    llgloss = rkrf_utils.init_llgloss(sfc, tng_file, config.min_resolution, None)
     llgloss_rbr = rkrf_utils.init_llgloss(
         sfc_rbr, tng_file, config.min_resolution, None
     )
 
-    af_bias = rocket.MSABiasAFv3(
-        model_config(PRESET, train=True), PRESET
-    ).to(device)
+    af_bias = rocket.MSABiasAFv3(model_config(PRESET, train=True), PRESET).to(device)
     af_bias.freeze()
 
-    fasta_path = [f for ext in ('*.fa', '*.fasta') for f in glob.glob(os.path.join(config.path, ext))][0]
+    fasta_path = [
+        f
+        for ext in ("*.fa", "*.fasta")
+        for f in glob.glob(os.path.join(config.path, ext))
+    ][0]
 
     # Edit by MH @ Nov 15, 2024, recombination of full msa and subset msa
-    fullmsa_dir =  os.path.join(config.path, "alignments")
+    fullmsa_dir = os.path.join(config.path, "alignments")
     data_processor = data_pipeline.DataPipeline(template_featurizer=None)
     fullmsa_feature_dict = rkrf_utils.generate_feature_dict(
         fasta_path,
         fullmsa_dir,
         data_processor,
-        )
+    )
     # Do featurization
     afconfig = model_config(PRESET)
     afconfig.data.common.max_recycling_iters = config.init_recycling
     del afconfig.data.common.masked_msa
-    afconfig.data.common.resample_msa_in_recycling = False  
+    afconfig.data.common.resample_msa_in_recycling = False
     feature_processor = feature_pipeline.FeaturePipeline(afconfig.data)
     fullmsa_processed_feature_dict = feature_processor.process_features(
-        fullmsa_feature_dict, mode='predict'
+        fullmsa_feature_dict, mode="predict"
     )
     full_profile = fullmsa_processed_feature_dict["msa_feat"][:, :, 25:48].clone()
 
-    
-    
     # Save out the scoring statistics
     df = pd.DataFrame(
-        columns = ["msa_name", "depth", "mean_plddt", "llg", "rfree", "rwork"]
+        columns=["msa_name", "depth", "mean_plddt", "llg", "rfree", "rwork"]
     )
     df.to_csv(os.path.join(output_directory_path, "msa_scoring.csv"), index=False)
-    
-    
+
     if config.score_fullmsa:
         msa_name = "fullmsa"
         device_processed_features = rk_utils.move_tensors_to_device(
@@ -250,57 +249,63 @@ def main():
             update_scales=True,
             added_chain_HKL=constant_fp_added_HKL,
             added_chain_asu=constant_fp_added_asu,
-            )
+        )
 
         # Save postRBR PDB
         llgloss.sfc.atom_pos_orth = optimized_xyz
-        llgloss.sfc.savePDB(
-            f"{output_directory_path!s}/{msa_name}_postRBR.pdb"
+        llgloss.sfc.savePDB(f"{output_directory_path!s}/{msa_name}_postRBR.pdb")
+        plddt_i, llg_i, rfree_i, rwork_i = (
+            plddt.item(),
+            llg.item(),
+            llgloss.sfc.r_free.item(),
+            llgloss.sfc.r_work.item(),
         )
-        plddt_i, llg_i, rfree_i, rwork_i = plddt.item(), llg.item(), llgloss.sfc.r_free.item(), llgloss.sfc.r_work.item()
-        
+
         # Save out scoring
-        df_tmp = pd.DataFrame(
-            {
-                "msa_name": [msa_name],
-                "depth": [fullmsa_feature_dict["msa"].shape[0]],
-                "mean_plddt": [plddt_i],
-                "llg": [llg_i],
-                "rfree": [rfree_i],
-                "rwork": [rwork_i],
-            }
+        df_tmp = pd.DataFrame({
+            "msa_name": [msa_name],
+            "depth": [fullmsa_feature_dict["msa"].shape[0]],
+            "mean_plddt": [plddt_i],
+            "llg": [llg_i],
+            "rfree": [rfree_i],
+            "rwork": [rwork_i],
+        })
+        df_tmp.to_csv(
+            os.path.join(output_directory_path, "msa_scoring.csv"),
+            mode="a",
+            header=False,
+            index=False,
         )
-        df_tmp.to_csv(os.path.join(output_directory_path, "msa_scoring.csv"), mode="a", header=False, index=False)
 
     # Get available msas
     a3m_paths = glob.glob(os.path.join(config.path, config.i + "*.a3m"))
     print(f"{len(a3m_paths)} msa files available...", flush=True)
     a3m_paths.sort()
-    
+
     for a3m_path in tqdm(a3m_paths):
         msa_name, ext = os.path.splitext(os.path.basename(a3m_path))
         data_processor = data_pipeline.DataPipeline(template_featurizer=None)
         temp_alignment_dir = os.path.join(os.path.dirname(a3m_path), "tmp_align")
         os.makedirs(temp_alignment_dir, exist_ok=True)
-        shutil.copy(a3m_path, os.path.join(temp_alignment_dir, msa_name+".a3m"))
+        shutil.copy(a3m_path, os.path.join(temp_alignment_dir, msa_name + ".a3m"))
         feature_dict = rkrf_utils.generate_feature_dict(
             fasta_path,
             temp_alignment_dir,
             data_processor,
-            )
+        )
         # Do featurization
         afconfig = model_config(PRESET)
         afconfig.data.common.max_recycling_iters = config.init_recycling
         del afconfig.data.common.masked_msa
-        afconfig.data.common.resample_msa_in_recycling = False  
+        afconfig.data.common.resample_msa_in_recycling = False
         feature_processor = feature_pipeline.FeaturePipeline(afconfig.data)
         processed_feature_dict = feature_processor.process_features(
-            feature_dict, mode='predict'
+            feature_dict, mode="predict"
         )
 
         # # Edit by MH @ Nov 15, 2024, recombination of full msa and subset msa
         # recomb_feature_dict = fullmsa_processed_feature_dict.copy()
-        # recomb_feature_dict["msa_feat"][:, :, 25:48] =  processed_feature_dict["msa_feat"][:, :, 25:48]
+        # recomb_feature_dict["msa_feat"][:, :, 25:48] =  processed_feature_dict["msa_feat"][:, :, 25:48]  # noqa: E501
         # device_processed_features = rk_utils.move_tensors_to_device(
         #     recomb_feature_dict, device=device
         # )
@@ -308,8 +313,10 @@ def main():
         # Edit by MH @ Nov 20, 2024, try the chimera profile idea from Alisia
         if config.chimera_profile:
             sub_profile = processed_feature_dict["msa_feat"][:, :, 25:48].clone()
-            processed_feature_dict["msa_feat"][:, :, 25:48] =  torch.where(sub_profile == 0.0, full_profile.clone(), sub_profile.clone())
-        
+            processed_feature_dict["msa_feat"][:, :, 25:48] = torch.where(
+                sub_profile == 0.0, full_profile.clone(), sub_profile.clone()
+            )
+
         device_processed_features = rk_utils.move_tensors_to_device(
             processed_feature_dict, device=device
         )
@@ -372,30 +379,33 @@ def main():
             update_scales=True,
             added_chain_HKL=constant_fp_added_HKL,
             added_chain_asu=constant_fp_added_asu,
-            )
+        )
 
         # Save postRBR PDB
         llgloss.sfc.atom_pos_orth = optimized_xyz
-        llgloss.sfc.savePDB(
-            f"{output_directory_path!s}/{msa_name}_postRBR.pdb"
+        llgloss.sfc.savePDB(f"{output_directory_path!s}/{msa_name}_postRBR.pdb")
+        plddt_i, llg_i, rfree_i, rwork_i = (
+            plddt.item(),
+            llg.item(),
+            llgloss.sfc.r_free.item(),
+            llgloss.sfc.r_work.item(),
         )
-        plddt_i, llg_i, rfree_i, rwork_i = plddt.item(), llg.item(), llgloss.sfc.r_free.item(), llgloss.sfc.r_work.item()
-        
+
         # Save out scoring
-        df_tmp = pd.DataFrame(
-            {
-                "msa_name": [msa_name],
-                "depth":[feature_dict["msa"].shape[0]],
-                "mean_plddt": [plddt_i],
-                "llg": [llg_i],
-                "rfree": [rfree_i],
-                "rwork": [rwork_i],
-            }
+        df_tmp = pd.DataFrame({
+            "msa_name": [msa_name],
+            "depth": [feature_dict["msa"].shape[0]],
+            "mean_plddt": [plddt_i],
+            "llg": [llg_i],
+            "rfree": [rfree_i],
+            "rwork": [rwork_i],
+        })
+        df_tmp.to_csv(
+            os.path.join(output_directory_path, "msa_scoring.csv"),
+            mode="a",
+            header=False,
+            index=False,
         )
-        df_tmp.to_csv(os.path.join(output_directory_path, "msa_scoring.csv"), mode="a", header=False, index=False)
 
         # delete the tmp alignment
         shutil.rmtree(temp_alignment_dir)
-        
-
-
