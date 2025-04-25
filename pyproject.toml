@@ -1,0 +1,60 @@
+[build-system]
+# Specifies that setuptools is used to build the package
+requires = ["setuptools>=61.0"] # Use a reasonably modern version of setuptools
+build-backend = "setuptools.build_meta"
+
+[project]
+# Core project metadata (mostly replaces setup() arguments)
+name = "rocket"
+# Use dynamic versioning to read from your VERSION file
+dynamic = ["version"]
+description = "Refining Openfold predictions with Crystallographic Likelihood Targets"
+readme = "README.md" # Assuming you have a README.md, otherwise adjust or remove
+requires-python = ">=3.8" # Specify your minimum supported Python version, adjust if needed
+license = { file = "LICENSE" } 
+authors = [
+    { name = "Your Name", email = "your.email@example.com" },
+]
+keywords = ["bioinformatics", "protein structure", "openfold", "crystallography", "refinement"] # Optional: Add relevant keywords
+classifiers = [ # Optional: PyPI classifiers, see https://pypi.org/classifiers/
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+]
+
+dependencies = [
+    "scikit-bio",
+    "loguru",
+    "SFcalculator-torch>=0.2.2",
+    "matplotlib",
+    "polyleven",
+    "scikit-learn",
+    "seaborn",
+]
+
+[project.urls]
+Homepage = "https://github.com/alisiafadini/ROCKET"
+Repository = "https://github.com/alisiafadini/ROCKET"
+
+[project.scripts]
+"rk.predict" = "rocket.scripts.run_pretrained_openfold:cli_runopenfold"
+"rk.preprocess" = "rocket.scripts.run_preprocess:cli_runpreprocess"
+"rk.refine" = "rocket.scripts.run_refine:cli_runrefine"
+"rk.config" = "rocket.scripts.run_config:cli_runconfig"
+"rk.mse" = "rocket.scripts.run_mse:run_mse_all_datasets"
+"rk.msacluster" = "rocket.scripts.run_msacluster:main"
+"rk.score" = "rocket.scripts.run_msascore:main"
+"rk.plddt" = "rocket.scripts.run_plddtoptimize:main"
+
+[tool.setuptools.dynamic]
+version = { file = "rocket/VERSION" }
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["."]
+exclude = ["tests*"] # Exclude tests from the installed package
