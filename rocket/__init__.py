@@ -1,6 +1,7 @@
 # Top Level API
 # Submodules
 from rocket import base, coordinates, cryo, xtal, utils
+from rocket import refinement_utils
 from rocket.base import MSABiasAFv1, MSABiasAFv2, MSABiasAFv3, TemplateBiasAF
 from rocket.helper import make_processed_dict_from_template
 from rocket.mse import MSEloss, MSElossBB
@@ -13,6 +14,7 @@ __all__ = [
     "xtal",
     "cryo",
     "utils",
+    "refinement_utils",
     # List specific classes/functions you want to expose directly
     "MSABiasAFv1",
     "MSABiasAFv2",

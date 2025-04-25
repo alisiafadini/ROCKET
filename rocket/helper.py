@@ -147,8 +147,6 @@ def make_processed_dict_from_template(
 """
 Read in a PDB file from a path
 """
-
-
 def pdb_to_string(pdb_file):
     lines = []
     for line in open(pdb_file):  # noqa: SIM115
