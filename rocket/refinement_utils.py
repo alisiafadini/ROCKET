@@ -228,16 +228,14 @@ def init_bias(
             )
         )
         if weight_decay is None:
-            optimizer = torch.optim.Adam(
-                [
-                    {
-                        "params": device_processed_features[
-                            "template_torsion_angles_sin_cos_bias"
-                        ],
-                        "lr": lr_a,
-                    },
-                ]
-            )
+            optimizer = torch.optim.Adam([
+                {
+                    "params": device_processed_features[
+                        "template_torsion_angles_sin_cos_bias"
+                    ],
+                    "lr": lr_a,
+                },
+            ])
         else:
             optimizer = torch.optim.AdamW(
                 [
@@ -278,15 +276,13 @@ def init_bias(
             )
 
         if weight_decay is None:
-            optimizer = torch.optim.Adam(
-                [
-                    {"params": device_processed_features["msa_feat_bias"], "lr": lr_a},
-                    {
-                        "params": device_processed_features["msa_feat_weights"],
-                        "lr": lr_m,
-                    },
-                ]
-            )
+            optimizer = torch.optim.Adam([
+                {"params": device_processed_features["msa_feat_bias"], "lr": lr_a},
+                {
+                    "params": device_processed_features["msa_feat_weights"],
+                    "lr": lr_m,
+                },
+            ])
         else:
             optimizer = torch.optim.AdamW(
                 [
@@ -306,15 +302,13 @@ def init_bias(
         )
 
         if weight_decay is None:
-            optimizer = torch.optim.Adam(
-                [
-                    {"params": device_processed_features["msa_feat_bias"], "lr": lr_a},
-                    {
-                        "params": device_processed_features["msa_feat_weights"],
-                        "lr": lr_m,
-                    },
-                ]
-            )
+            optimizer = torch.optim.Adam([
+                {"params": device_processed_features["msa_feat_bias"], "lr": lr_a},
+                {
+                    "params": device_processed_features["msa_feat_weights"],
+                    "lr": lr_m,
+                },
+            ])
         else:
             optimizer = torch.optim.AdamW(
                 [
@@ -330,11 +324,9 @@ def init_bias(
 
     elif bias_version == 1:
         if weight_decay is None:
-            optimizer = torch.optim.Adam(
-                [
-                    {"params": device_processed_features["msa_feat_bias"], "lr": lr_a},
-                ]
-            )
+            optimizer = torch.optim.Adam([
+                {"params": device_processed_features["msa_feat_bias"], "lr": lr_a},
+            ])
         else:
             optimizer = torch.optim.AdamW(
                 [
@@ -367,9 +359,9 @@ def position_alignment(
     if reference_bfactor is None:
         weights = rk_utils.weighting(rk_utils.assert_numpy(pseudo_Bs))
     else:
-        assert (
-            reference_bfactor.shape == pseudo_Bs.shape
-        ), "Reference bfactor should have same shape as model bfactor!"
+        assert reference_bfactor.shape == pseudo_Bs.shape, (
+            "Reference bfactor should have same shape as model bfactor!"
+        )
         weights = rk_utils.weighting(rk_utils.assert_numpy(reference_bfactor))
     # plddts_np = rk_utils.assert_numpy(plddts)
     # weights = np.ones_like(plddts_np)
