@@ -42,6 +42,7 @@ tests = [
 
 CI = [
     "ruff",
+    "pre-commit",
 ]
 
 openfold = [
