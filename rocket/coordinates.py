@@ -534,7 +534,8 @@ def fractionalize_torch(atom_pos_orth, unitcell, device=None):
 
 
 def extract_allatoms(outputs, feats, cra_name_sfc: list):
-    atom_mask = outputs["final_atom_mask"]  # shape [n_res, 37]
+    N_atom_types = len(residue_constants.atom_types)  # by default 37
+    atom_mask = outputs["final_atom_mask"]  # shape [n_res, N_atom_types]
     n_res = atom_mask.shape[0]
 
     # get atom positions in vectorized manner
@@ -542,7 +543,7 @@ def extract_allatoms(outputs, feats, cra_name_sfc: list):
 
     # get plddt in vectorized manner
     plddt_atom = (
-        outputs["plddt"].reshape([-1, 1]).repeat([1, 37])[atom_mask == 1.0]
+        outputs["plddt"].reshape([-1, 1]).repeat([1, N_atom_types])[atom_mask == 1.0]
     )  # shape [n_atom,]
 
     # get cra_name from AF2, [chain-resid-resname-atomname,...]
@@ -557,14 +558,14 @@ def extract_allatoms(outputs, feats, cra_name_sfc: list):
         "A-" + str(i) + "-" for i in range(n_res)
     ])  # TODO: here we assume all residues in same chain A
     crname_repeats = (
-        np.char.add(chain_resid, aatype_1d).reshape(-1, 1).repeat(37, axis=-1)
-    )  # [n_res, 37]
+        np.char.add(chain_resid, aatype_1d).reshape(-1, 1).repeat(N_atom_types, axis=-1)
+    )  # [n_res, N_atom_types]
     crname_atom = crname_repeats[utils.assert_numpy(atom_mask) == 1]
     atom_types_repeats = (
         utils.assert_numpy(residue_constants.atom_types)
-        .reshape(1, 37)
+        .reshape(1, N_atom_types)
         .repeat(n_res, axis=0)
-    )  # [n_res, 37]
+    )  # [n_res, N_atom_types]
     aname_atom = atom_types_repeats[utils.assert_numpy(atom_mask) == 1]
     cra_name_af = np.char.add(crname_atom, aname_atom).tolist()
 
