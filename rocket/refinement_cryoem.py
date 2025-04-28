@@ -29,7 +29,18 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
     if isinstance(config, str):
         config = RocketRefinmentConfig.from_yaml_file(config)
     assert config.datamode == "cryoem", "Make sure to set datamode to 'cryoem'!"
-    device = f"cuda:{config.cuda_device}" if torch.cuda.is_available() else "cpu"
+
+    ############ 1. Global settings ############
+    # Device
+    device = f"cuda:{config.cuda_device}"
+
+    # Using LBFGS or Adam in RBR
+    if config.rbr_opt_algorithm == "lbfgs":
+        RBR_LBFGS = True
+    elif config.rbr_opt_algorithm == "adam":
+        RBR_LBFGS = False
+    else:
+        raise ValueError("rbr_opt only supports lbfgs or adam")
 
     target_id = config.file_id
     path = config.path
@@ -381,9 +392,10 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
                 aligned_xyz,
                 cryo_llgloss_rbr,
                 sfc_rbr.cra_name,
-                lbfgs=True,
-                verbose=False,
                 domain_segs=config.domain_segs,
+                lbfgs=RBR_LBFGS,
+                lbfgs_lr=config.rbr_lbfgs_learning_rate,
+                verbose=config.verbose,
             )
 
             cryo_llgloss.sfc.atom_b_iso = pseudo_Bs.detach().clone()
