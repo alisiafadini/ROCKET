@@ -25,13 +25,31 @@ classifiers = [ # Optional: PyPI classifiers, see https://pypi.org/classifiers/
 
 dependencies = [
     "scikit-bio",
-    "ruff",
     "loguru",
     "SFcalculator-torch>=0.2.2",
     "matplotlib",
     "polyleven",
     "scikit-learn",
     "seaborn",
+]
+
+[project.optional-dependencies]
+tests = [
+    "pytest",
+    "pytest-cov",
+    "pytest-xdist",
+]
+
+CI = [
+    "ruff",
+    "pre-commit",
+]
+
+openfold = [
+    "openfold",
+]
+xtal = [
+    "SFcalculator-torch>=0.2.2",
 ]
 
 [project.urls]

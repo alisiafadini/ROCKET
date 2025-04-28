@@ -87,8 +87,9 @@ def compute_sigmaA_true(Eobs, phiobs, Ecalc, phicalc, bin_labels):
 
 
 def calculate_Sigma_atoms(Fs, eps, bin_labels):
+    if Fs.numel() == 0 or eps.numel() == 0 or bin_labels.numel() == 0:
+        raise ValueError("All input tensors must be non-empty.")
     F_over_eps = Fs**2 / eps
-
     data = torch.stack((F_over_eps, bin_labels), dim=1)
 
     Sigma = []

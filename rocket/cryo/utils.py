@@ -73,12 +73,19 @@ def compute_sigmaA_for_bin(eEsel, Ecalc_sel, dobssel, expectE_phi, Ecalc_phi):
 
     third = 1.0 / 3
     x1 = (u1 + math.sqrt(sqrt_arg)) ** third
+    denominator = 6 * sum3 * x1
+    if denominator == 0:
+        raise ZeroDivisionError("Division by zero in sigmaA calculation")
     sigmaA = (
         2 * 2.0**third * sum2**2
         - 6 * 2.0**third * sum1 * sum3
         - 2 * sum2 * x1
         + 2.0 ** (2 * third) * x1**2
-    ) / (6 * sum3 * x1)
+    ) / denominator
+
+    if not np.isfinite(sigmaA):
+        raise ValueError("sigmaA is NaN or inf in sigmaA calculation")
+
     return max(min(sigmaA, 0.999), 1.0e-6)
 
 

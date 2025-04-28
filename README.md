@@ -1,5 +1,9 @@
 # *R*efining *O*penfold predictions with *C*rystallographic/*C*ryo-EM Li*KE*lihood *T*argets (ROCKET)
 
+[![Build](https://github.com/alisiafadini/ROCKET/actions/workflows/test.yml/badge.svg)](https://github.com/alisiafadini/ROCKET/actions/workflows/test.yml)
+[![Ruff](https://github.com/alisiafadini/ROCKET/actions/workflows/lint.yml/badge.svg)](https://github.com/alisiafadini/ROCKET/actions/workflows/lint.yml)
+
+
 This is the code repo for [AlphaFold as a Prior: Experimental Structure Determination Conditioned on a Pretrained Neural Network](https://www.biorxiv.org/content/10.1101/2025.02.18.638828v2)
 
 You can find detailed documentation and walk-through tutorials at: https://rocket-9.gitbook.io/rocket-docs
@@ -168,6 +172,3 @@ Run `rk.score --help` after installation, if you see a normal doc strings withou
 ```
 
    
-
-
-

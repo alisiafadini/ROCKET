@@ -5,11 +5,12 @@ import re
 import numpy as np
 import skbio
 import torch
+from SFC_Torch import PDBParser
 
 import rocket
 from rocket import coordinates as rk_coordinates
 from rocket import utils as rk_utils
-from rocket.llg import utils as llg_utils
+from rocket.xtal import utils as llg_utils
 
 
 def generate_feature_dict(
@@ -69,7 +70,11 @@ def get_pattern_index(str_list, pattern):
     return next((i for i, s in enumerate(str_list) if re.match(pattern, s)), None)
 
 
-def get_common_ca_ind(pdb1, pdb2):
+def get_common_ca_ind(pdb1: PDBParser, pdb2: PDBParser):
+    """
+    A known bug: it can throw some residues out when the two pdbs have ideentical sequences
+    for example, "DFGTT" for both, and it will only keep "GTT"
+    """  # noqa: E501
     seq1 = pdb1.sequence
     seq2 = pdb2.sequence
     alignment = skbio.alignment.StripedSmithWaterman(seq1)(
@@ -126,8 +131,18 @@ def get_common_bb_ind(pdb1, pdb2):
     common_C_ind_2 = [
         get_pattern_index(pdb2.cra_name, rf".*-{i}-.*-C$") for i in common_seq2
     ]
-    common_bb_ind_1 = common_ca_ind_1 + common_N_ind_1 + common_C_ind_1
-    common_bb_ind_2 = common_ca_ind_2 + common_N_ind_2 + common_C_ind_2
+
+    filtered_ca_ind_1 = list(filter(lambda x: x is not None, common_ca_ind_1))
+    filtered_N_ind_1 = list(filter(lambda x: x is not None, common_N_ind_1))
+    filtered_C_ind_1 = list(filter(lambda x: x is not None, common_C_ind_1))
+
+    filtered_ca_ind_2 = list(filter(lambda x: x is not None, common_ca_ind_2))
+    filtered_N_ind_2 = list(filter(lambda x: x is not None, common_N_ind_2))
+    filtered_C_ind_2 = list(filter(lambda x: x is not None, common_C_ind_2))
+
+    # Now add only the valid lists
+    common_bb_ind_1 = filtered_ca_ind_1 + filtered_N_ind_1 + filtered_C_ind_1
+    common_bb_ind_2 = filtered_ca_ind_2 + filtered_N_ind_2 + filtered_C_ind_2
     assert (
         np.array([i[-6:] for i in np.array(pdb1.cra_name)[common_bb_ind_1]])
         == np.array([i[-6:] for i in np.array(pdb2.cra_name)[common_bb_ind_2]])
@@ -197,7 +212,7 @@ def init_processed_dict(
 def init_llgloss(sfc, tng_file, min_resolution=None, max_resolution=None):
     resol_min = min(sfc.dHKL) if min_resolution is None else min_resolution
     resol_max = max(sfc.dHKL) if max_resolution is None else max_resolution
-    llgloss = rocket.llg.targets.LLGloss(
+    llgloss = rocket.xtal.targets.LLGloss(
         sfc, tng_file, sfc.device, resol_min, resol_max
     )
     return llgloss
@@ -353,7 +368,7 @@ def position_alignment(
         af2_output, device_processed_features, cra_name
     )
     plddts_res = rk_utils.assert_numpy(af2_output["plddt"])
-    pseudo_Bs = rk_coordinates.update_bfactors(plddts)
+    pseudo_Bs = rk_utils.plddt2pseudoB_pt(plddts)
 
     # MH @ Sep 10 2024, temp edits to convert weighted kabsch to cutoff kabsch
     if reference_bfactor is None:

@@ -178,7 +178,10 @@ class LLGloss(torch.nn.Module):
         bin_labels=None,
         num_batch=1,
         sub_ratio=1.0,
+        solvent=False,
         update_scales=False,
+        added_chain_HKL=None,
+        added_chain_asu=None,
     ):
         """
         TODO: Use rfree label in the LLG calculation

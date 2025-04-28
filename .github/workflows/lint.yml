@@ -1,5 +1,5 @@
 # .github/workflows/lint.yml
-name: Lint and Format Check
+name: Ruff
 
 # Run on pushes to the main branch and on pull requests targeting main
 on:

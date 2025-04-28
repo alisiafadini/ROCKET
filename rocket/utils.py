@@ -7,10 +7,18 @@ import torch
 from SFC_Torch import PDBParser
 
 
-def plddt2pseudoB(plddts):
+def plddt2pseudoB_np(plddts):
     # Use Tom Terwilliger's formula to convert plddt to Bfactor
     deltas = 1.5 * np.exp(4 * (0.7 - 0.01 * plddts))
     b_factors = (8 * np.pi**2 * deltas**2) / 3
+    return b_factors
+
+
+def plddt2pseudoB_pt(plddts):
+    # Use Terwilliger's formula to convert plddt to pseudoB
+    deltas = 1.5 * torch.exp(4 * (0.7 - 0.01 * plddts))
+    b_factors = (8 * torch.pi**2 * deltas**2) / 3
+
     return b_factors
 
 
@@ -110,19 +118,15 @@ def move_tensors_to_device(processed_features, device=None):
     """
     if device is None:
         device = try_gpu()
-    # Create a new dictionary to store processed features, tensors moved to the device
     processed_features_on_device = {}
 
-    # Iterate through the keys and values in the input dictionary
     for key, value in processed_features.items():
-        # Check if the value is a PyTorch tensor
         if isinstance(value, torch.Tensor):
-            # Move the tensor to the specified device
             device_value = value.clone().to(device)
-        # Add the key-value pair to the new dictionary
+        else:
+            device_value = value
         processed_features_on_device[key] = device_value
 
-    # Return the new dictionary with tensors moved to the device
     return processed_features_on_device
 
 
