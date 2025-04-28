@@ -2,6 +2,11 @@
 
 [![Build](https://github.com/alisiafadini/ROCKET/actions/workflows/test.yml/badge.svg)](https://github.com/alisiafadini/ROCKET/actions/workflows/test.yml)
 [![Ruff](https://github.com/alisiafadini/ROCKET/actions/workflows/lint.yml/badge.svg)](https://github.com/alisiafadini/ROCKET/actions/workflows/lint.yml)
+[![GitHub License](https://img.shields.io/github/license/alisiafadini/ROCKET)](https://github.com/alisiafadini/ROCKET/blob/main/LICENSE)
+[![BioRXiv](https://img.shields.io/badge/DOI-10.1101%2F2025.02.18.638828v2-purple?link=https%3A%2F%2Fwww.biorxiv.org%2Fcontent%2F10.1101%2F2025.02.18.638828v2)](https://www.biorxiv.org/content/10.1101/2025.02.18.638828v2)
+[![Doc](https://img.shields.io/badge/Doc-GitBook-violet)](https://rocket-9.gitbook.io/rocket-docs)
+
+
 
 
 This is the code repo for [AlphaFold as a Prior: Experimental Structure Determination Conditioned on a Pretrained Neural Network](https://www.biorxiv.org/content/10.1101/2025.02.18.638828v2)
