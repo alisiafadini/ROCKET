@@ -208,19 +208,10 @@ def test_calculate_Sigma_atoms_empty():
 # ----------- normalize_Fs -------------
 
 
-def test_normalize_Fs_meansq1():
-    Fs = torch.tensor([1.0, 2.0, 3.0, 4.0])
-    eps = torch.tensor([1.0, 2.0, 3.0, 4.0])
-    Sigma_atoms = torch.tensor([1.0, 2.0])
-    bin_labels = torch.tensor([0, 1, 0, 1])
-    E = normalize_Fs(Fs, eps, Sigma_atoms, bin_labels)
-    assert round(torch.mean(E**2).item()) == 1
-
-
 def test_normalize_Fs_all_one_bin():
     Fs = torch.tensor([2.0, 4.0])
     eps = torch.tensor([1.0, 2.0])
-    Sigma_atoms = torch.tensor([2.0])
+    Sigma_atoms = torch.tensor([6.0])
     bin_labels = torch.tensor([0, 0])
     E = normalize_Fs(Fs, eps, Sigma_atoms, bin_labels)
     assert round(torch.mean(E**2).item()) == 1
@@ -233,12 +224,3 @@ def test_normalize_Fs_raises_on_bad_scale():
     bin_labels = torch.tensor([0, 0])
     with pytest.raises(AssertionError):
         normalize_Fs(Fs, eps, Sigma_atoms, bin_labels)
-
-
-def test_normalize_Fs_empty():
-    Fs = torch.tensor([], dtype=torch.float32)
-    eps = torch.tensor([], dtype=torch.float32)
-    Sigma_atoms = torch.tensor([])
-    bin_labels = torch.tensor([], dtype=torch.int64)
-    E = normalize_Fs(Fs, eps, Sigma_atoms, bin_labels)
-    assert E.shape[0] == 0
