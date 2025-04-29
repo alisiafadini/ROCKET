@@ -82,7 +82,7 @@ def main():
     )
     config = parser.parse_args()
 
-    device = "cuda:1"  # rk_utils.try_gpu()
+    device = "cuda:2"  # rk_utils.try_gpu()
     RBR_LBFGS = True
 
     output_directory_path = os.path.join(config.path, config.o)
@@ -123,6 +123,7 @@ def main():
             "added_chain_asu": constant_fp_added_asu,
             "spacing": config.voxel_spacing,
         }
+        LBFGS_LR = 150
 
     elif config.datamode == "cryoem":
         from rocket.cryo import structurefactors as sf_module
@@ -153,6 +154,7 @@ def main():
             "added_chain_asu": constant_fp_added_asu,
             "spacing": config.voxel_spacing,
         }
+        LBFGS_LR = 0.1
 
     else:
         raise ValueError(f"Unknown datamode: {config.datamode}")
@@ -229,7 +231,8 @@ def main():
         )
         llgloss.sfc.atom_b_iso = pseudo_Bs.detach()
         llgloss_rbr.sfc.atom_b_iso = pseudo_Bs.detach()
-
+        llgloss.sfc.atom_pos_orth = aligned_xyz
+        llgloss.sfc.savePDB(f"{output_directory_path!s}/{msa_name}_preRBR.pdb")
         if config.datamode == "xray":
             llgloss, llgloss_rbr, Ecalc, Fc = rkrf_utils.update_sigmaA(
                 llgloss=llgloss,
@@ -246,7 +249,7 @@ def main():
             lbfgs=RBR_LBFGS,
             added_chain_HKL=constant_fp_added_HKL,
             added_chain_asu=constant_fp_added_asu,
-            lbfgs_lr=150.0,
+            lbfgs_lr=LBFGS_LR,
             verbose=False,
         )
         llg = llgloss(
@@ -356,7 +359,7 @@ def main():
             lbfgs=RBR_LBFGS,
             added_chain_HKL=constant_fp_added_HKL,
             added_chain_asu=constant_fp_added_asu,
-            lbfgs_lr=150.0,
+            lbfgs_lr=LBFGS_LR,
             verbose=False,
         )
         llg = llgloss(
