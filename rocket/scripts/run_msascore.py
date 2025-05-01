@@ -231,8 +231,7 @@ def main():
         )
         llgloss.sfc.atom_b_iso = pseudo_Bs.detach()
         llgloss_rbr.sfc.atom_b_iso = pseudo_Bs.detach()
-        llgloss.sfc.atom_pos_orth = aligned_xyz
-        llgloss.sfc.savePDB(f"{output_directory_path!s}/{msa_name}_preRBR.pdb")
+
         if config.datamode == "xray":
             llgloss, llgloss_rbr, Ecalc, Fc = rkrf_utils.update_sigmaA(
                 llgloss=llgloss,
