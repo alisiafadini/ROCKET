@@ -82,7 +82,7 @@ def main():
     )
     config = parser.parse_args()
 
-    device = "cuda:2"  # rk_utils.try_gpu()
+    device = rk_utils.try_gpu()
     RBR_LBFGS = True
 
     output_directory_path = os.path.join(config.path, config.o)
