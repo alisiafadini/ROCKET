@@ -179,7 +179,7 @@ def init_processed_dict(
     device,
     template_pdb=None,
     target_seq=None,
-    PRESET="model_1_ptm",
+    PRESET="model_1_multimer_v3",
     postfix="processed_feats.pickle",
 ):
     if bias_version == 4:
@@ -231,7 +231,7 @@ def init_bias(
 ):
     num_res = device_processed_features["aatype"].shape[0]
     device_processed_features["msa_feat_bias"] = torch.zeros(
-        (512, num_res, 23), requires_grad=True, device=device
+        (508, num_res, 23), requires_grad=True, device=device
     )
 
     if bias_version == 4:
@@ -275,7 +275,7 @@ def init_bias(
             )
         else:
             device_processed_features["msa_feat_weights"] = torch.ones(
-                (512, num_res, 23), requires_grad=True, device=device
+                (508, num_res, 23), requires_grad=True, device=device
             )
 
         if recombination_bias is not None:
@@ -313,7 +313,7 @@ def init_bias(
 
     elif bias_version == 2:
         device_processed_features["msa_feat_weights"] = torch.eye(
-            512, dtype=torch.float32, requires_grad=True, device=device
+            508, dtype=torch.float32, requires_grad=True, device=device
         )
 
         if weight_decay is None:

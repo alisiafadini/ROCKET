@@ -9,7 +9,7 @@ from loguru import logger
 from SFC_Torch import PDBParser
 
 from ..refinement_config import gen_config_phase1, gen_config_phase2
-from ..utils import plddt2pseudoB
+from ..utils import plddt2pseudoB_np
 
 ### Phenix variables
 # phenix_directory = "/dev/shm/alisia/phenix-2.0rc1-5641/"
@@ -78,7 +78,7 @@ def run_openfold(
     """Runs OpenFold inference using the specified parameters."""
     fasta_dir = f"{file_id}_fasta"
     predicted_model = os.path.join(
-        output_dir, "predictions", f"{file_id}_model_1_ptm_unrelaxed.pdb"
+        output_dir, "predictions", f"{file_id}_model_1_multimer_v3_unrelaxed.pdb"
     )
 
     if os.path.exists(predicted_model):
@@ -91,7 +91,7 @@ def run_openfold(
         "--output_dir",
         f"{output_dir}",
         "--config_preset",
-        "model_1_ptm",
+        "model_1_multimer_v3",  # "model_1_ptm",
         "--model_device",
         "cuda:0",
         "--save_output",
@@ -351,7 +351,7 @@ def prepare_pred_aligned(output_dir, file_id):
     mr_model_path = os.path.join(output_dir, "ROCKET_inputs", f"{file_id}-MRed.pdb")
     assert os.path.exists(mr_model_path), f"MR model not found: {mr_model_path}"
     pred_model_path = os.path.join(
-        output_dir, "predictions", f"{file_id}_model_1_ptm_unrelaxed.pdb"
+        output_dir, "predictions", f"{file_id}_model_1_multimer_v3_unrelaxed.pdb"
     )
     assert os.path.exists(pred_model_path), (
         f"Predicted model not found: {pred_model_path}"
@@ -374,7 +374,7 @@ def prepare_pred_aligned(output_dir, file_id):
     align_model = PDBParser(aligned_model_path)
     align_model.set_spacegroup(mr_model.spacegroup)
     align_model.set_unitcell(mr_model.cell)
-    align_model.set_biso(plddt2pseudoB(align_model.atom_b_iso))
+    align_model.set_biso(plddt2pseudoB_np(align_model.atom_b_iso))
     align_model.savePDB(
         os.path.join(output_dir, "ROCKET_inputs", f"{file_id}-pred-aligned.pdb")
     )

@@ -20,7 +20,7 @@ from rocket.cryo import targets as cryo_targets
 from rocket.cryo import utils as cryo_utils
 from rocket.refinement_config import RocketRefinmentConfig
 
-PRESET = "model_1_ptm"
+PRESET = "model_1_multimer_v3"
 EXCLUDING_RES = None
 N_BINS = 20
 
