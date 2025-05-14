@@ -12,20 +12,35 @@ from ..refinement_config import gen_config_phase1, gen_config_phase2
 from ..utils import plddt2pseudoB_np
 
 ### Phenix variables
-# phenix_directory = "/dev/shm/alisia/phenix-2.0rc1-5641/"
 phenix_directory = os.environ["PHENIX_ROOT"]
 phenix_source = os.path.join(phenix_directory, "phenix_env.sh")
-em_nodockedmodel_script = os.path.join(
-    phenix_directory,
-    "lib/python3.9/site-packages/New_Voyager/scripts/emplace_simple.py",
+
+
+def get_script_path(import_stmt: str) -> str:
+    """Source Phenix and run phenix.python to get script path."""
+    module_name = import_stmt.split("import")[-1].strip()
+    python_code = f"{import_stmt}; print({module_name}.__file__)"
+
+    bash_cmd = f'source {phenix_source} && phenix.python -c "{python_code}"'
+
+    try:
+        result = subprocess.run(
+            ["bash", "-c", bash_cmd], check=True, capture_output=True, text=True
+        )
+        return result.stdout.strip()
+    except subprocess.CalledProcessError as e:
+        print(f"Error resolving script path for '{import_stmt}':\n{e.stderr}")
+        return None
+
+
+# Phenix scripts paths
+em_nodockedmodel_script = get_script_path(
+    "from New_Voyager.scripts import emplace_simple"
 )
-em_dockedmodel_script = os.path.join(
-    phenix_directory,
-    "lib/python3.9/site-packages/cctbx/maptbx/prepare_map_for_refinement.py",
+em_dockedmodel_script = get_script_path(
+    "from cctbx.maptbx import prepare_map_for_refinement"
 )
-xtal_edata_script = os.path.join(
-    phenix_directory, "lib/python3.9/site-packages/phasertng/scripts/mtz_generator.py"
-)
+xtal_edata_script = get_script_path("from phasertng.scripts import mtz_generator")
 
 
 def internal_mtz_labels(mtz_path, label_string):
