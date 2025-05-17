@@ -364,7 +364,7 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
                 af2_output, prevs = af_bias(
                     device_processed_features,
                     [None, None, None],
-                    num_iters=3,
+                    num_iters=config.init_recycling,
                     bias=False,
                 )
 
@@ -387,6 +387,26 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
                 domain_segs=config.domain_segs,
                 reference_bfactor=init_pos_bfactor,
             )
+
+            cryo_llgloss.sfc.atom_b_iso = pseudo_Bs.detach().clone()
+            cryo_llgloss_rbr.sfc.atom_b_iso = pseudo_Bs.detach().clone()
+            all_pldtts.append(plddts_res)
+            mean_it_plddts.append(np.mean(plddts_res))
+
+            # Save the preRBR structure, for debugging
+            cryo_llgloss_rbr.sfc.atom_pos_orth = aligned_xyz.detach().clone()
+            cryo_llgloss_rbr.sfc.savePDB(
+                f"{output_directory_path!s}/{run_id}_{iteration}_preRBR.pdb"
+            )
+            if config.sfc_scale:
+                cryo_llgloss_rbr.sfc.calc_fprotein()
+                cryo_llgloss_rbr.sfc.get_scales_adam(
+                    lr=0.01,
+                    n_steps=10,
+                    sub_ratio=0.7,
+                    initialize=False,
+                )
+
             # Rigid body refinement (RBR) step
             optimized_xyz, loss_track_pose = rk_coordinates.rigidbody_refine_quat(
                 aligned_xyz,
@@ -398,11 +418,7 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
                 verbose=config.verbose,
             )
 
-            cryo_llgloss.sfc.atom_b_iso = pseudo_Bs.detach().clone()
-            all_pldtts.append(plddts_res)
-            mean_it_plddts.append(np.mean(plddts_res))
-
-            # Calculate (or refine) sigmaA
+            # Save the postRBR structure
             cryo_llgloss.sfc.atom_pos_orth = optimized_xyz.detach().clone()
             cryo_llgloss.sfc.savePDB(
                 f"{output_directory_path!s}/{run_id}_{iteration}_postRBR.pdb"
@@ -411,11 +427,17 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
             # LLG loss
             L_llg = -cryo_llgloss(
                 optimized_xyz,
+                bin_labels=None,
+                num_batch=config.number_of_batches,
+                sub_ratio=config.batch_sub_ratio,
+                update_scales=config.sfc_scale,
             )
 
-            L_llg = L_llg  # + 30 * L_plddt
+            llg_estimate = L_llg.clone().item() / (
+                config.batch_sub_ratio * config.number_of_batches
+            )  # + 30 * L_plddt
 
-            llg_losses.append(L_llg.clone().item())
+            llg_losses.append(llg_estimate)
 
             # check if current loss is the best so far
             if llg_losses[-1] < best_loss:
@@ -431,7 +453,7 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
                 best_pos = optimized_xyz.detach().clone()
 
             progress_bar.set_postfix(
-                LLG=f"{L_llg.clone().item():.2f}",
+                LLG=f"{llg_estimate:.2f}",
                 memory=f"{torch.cuda.max_memory_allocated() / 1024**3:.1f}G",
             )
 
