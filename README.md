@@ -21,6 +21,8 @@ To ensure usability, we forked the OpenFold repo, and sorted a couple details in
 
 **Note**: The ⁠openfold installation requires approximately 6 GB of free space to download weights. Please ensure you start in a directory with sufficient available space.
 
+**Note**: To ensure a smooth installation and execution of ROCKET, install on a GPU machine that matches the hardware you’ll use in production. In other words, for HPC users, if you plan to run your code on a node with a particular GPU model, request the same GPU model when you install OpenFold. This is important because the installation process performs hardware-specific compilation. We also recommend using GPUs with CUDA Compute Capability 8.0 or higher.
+
 1. Clone our fork of the OpenFold repo, switch to the `pl_upgrades` branch to work with CUDA 12:
 
     ```
