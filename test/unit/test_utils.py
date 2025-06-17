@@ -6,6 +6,7 @@ import pytest
 import torch
 
 from rocket.utils import (
+    apply_resolution_cutoff,
     assert_numpy,
     assert_tensor,
     convert_feat_tensors_to_numpy,
@@ -176,3 +177,91 @@ def test_get_params_path_missing(monkeypatch):
     monkeypatch.delenv("OPENFOLD_RESOURCES", raising=False)
     with pytest.raises(ValueError):
         get_params_path()
+
+
+def test_apply_resolution_cutoff_with_dataset():
+    """
+    Test apply_resolution_cutoff with a DataSet object and explicit max_resolution.
+    """
+
+    # Setup mock dataset
+    mock_ds = MagicMock()
+    mock_ds.dHKL = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
+
+    # Mock the filtering and copy chain
+    filtered_mock = MagicMock()
+    mock_ds.__getitem__.return_value = filtered_mock
+
+    # Call the function
+    result = apply_resolution_cutoff(mock_ds, min_resolution=2.0, max_resolution=4.0)
+
+    # Assertions
+    mock_ds.compute_dHKL.assert_called_once_with(inplace=True)
+
+    # Check that the filtering happened correctly
+    args, _ = mock_ds.__getitem__.call_args
+    mask = args[0]
+    expected_mask = (mock_ds.dHKL >= 2.0) & (mock_ds.dHKL <= 4.0)
+    np.testing.assert_array_equal(mask, expected_mask)
+
+    # Check that copy() was called on the filtered result
+    filtered_mock.copy.assert_called_once()
+
+    # Check that the final result is the copied, filtered mock
+    assert result == filtered_mock.copy.return_value
+
+
+def test_apply_resolution_cutoff_with_filepath():
+    """Test apply_resolution_cutoff with a file path string."""
+
+    with patch("rocket.utils.rs.read_mtz") as mock_read_mtz:
+        # Setup mock dataset
+        mock_ds = MagicMock()
+        mock_ds.dHKL = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
+        mock_read_mtz.return_value = mock_ds
+
+        # Mock the filtering and copy chain
+        filtered_mock = MagicMock()
+        mock_ds.__getitem__.return_value = filtered_mock
+
+        # Call the function
+        apply_resolution_cutoff("test.mtz", min_resolution=2.0, max_resolution=4.0)
+
+        # Assertions
+        mock_read_mtz.assert_called_once_with("test.mtz")
+        mock_ds.compute_dHKL.assert_called_once_with(inplace=True)
+
+        # Check filtering
+        args, _ = mock_ds.__getitem__.call_args
+        mask = args[0]
+        expected_mask = (mock_ds.dHKL >= 2.0) & (mock_ds.dHKL <= 4.0)
+        np.testing.assert_array_equal(mask, expected_mask)
+
+        filtered_mock.copy.assert_called_once()
+
+
+def test_apply_resolution_cutoff_no_max_resolution():
+    """Test apply_resolution_cutoff when max_resolution is not provided."""
+
+    # Setup mock dataset
+    mock_ds = MagicMock()
+    mock_ds.dHKL = np.array([1.0, 2.0, 3.0, 4.0, 5.0])  # .max() will be 5.0
+
+    # Mock the filtering and copy chain
+    filtered_mock = MagicMock()
+    mock_ds.__getitem__.return_value = filtered_mock
+
+    # Call the function
+    apply_resolution_cutoff(mock_ds, min_resolution=3.0)
+
+    # Assertions
+    mock_ds.compute_dHKL.assert_called_once_with(inplace=True)
+
+    # Check filtering logic
+    args, _ = mock_ds.__getitem__.call_args
+    mask = args[0]
+    # max_resolution should be inferred as 5.0
+    expected_mask = (mock_ds.dHKL >= 3.0) & (mock_ds.dHKL <= 5.0)
+    np.testing.assert_array_equal(mask, expected_mask)
+
+    filtered_mock.copy.assert_called_once()

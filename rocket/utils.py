@@ -190,3 +190,36 @@ def get_params_path():
         raise ValueError("Please set OPENFOLD_RESOURCES environment variable")
     params_path = os.path.join(resources_path, "params")
     return params_path
+
+
+def apply_resolution_cutoff(
+    dataset: rs.DataSet | str,
+    min_resolution: float = None,
+    max_resolution: float = None,
+):
+    """
+    Apply resolution cutoff to a dataset.
+
+    Args:
+        dataset (rs.DataSet | str): The dataset to filter, can be a path to an MTZ file
+            or an rs.DataSet object.
+        min_resolution (float): Minimum resolution to keep.
+        max_resolution (float): Maximum resolution to keep.
+
+    Returns:
+        rs.DataSet: Filtered dataset with applied resolution cutoff.
+    """
+    if isinstance(dataset, str):
+        dataset = rs.read_mtz(dataset)
+
+    dataset.compute_dHKL(inplace=True)
+    if max_resolution is None:
+        max_resolution = dataset.dHKL.max()
+    if min_resolution is None:
+        min_resolution = dataset.dHKL.min()
+    filtered_dataset = dataset[
+        (dataset.dHKL >= (min_resolution - 1e-4))
+        & (dataset.dHKL <= (max_resolution + 1e-4))
+    ].copy()
+
+    return filtered_dataset

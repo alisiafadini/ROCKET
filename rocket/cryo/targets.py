@@ -39,47 +39,23 @@ class LLGloss(torch.nn.Module):
     def __init__(
         self,
         sfc: SFcalculator,
-        mtz_file: str,
+        mtz_file: str | rs.DataSet,
         resol_min=None,
         resol_max=None,
     ) -> None:
         super().__init__()
         self.sfc = sfc
         self.device = sfc.device
-        if isinstance(mtz_file, str):
-            data_dict = cryo_utils.load_tng_data(mtz_file, device=self.device)
+        assert isinstance(mtz_file, str | rs.DataSet), (
+            "mtz_file must be a path to mtz file or rs.DataSet"
+        )
 
-            self.register_buffer("Emean", data_dict["Emean"])
-            self.register_buffer("PHIEmean", data_dict["PHIEmean"])
-            self.register_buffer("Dobs", data_dict["Dobs"])
+        data_dict = cryo_utils.load_tng_data(mtz_file, device=self.device)
 
-        elif isinstance(mtz_file, rs.DataSet):
-            data_dict = mtz_file
+        self.register_buffer("Emean", data_dict["Emean"])
+        self.register_buffer("PHIEmean", data_dict["PHIEmean"])
+        self.register_buffer("Dobs", data_dict["Dobs"])
 
-            self.register_buffer(
-                "Emean",
-                torch.tensor(
-                    data_dict["Emean"].values, dtype=torch.float32, device=self.device
-                ),
-            )
-            self.register_buffer(
-                "PHIEmean",
-                torch.tensor(
-                    data_dict["PHIEmean"].values,
-                    dtype=torch.float32,
-                    device=self.device,
-                ),
-            )
-            self.register_buffer(
-                "Dobs",
-                torch.tensor(
-                    data_dict["Dobs"].values, dtype=torch.float32, device=self.device
-                ),
-            )
-        else:
-            raise TypeError(
-                f"mtz_file must be path or rs.DataSet, got {type(mtz_file)} instead"
-            )
         if resol_min is None:
             resol_min = min(self.sfc.dHKL)
 

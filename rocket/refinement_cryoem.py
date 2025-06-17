@@ -78,6 +78,14 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
             )
             mtz_file = cryo_utils.downsample_data(mtz_file, config.downsample_ratio)
 
+    # Apply resolution cutoff to the reflection file
+    if config.min_resolution is not None or config.max_resolution is not None:
+        mtz_file = rk_utils.apply_resolution_cutoff(
+            mtz_file,
+            min_resolution=config.min_resolution,
+            max_resolution=config.max_resolution,
+        )
+
     # Initialize SFC
     cryo_sfc = cryo_sf.initial_cryoSFC(
         input_pdb, mtz_file, "Emean", "PHIEmean", device, N_BINS

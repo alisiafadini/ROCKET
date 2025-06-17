@@ -34,12 +34,15 @@ def downsample_data(mtz_path, downsample_ratio: int):
 def load_tng_data(tng_file, device=None):
     if device is None:
         device = utils.try_gpu()
-    tng = utils.load_mtz(tng_file).dropna()
+    if isinstance(tng_file, str):
+        tng = utils.load_mtz(tng_file).dropna()
+    elif isinstance(tng_file, rs.DataSet):
+        tng = tng_file.dropna()
 
     # Generate PhaserTNG tensors
-    emean = torch.tensor(tng["Emean"].values, device=device)
-    phi_emean = torch.tensor(tng["PHIEmean"].values, device=device)
-    dobs = torch.tensor(tng["Dobs"].values, device=device)
+    emean = torch.tensor(tng["Emean"].values, dtype=torch.float32, device=device)
+    phi_emean = torch.tensor(tng["PHIEmean"].values, dtype=torch.float32, device=device)
+    dobs = torch.tensor(tng["Dobs"].values, dtype=torch.float32, device=device)
 
     data_dict = {
         "Emean": emean,

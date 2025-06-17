@@ -3,6 +3,7 @@ Functions relating to sigmaa calculation and refinement
 """
 
 import numpy as np
+import reciprocalspaceship as rs
 import torch
 
 from rocket import utils
@@ -454,7 +455,10 @@ def find_bin_dHKL(dHKLs, bin_labels):
 def load_tng_data(tng_file, device=None):
     if device is None:
         device = utils.try_gpu()
-    tng = utils.load_mtz(tng_file).dropna()
+    if isinstance(tng_file, str):
+        tng = utils.load_mtz(tng_file).dropna()
+    elif isinstance(tng_file, rs.DataSet):
+        tng = tng_file.dropna()
     # Generate PhaserTNG tensors
     eps = torch.tensor(tng["EPS"].values, device=device)
     centric = torch.tensor(tng["CENT"].values, device=device).bool()
