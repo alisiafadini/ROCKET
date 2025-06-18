@@ -105,6 +105,14 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
             SIGMA_TRUE = False
 
     ############ 2. Initializations ############
+
+    # Apply resolution cutoff to the reflection file
+    if config.min_resolution is not None or config.max_resolution is not None:
+        tng_file = rk_utils.apply_resolution_cutoff(
+            tng_file,
+            min_resolution=config.min_resolution,
+            max_resolution=config.max_resolution,
+        )
     # Initialize SFC
     sfc = llg_sf.initial_SFC(
         input_pdb,
