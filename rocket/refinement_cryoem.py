@@ -104,7 +104,7 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
         input_pdb, mtz_file, "Emean", "PHIEmean", device, N_BINS
     )
     # prepare reusable variables for RSCC calculation
-    gridsize = mtz_file.get_size_for_hkl(sample_rate=3.0)
+    gridsize = mtz_file.get_reciprocal_grid_size(sample_rate=3.0)
     Rg = torch.tensor(
         rk_utils.g_function_np(2 * cryo_sfc.dmin, 1 / cryo_sfc.dHKL), device=device
     )
@@ -430,7 +430,7 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
                 uc_volume,
             )
             atom_cc = rk_utils.interpolate_grid_points(
-                ccmap, cryo_llgloss_rbr.atom_pos_frac.cpu().numpy()
+                ccmap, cryo_llgloss_rbr.sfc.atom_pos_frac.cpu().numpy()
             )
             rscc_bfactor = torch.tensor(
                 rk_utils.get_b_from_CC(atom_cc, cryo_llgloss_rbr.sfc.dmin),
