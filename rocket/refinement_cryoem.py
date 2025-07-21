@@ -118,7 +118,10 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
 
     # Use initial pos B factor instead of best pos B factor for weighted L2
     init_pos_bfactor = cryo_sfc.atom_b_iso.clone()
-    bfactor_weights = rk_utils.weighting_torch(init_pos_bfactor, cutoff2=20.0)
+    # Ad hoc settings for B-factor weighting cutoffs
+    cutoff1 = np.quantile(init_pos_bfactor.cpu().numpy(), 0.3)
+    cutoff2 = cutoff1 * 1.5
+    bfactor_weights = rk_utils.weighting_torch(init_pos_bfactor, cutoff1, cutoff2)
 
     # residue_numbers = [int(name.split("-")[1]) for name in cra_calphas_list]
 
