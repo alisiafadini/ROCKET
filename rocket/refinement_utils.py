@@ -382,7 +382,7 @@ def position_alignment(
     # weights = np.ones_like(plddts_np)
     # weights[plddts_np < 85.0] = 1e-5
 
-    aligned_xyz = rk_coordinates.weighted_kabsch(
+    aligned_xyz = rk_coordinates.iterative_kabsch_alignment(
         xyz_orth_sfc,
         best_pos,
         cra_name,
