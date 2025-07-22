@@ -433,7 +433,7 @@ def test_init_bias(mock_adamw, mock_adam):
 
 
 @patch("rocket.coordinates.extract_allatoms")
-@patch("rocket.coordinates.weighted_kabsch")
+@patch("rocket.coordinates.iterative_kabsch_alignment")
 @patch("rocket.utils.plddt2pseudoB_pt")
 @patch("rocket.utils.weighting")
 @patch("rocket.utils.assert_numpy")
@@ -504,7 +504,7 @@ def test_position_alignment(
 
 
 @patch("rocket.coordinates.extract_allatoms")
-@patch("rocket.coordinates.weighted_kabsch")
+@patch("rocket.coordinates.iterative_kabsch_alignment")
 @patch("rocket.utils.plddt2pseudoB_pt")
 @patch("rocket.utils.weighting")
 @patch("rocket.utils.assert_numpy")
