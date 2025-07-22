@@ -122,12 +122,13 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
     cutoff1 = np.quantile(init_pos_bfactor.cpu().numpy(), 0.3)
     cutoff2 = cutoff1 * 1.5
     bfactor_weights = rk_utils.weighting_torch(init_pos_bfactor, cutoff1, cutoff2)
+    bfactor_weights = bfactor_weights / torch.sum(bfactor_weights)
 
     # residue_numbers = [int(name.split("-")[1]) for name in cra_calphas_list]
 
     # LLG initialization
     cryo_llgloss = cryo_targets.LLGloss(cryo_sfc, mtz_file)
-    cryo_llgloss_rbr = cryo_targets.LLGloss(cryo_sfc, mtz_file)
+    cryo_llgloss_rbr = cryo_targets.LLGloss(sfc_rbr, mtz_file)
 
     # Model initialization
     version_to_class = {
