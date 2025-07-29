@@ -10,6 +10,7 @@ import torch
 from loguru import logger
 from openfold.config import model_config
 from openfold.data import data_pipeline, feature_pipeline
+from SFC_Torch import SFcalculator
 from tqdm import tqdm
 
 import rocket
@@ -71,15 +72,43 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
     # If reference pdb exsits
     REFPDB = bool(os.path.exists(true_pdb))
 
+    ############ 2. Initializations ############
+
+    # Apply resolution cutoff to the reflection file
+    if config.min_resolution is not None or config.max_resolution is not None:
+        tng_file = rk_utils.apply_resolution_cutoff(
+            tng_file,
+            min_resolution=config.min_resolution,
+            max_resolution=config.max_resolution,
+        )
+
     # If there are additional chain in the system
-    # TODO: make sure the following files exist in the new pattern
     if config.additional_chain:
-        constant_fp_added_HKL = torch.load(
-            f"{config.path}/ROCKET_inputs/{config.file_id}_added_chain_atoms_HKL.pt"
-        ).to(device=device)
-        constant_fp_added_asu = torch.load(
-            f"{config.path}/ROCKET_inputs/{config.file_id}_added_chain_atoms_asu.pt"
-        ).to(device=device)
+        added_chain_pdb = (
+            f"{config.path}/ROCKET_inputs/{config.file_id}_added_chain.pdb"
+        )
+        if not os.path.exists(added_chain_pdb):
+            raise FileNotFoundError(
+                f"Additional chain PDB file '{added_chain_pdb}' does not exist!"
+            )
+        # calculate the structure factors for the additional chain
+        sfc_added_chain = SFcalculator(
+            added_chain_pdb,
+            tng_file,
+            expcolumns=["FP", "SIGFP"],
+            freeflag=config.free_flag,
+            set_experiment=True,
+            testset_value=config.testset_value,
+            device=device,
+        )
+        sfc_added_chain.calc_fprotein()
+        constant_fp_added_HKL = (
+            sfc_added_chain.Fprotein_HKL.clone().detach().to(device=device)
+        )
+        constant_fp_added_asu = (
+            sfc_added_chain.Fprotein_asu.clone().detach().to(device=device)
+        )
+        del sfc_added_chain
 
         phitrue_path = f"{config.path}/ROCKET_inputs/{config.file_id}_allchains-phitrue-solvent{config.solvent}.npy"  # noqa: E501
         Etrue_path = f"{config.path}/ROCKET_inputs/{config.file_id}_allchains-Etrue-solvent{config.solvent}.npy"  # noqa: E501
@@ -104,15 +133,6 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
         else:
             SIGMA_TRUE = False
 
-    ############ 2. Initializations ############
-
-    # Apply resolution cutoff to the reflection file
-    if config.min_resolution is not None or config.max_resolution is not None:
-        tng_file = rk_utils.apply_resolution_cutoff(
-            tng_file,
-            min_resolution=config.min_resolution,
-            max_resolution=config.max_resolution,
-        )
     # Initialize SFC
     sfc = llg_sf.initial_SFC(
         input_pdb,
@@ -124,6 +144,7 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
         testset_value=config.testset_value,
         added_chain_HKL=constant_fp_added_HKL,
         added_chain_asu=constant_fp_added_asu,
+        total_chain_copy=config.total_chain_copy,
         spacing=config.voxel_spacing,
     )
     reference_pos = sfc.atom_pos_orth.clone()
@@ -147,6 +168,7 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
         testset_value=config.testset_value,
         added_chain_HKL=constant_fp_added_HKL,
         added_chain_asu=constant_fp_added_asu,
+        total_chain_copy=config.total_chain_copy,
         spacing=config.voxel_spacing,
     )
 
