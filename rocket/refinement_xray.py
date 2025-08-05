@@ -103,10 +103,10 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
         )
         sfc_added_chain.calc_fprotein()
         constant_fp_added_HKL = (
-            sfc_added_chain.Fprotein_HKL.clone().detach().to(device=device)
+            sfc_added_chain.Fprotein_HKL.clone().detach()
         )
         constant_fp_added_asu = (
-            sfc_added_chain.Fprotein_asu.clone().detach().to(device=device)
+            sfc_added_chain.Fprotein_asu.clone().detach()
         )
         del sfc_added_chain
 
