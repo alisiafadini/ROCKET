@@ -190,7 +190,7 @@ def pose_train_lbfgs_quat(
         qs + trans_vecs,
         lr=lr,
         line_search_fn="strong_wolfe",
-        tolerance_change=1e-3,
+        tolerance_change=1e-9,
         max_iter=1,
     )
     propose_rmcoms = []
