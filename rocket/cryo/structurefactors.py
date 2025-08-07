@@ -51,6 +51,6 @@ def initial_cryoSFC(
     # note @ Aug 27 by MH: treat Emean as Fmean
     # Ep = sfcalculator.calc_Ec(sfcalculator.Fprotein_HKL)
     # sfcalculator.Fprotein_HKL = Ep
-    sfcalculator.get_scales_adam()
+    sfcalculator.get_scales_adam(sub_ratio=1.0)
 
     return sfcalculator

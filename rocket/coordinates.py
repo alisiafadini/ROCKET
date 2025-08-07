@@ -190,7 +190,7 @@ def pose_train_lbfgs_quat(
         qs + trans_vecs,
         lr=lr,
         line_search_fn="strong_wolfe",
-        tolerance_change=1e-3,
+        tolerance_change=1e-9,
         max_iter=1,
     )
     propose_rmcoms = []
@@ -681,6 +681,184 @@ def align_tensors(tensor1, centroid1, centroid2, rotation_matrix):
     aligned_tensor1 = torch.matmul(tensor1_centered, rotation_matrix.T) + centroid2
 
     return aligned_tensor1
+
+
+def weighted_kabsch_svd(P, Q, weights=None):
+    """
+    Computes the optimal rotation matrix that minimizes the weighted RMSD
+    between two sets of corresponding points P and Q using SVD.
+
+    Args:
+        P (np.ndarray): Reference points, shape (N, 3).
+        Q (np.ndarray): Points to align to P, shape (N, 3).
+        weights (np.ndarray, optional): Weights for each point, shape (N,).
+
+    Returns:
+        np.ndarray: Optimal rotation matrix (3, 3).
+    """
+    if P.shape[0] < 3:
+        raise ValueError("Need at least 3 points for stable alignment")
+
+    # Center the point clouds using weighted average
+    centroid_P = np.average(P, axis=0, weights=weights)
+    centroid_Q = np.average(Q, axis=0, weights=weights)
+    P_centered = P - centroid_P
+    Q_centered = Q - centroid_Q
+
+    # Compute weighted covariance matrix
+    H = Q_centered.T @ np.diag(weights if weights is not None else 1) @ P_centered
+
+    # Perform SVD
+    try:
+        U, _, Vt = np.linalg.svd(H)
+    except np.linalg.LinAlgError:
+        return np.identity(3)  # Fallback for unstable SVD
+
+    # Calculate rotation matrix R
+    R = Vt.T @ U.T
+
+    # Handle reflection case (ensures a right-handed coordinate system)
+    if np.linalg.det(R) < 0:
+        Vt[-1, :] *= -1
+        R = Vt.T @ U.T
+
+    return R
+
+
+def iterative_kabsch_alignment(
+    moving_tensor,
+    ref_tensor,
+    cra_name,
+    weights=None,
+    exclude_res=None,
+    domain_segs=None,
+    cutoff=2.0,
+    cycles=5,
+):
+    """
+    Performs Kabsch alignment with iterative outlier rejection on protein structures.
+
+    Args:
+        moving_tensor (torch.Tensor): Coords to move, shape [n_points, 3].
+        ref_tensor (torch.Tensor): Reference coords, shape [n_points, 3].
+        cra_name (List[str]): Chain-residue-atom identifiers, [n_points].
+        weights (torch.Tensor|np.ndarray, optional): Weights for the alignment.
+        exclude_res (List[int], optional): Residue IDs to exclude.
+        domain_segs (List[int], optional): Residue IDs defining domain boundaries.
+        cutoff (float): Distance cutoff in Angstroms for outlier rejection.
+        cycles (int): Max number of refinement cycles. Set to 0 for a single
+                      alignment without outlier rejection.
+
+    Returns:
+        torch.Tensor: The aligned moving_tensor, shape [n_points, 3].
+    """
+    # --- 1. Initial Filtering Setup ---
+    backbone_bool = np.array([i.split("-")[-1] in ["N", "CA", "C"] for i in cra_name])
+    resid = np.array([int(i.split("-")[1]) for i in cra_name])
+    minid, maxid = resid.min(), resid.max()
+
+    if exclude_res is None:
+        residue_bool = (resid > minid + 4) & (resid < maxid - 4)
+    else:
+        residue_bool = np.isin(resid, exclude_res, invert=True)
+
+    # --- 2. Define Domains ---
+    if domain_segs is None:
+        domain_ranges = [[minid, maxid + 1]]
+    else:
+        domain_ranges = []
+        start = minid
+        sorted_segs = sorted(domain_segs)
+        for i, seg in enumerate(sorted_segs):
+            domain_ranges.append([start, seg])
+            start = seg
+            if i == len(sorted_segs) - 1:
+                domain_ranges.append([start, maxid + 1])
+
+    # --- 3. Process Each Domain ---
+    aligned_pos = moving_tensor.clone()
+    for domain_start, domain_end_notin in domain_ranges:
+        domain_bool = (resid >= domain_start) & (resid < domain_end_notin)
+        working_set_mask = backbone_bool & residue_bool & domain_bool
+
+        if not working_set_mask.any():
+            continue
+
+        moving_align_coords = utils.assert_numpy(moving_tensor)[working_set_mask]
+        ref_align_coords = utils.assert_numpy(ref_tensor)[working_set_mask]
+        if moving_align_coords.shape[0] < 3:
+            continue
+
+        align_weights = (
+            utils.assert_numpy(weights)[working_set_mask]
+            if weights is not None
+            else None
+        )  # noqa: E501
+
+        # --- 4. Iterative Alignment for the Current Domain ---
+        inlier_indices = np.arange(moving_align_coords.shape[0])
+        final_R = np.identity(3)
+
+        for cycle in range(cycles + 1):
+            P_iter = ref_align_coords[inlier_indices]
+            Q_iter = moving_align_coords[inlier_indices]
+            w_iter = (
+                align_weights[inlier_indices] if align_weights is not None else None
+            )  # noqa: E501
+            try:
+                R_iter = weighted_kabsch_svd(P_iter, Q_iter, weights=w_iter)
+            except ValueError:
+                break
+            final_R = R_iter
+
+            if cycle == cycles:
+                break
+
+            # Apply transform and find new inliers
+            centroid_Q = np.average(Q_iter, axis=0, weights=w_iter)
+            centroid_P = np.average(P_iter, axis=0, weights=w_iter)
+            t_iter = centroid_P - final_R @ centroid_Q
+
+            transformed_align_coords = (final_R @ moving_align_coords.T).T + t_iter
+            distances = np.linalg.norm(
+                ref_align_coords - transformed_align_coords, axis=1
+            )  # noqa: E501
+            new_inlier_indices = np.where(distances < cutoff)[0]
+
+            if len(new_inlier_indices) < 3 or np.array_equal(
+                inlier_indices, new_inlier_indices
+            ):  # noqa: E501
+                break
+            inlier_indices = new_inlier_indices
+        # --- 5. Apply Final Transformation to the Entire Domain ---
+        P_final = ref_align_coords[inlier_indices]
+        Q_final = moving_align_coords[inlier_indices]
+        w_final = align_weights[inlier_indices] if align_weights is not None else None
+
+        # Calculate final centroids based on the final set of inliers
+        final_centroid_moving = np.average(Q_final, axis=0, weights=w_final)
+        final_centroid_ref = np.average(P_final, axis=0, weights=w_final)
+        # Get all points in the domain and convert components to tensors
+        moving_domain_tensor = moving_tensor[domain_bool]
+        R_torch = torch.tensor(
+            final_R, dtype=moving_tensor.dtype, device=moving_tensor.device
+        )
+        centroid1_torch = torch.tensor(
+            final_centroid_moving,
+            dtype=moving_tensor.dtype,
+            device=moving_tensor.device,
+        )
+        centroid2_torch = torch.tensor(
+            final_centroid_ref, dtype=moving_tensor.dtype, device=moving_tensor.device
+        )
+
+        # Use your function to apply the final transformation
+        aligned_domain_tensor = align_tensors(
+            moving_domain_tensor, centroid1_torch, centroid2_torch, R_torch
+        )
+        aligned_pos[domain_bool] = aligned_domain_tensor
+
+    return aligned_pos
 
 
 def weighted_kabsch(
