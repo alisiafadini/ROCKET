@@ -198,7 +198,14 @@ def main():
     full_profile = fullmsa_processed_feature_dict["msa_feat"][:, :, 25:48].clone()
 
     df = pd.DataFrame(
-        columns=["msa_name", "depth", "mean_plddt", "llg", "rfree", "rwork"]
+        columns=[
+            "msa_name",
+            "depth",
+            "mean_plddt",
+            "llg",
+            #  "rfree",
+            #  "rwork"
+        ]
     )
     df.to_csv(os.path.join(output_directory_path, "msa_scoring.csv"), index=False)
 
@@ -263,19 +270,22 @@ def main():
         )
         llgloss.sfc.atom_pos_orth = optimized_xyz
         llgloss.sfc.savePDB(f"{output_directory_path!s}/{msa_name}_postRBR.pdb")
-        plddt_i, llg_i, rfree_i, rwork_i = (
+        (
+            plddt_i,
+            llg_i,
+        ) = (
             plddt.item(),
             llg.item(),
-            llgloss.sfc.r_free.item(),
-            llgloss.sfc.r_work.item(),
+            # llgloss.sfc.r_free.item(),
+            # llgloss.sfc.r_work.item(),
         )
         df_tmp = pd.DataFrame({
             "msa_name": [msa_name],
             "depth": [fullmsa_feature_dict["msa"].shape[0]],
             "mean_plddt": [plddt_i],
             "llg": [llg_i],
-            "rfree": [rfree_i],
-            "rwork": [rwork_i],
+            # "rfree": [rfree_i],
+            # "rwork": [rwork_i],
         })
         df_tmp.to_csv(
             os.path.join(output_directory_path, "msa_scoring.csv"),
@@ -373,19 +383,22 @@ def main():
         )
         llgloss.sfc.atom_pos_orth = optimized_xyz
         llgloss.sfc.savePDB(f"{output_directory_path!s}/{msa_name}_postRBR.pdb")
-        plddt_i, llg_i, rfree_i, rwork_i = (
+        (
+            plddt_i,
+            llg_i,
+        ) = (
             plddt.item(),
             llg.item(),
-            llgloss.sfc.r_free.item(),
-            llgloss.sfc.r_work.item(),
+            # llgloss.sfc.r_free.item(),
+            # llgloss.sfc.r_work.item(),
         )
         df_tmp = pd.DataFrame({
             "msa_name": [msa_name],
             "depth": [feature_dict["msa"].shape[0]],
             "mean_plddt": [plddt_i],
             "llg": [llg_i],
-            "rfree": [rfree_i],
-            "rwork": [rwork_i],
+            # "rfree": [rfree_i],
+            # "rwork": [rwork_i],
         })
         df_tmp.to_csv(
             os.path.join(output_directory_path, "msa_scoring.csv"),
