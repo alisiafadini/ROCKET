@@ -461,7 +461,7 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
                 best_pos = optimized_xyz.detach().clone()
 
             progress_bar.set_postfix(
-                LLG=f"{llg_estimate:.2f}",
+                NEG_LLG=f"{llg_estimate:.2f}",
                 memory=f"{torch.cuda.max_memory_allocated() / 1024**3:.1f}G",
             )
 
@@ -505,7 +505,7 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
 
         # LLG per iteration
         np.save(
-            f"{output_directory_path!s}/LLG_it_{run_id}.npy",
+            f"{output_directory_path!s}/NEG_LLG_it_{run_id}.npy",
             rk_utils.assert_numpy(llg_losses),
         )
 
