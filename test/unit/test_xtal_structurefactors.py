@@ -62,6 +62,7 @@ def test_initial_SFC_added_chain():
         "SigF",
         added_chain_HKL=torch.tensor([2.0]),
         added_chain_asu=torch.tensor([3.0]),
+        total_chain_copy=2.0,
     )
     assert torch.allclose(result.Fprotein_HKL, torch.tensor([3.0]))  # 1 + 2
     assert torch.allclose(result.Fprotein_asu, torch.tensor([4.0]))  # 1 + 3

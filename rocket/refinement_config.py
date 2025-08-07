@@ -68,6 +68,7 @@ class FeatureFlags(BaseModel):
     sfc_scale: bool = True
     refine_sigmaA: bool = True
     additional_chain: bool = False
+    total_chain_copy: float = 1.0
     bias_from_fullmsa: bool = False
     chimera_profile: bool = False
 
@@ -167,6 +168,7 @@ class RocketRefinmentConfig(BaseModel):
         "sfc_scale": "algorithm.features.sfc_scale",
         "refine_sigmaA": "algorithm.features.refine_sigmaA",
         "additional_chain": "algorithm.features.additional_chain",
+        "total_chain_copy": "algorithm.features.total_chain_copy",
         "bias_from_fullmsa": "algorithm.features.bias_from_fullmsa",
         "chimera_profile": "algorithm.features.chimera_profile",
         # Data

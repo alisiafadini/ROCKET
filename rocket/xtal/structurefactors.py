@@ -20,6 +20,7 @@ def initial_SFC(
     solvent=True,
     added_chain_HKL=None,
     added_chain_asu=None,
+    total_chain_copy=1.0,
     spacing=4.5,
 ):
     if device is None:
@@ -41,7 +42,7 @@ def initial_SFC(
     if added_chain_HKL is not None:
         sfcalculator.Fprotein_HKL = sfcalculator.Fprotein_HKL + added_chain_HKL
         sfcalculator.Fprotein_asu = sfcalculator.Fprotein_asu + added_chain_asu
-        sfcalculator.solventpct = 1 - (1 - sfcalculator.solventpct) * 2
+        sfcalculator.solventpct = 1 - (1 - sfcalculator.solventpct) * total_chain_copy
 
     if solvent:
         sfcalculator.calc_fsolvent()
