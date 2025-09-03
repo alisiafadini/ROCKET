@@ -116,6 +116,28 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
         cryo_sfc.cra_name
     )
 
+    # Initialize RSCC Bfactor
+    Fprotein_plddt = cryo_sfc.calc_fprotein(Return=True)
+    ccmap = rk_utils.get_rscc_from_Fmap(
+        Fprotein_plddt.detach(),
+        rscc_reference_Fmap,
+        cryo_sfc.HKL_array,
+        gridsize,
+        Rg,
+        uc_volume,
+    )
+    atom_cc = rk_utils.interpolate_grid_points(
+        ccmap, cryo_sfc.atom_pos_frac.cpu().numpy()
+    )
+    rscc_bfactor = torch.tensor(
+        rk_utils.get_b_from_CC(atom_cc, cryo_sfc.dmin),
+        dtype=torch.float32,
+        device=device,
+    )
+
+    cryo_sfc.atom_b_iso = rscc_bfactor.clone().detach()
+    sfc_rbr.atom_b_iso = rscc_bfactor.clone().detach()
+
     # Use initial pos B factor instead of best pos B factor for weighted L2
     init_pos_bfactor = cryo_sfc.atom_b_iso.clone()
     # Ad hoc settings for B-factor weighting cutoffs
