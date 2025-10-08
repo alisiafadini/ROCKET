@@ -249,7 +249,7 @@ class LLGloss(torch.nn.Module):
         xyz_orth,
         solvent=True,
         return_Fc=False,
-        return_Rfactors=True,
+        return_Rfactors=False,
         update_scales=False,
         scale_steps=10,
         scale_initialize=False,
