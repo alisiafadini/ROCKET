@@ -43,8 +43,10 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
 
     # Configure input paths
     tng_file = f"{config.path}/ROCKET_inputs/{config.file_id}-Edata.mtz"
-    input_pdb = f"{config.path}/ROCKET_inputs/{config.file_id}-pred-aligned.pdb"
-    true_pdb = f"{config.path}/ROCKET_inputs/{config.file_id}_noalts.pdb"
+    try:
+        input_pdb = glob.glob(config.input_pdb)[0]
+    except Exception as err:
+        raise ValueError("input_pdb path is not valid!") from err
 
     # Configure output path
     # Generate uuid for this run
@@ -68,9 +70,6 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
     )
     if not config.verbose:
         warnings.filterwarnings("ignore")
-
-    # If reference pdb exsits
-    REFPDB = bool(os.path.exists(true_pdb))
 
     ############ 2. Initializations ############
 
@@ -145,9 +144,6 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
     )
     reference_pos = sfc.atom_pos_orth.clone()
     target_seq = sfc._pdb.sequence
-    # CA mask and residue numbers for track
-    cra_calphas_list, calphas_mask = rk_coordinates.select_CA_from_craname(sfc.cra_name)
-    residue_numbers = [int(name.split("-")[1]) for name in cra_calphas_list]
 
     # Use initial pos B factor instead of best pos B factor for weighted L2
     init_pos_bfactor = sfc.atom_b_iso.clone()
@@ -167,11 +163,6 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
         total_chain_copy=config.total_chain_copy,
         spacing=config.voxel_spacing,
     )
-
-    if REFPDB:
-        # Load true positions
-        true_pdb_model = rk_utils.load_pdb(true_pdb)
-        true_pos = rk_utils.assert_tensor(true_pdb_model.atom_pos)
 
     # LLG initialization with resol cut
     llgloss = rkrf_utils.init_llgloss(
@@ -394,7 +385,6 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
         )
 
         # List initialization for saving values
-        mse_losses_by_epoch = []
         rbr_loss_by_epoch = []
         llg_losses = []
         rfree_by_epoch = []
@@ -519,12 +509,6 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
             all_pldtts.append(plddts_res)
             mean_it_plddts.append(np.mean(plddts_res))
 
-            ##### Residue MSE loss for tracking ######
-            if REFPDB:
-                total_mse_loss = rk_coordinates.calculate_mse_loss_per_residue(
-                    aligned_xyz[calphas_mask], true_pos[calphas_mask], residue_numbers
-                )
-                mse_losses_by_epoch.append(total_mse_loss)
             ##############################################
 
             # Calculate (or refine) sigmaA
@@ -736,13 +720,6 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
             f"{output_directory_path!s}/NEG_LLG_it_{run_id}.npy",
             rk_utils.assert_numpy(llg_losses),
         )
-
-        # MSE loss per iteration
-        if REFPDB:
-            np.save(
-                f"{output_directory_path!s}/MSE_loss_it_{run_id}.npy",
-                rk_utils.assert_numpy(mse_losses_by_epoch),
-            )
 
         # R work per iteration
         np.save(

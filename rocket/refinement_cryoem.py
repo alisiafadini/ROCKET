@@ -45,7 +45,10 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
     target_id = config.file_id
     path = config.path
     mtz_file = f"{path}/ROCKET_inputs/{target_id}-Edata.mtz"
-    input_pdb = f"{path}/ROCKET_inputs/{target_id}-pred-aligned.pdb"
+    try:
+        input_pdb = glob.glob(config.input_pdb)[0]
+    except Exception as err:
+        raise ValueError("input_pdb path is not valid!") from err
     note = config.note
     bias_version = config.bias_version
     iterations = config.iterations
@@ -116,27 +119,28 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
         cryo_sfc.cra_name
     )
 
-    # Initialize RSCC Bfactor
-    Fprotein_plddt = cryo_sfc.calc_fprotein(Return=True)
-    ccmap = rk_utils.get_rscc_from_Fmap(
-        Fprotein_plddt.detach(),
-        rscc_reference_Fmap,
-        cryo_sfc.HKL_array,
-        gridsize,
-        Rg,
-        uc_volume,
-    )
-    atom_cc = rk_utils.interpolate_grid_points(
-        ccmap, cryo_sfc.atom_pos_frac.cpu().numpy()
-    )
-    rscc_bfactor = torch.tensor(
-        rk_utils.get_b_from_CC(atom_cc, cryo_sfc.dmin),
-        dtype=torch.float32,
-        device=device,
-    )
+    # Initialize RSCC Bfactor if phase1
+    if "phase1" in config.note:
+        Fprotein_plddt = cryo_sfc.calc_fprotein(Return=True)
+        ccmap = rk_utils.get_rscc_from_Fmap(
+            Fprotein_plddt.detach(),
+            rscc_reference_Fmap,
+            cryo_sfc.HKL_array,
+            gridsize,
+            Rg,
+            uc_volume,
+        )
+        atom_cc = rk_utils.interpolate_grid_points(
+            ccmap, cryo_sfc.atom_pos_frac.cpu().numpy()
+        )
+        rscc_bfactor = torch.tensor(
+            rk_utils.get_b_from_CC(atom_cc, cryo_sfc.dmin),
+            dtype=torch.float32,
+            device=device,
+        )
 
-    cryo_sfc.atom_b_iso = rscc_bfactor.clone().detach()
-    sfc_rbr.atom_b_iso = rscc_bfactor.clone().detach()
+        cryo_sfc.atom_b_iso = rscc_bfactor.clone().detach()
+        sfc_rbr.atom_b_iso = rscc_bfactor.clone().detach()
 
     # Use initial pos B factor instead of best pos B factor for weighted L2
     init_pos_bfactor = cryo_sfc.atom_b_iso.clone()
