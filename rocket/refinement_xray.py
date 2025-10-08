@@ -43,7 +43,10 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
 
     # Configure input paths
     tng_file = f"{config.path}/ROCKET_inputs/{config.file_id}-Edata.mtz"
-    input_pdb = config.input_pdb
+    try:
+        input_pdb = glob.glob(config.input_pdb)[0]
+    except Exception as err:
+        raise ValueError("input_pdb path is not valid!") from err
 
     # Configure output path
     # Generate uuid for this run

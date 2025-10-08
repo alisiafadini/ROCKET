@@ -45,7 +45,10 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
     target_id = config.file_id
     path = config.path
     mtz_file = f"{path}/ROCKET_inputs/{target_id}-Edata.mtz"
-    input_pdb = config.input_pdb
+    try:
+        input_pdb = glob.glob(config.input_pdb)[0]
+    except Exception as err:
+        raise ValueError("input_pdb path is not valid!") from err
     note = config.note
     bias_version = config.bias_version
     iterations = config.iterations

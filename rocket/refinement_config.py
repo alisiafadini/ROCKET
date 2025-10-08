@@ -31,6 +31,7 @@ class DATAMODE(StrEnum):
 class PathConfig(BaseModel):
     path: str = ""
     file_id: str = ""
+    input_pdb: str = ""
     template_pdb: str | None = None
     input_msa: str | None = None
     sub_msa_path: str | None = None
@@ -135,6 +136,7 @@ class RocketRefinmentConfig(BaseModel):
         # Paths
         "path": "paths.path",
         "file_id": "paths.file_id",
+        "input_pdb": "paths.input_pdb",
         "template_pdb": "paths.template_pdb",
         "input_msa": "paths.input_msa",
         "sub_msa_path": "paths.sub_msa_path",
@@ -324,6 +326,9 @@ def gen_config_phase1(datamode: DATAMODE, working_dir: str, file_id: str):
         paths=PathConfig(
             path=working_dir,
             file_id=file_id,
+            input_pdb=os.path.join(
+                working_dir, "ROCKET_inputs", f"{file_id}-pred-aligned.pdb"
+            ),  # noqa: E501
             uuid_hex=uuid.uuid4().hex[:10],
         ),
         execution=ExecutionConfig(
@@ -358,9 +363,11 @@ def gen_config_phase2(phase1_config: RocketRefinmentConfig):
         phase2_config.path, "ROCKET_outputs", phase2_config.uuid_hex
     )
     phase1_path = os.path.join(output_directory_path, phase1_config.note)
+    input_pdb_path = os.path.join(phase1_path, "best_model_*_*.pdb")
     starting_bias_path = os.path.join(phase1_path, "best_msa_bias*.pt")
     starting_weights_path = os.path.join(phase1_path, "best_feat_weights*.pt")
 
+    phase2_config.paths.input_pdb = input_pdb_path
     phase2_config.paths.starting_bias = starting_bias_path
     phase2_config.paths.starting_weights = starting_weights_path
     if phase1_config.input_msa is not None:
