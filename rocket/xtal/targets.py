@@ -249,12 +249,39 @@ class LLGloss(torch.nn.Module):
         xyz_orth,
         solvent=True,
         return_Fc=False,
+        return_Rfactors=False,
         update_scales=False,
         scale_steps=10,
         scale_initialize=False,
         added_chain_HKL=None,
         added_chain_asu=None,
     ) -> torch.Tensor:
+        """
+        Compute normalized structure factors (Ecalc).
+
+        Args:
+            xyz_orth: Orthogonal coordinates of atoms
+            solvent: Whether to include solvent contribution
+            return_Fc: Whether to return calculated structure factors Fc
+            return_Rfactors: Whether to calculate and return R-work and R-free
+            update_scales: Whether to update scaling factors
+            scale_steps: Number of steps for scale refinement
+            scale_initialize: Whether to initialize scales
+            added_chain_HKL: Additional HKL contributions
+            added_chain_asu: Additional ASU contributions
+
+        Returns:
+            If return_Rfactors=True and return_Fc=True: (Ecalc, Fc, R_work, R_free)
+            If return_Rfactors=True and return_Fc=False: (Ecalc, R_work, R_free)
+            If return_Rfactors=False and return_Fc=True: (Ecalc, Fc)
+            If return_Rfactors=False and return_Fc=False: Ecalc
+
+        Note:
+            R-factors are calculated using:
+            R_FEFF = Sum[DOBS^2 * |FEFF - FCALC|] / Sum[DOBS^2 * FEFF]
+            R_work uses the working set (~free_flag), R_free uses the free set
+            (free_flag)
+        """
         self.sfc.calc_fprotein(atoms_position_tensor=xyz_orth)
 
         if added_chain_HKL is not None:
@@ -287,7 +314,35 @@ class LLGloss(torch.nn.Module):
         sigmaP = llg_sf.calculate_Sigma_atoms(Fm, self.Eps, self.bin_labels)
         Ecalc = llg_sf.normalize_Fs(Fm, self.Eps, sigmaP, self.bin_labels)
 
-        if return_Fc:
+        if return_Rfactors:
+            # Calculate R-work and R-free using the formula:
+            # R_FEFF = Sum[DOBS^2 * |FEFF - FCALC|] / Sum[DOBS^2 * FEFF]
+
+            # Calculate R-work (working set)
+            working_mask = self.working_set
+            dobs_work = self.Dobs[working_mask]
+            feff_work = self.Feff[working_mask]
+            fcalc_work = Fc[working_mask]
+
+            numerator_work = torch.sum(dobs_work**2 * torch.abs(feff_work - fcalc_work))
+            denominator_work = torch.sum(dobs_work**2 * feff_work)
+            R_work = numerator_work / (denominator_work + 1e-8)  # avoid divide by zero
+
+            # Calculate R-free (free set)
+            free_mask = self.free_set
+            dobs_free = self.Dobs[free_mask]
+            feff_free = self.Feff[free_mask]
+            fcalc_free = Fc[free_mask]
+
+            numerator_free = torch.sum(dobs_free**2 * torch.abs(feff_free - fcalc_free))
+            denominator_free = torch.sum(dobs_free**2 * feff_free)
+            R_free = numerator_free / (denominator_free + 1e-8)  # avoid divide by zero
+
+            if return_Fc:
+                return Ecalc, Fc, R_work, R_free
+            else:
+                return Ecalc, R_work, R_free
+        elif return_Fc:
             return Ecalc, Fc
         else:
             return Ecalc
@@ -302,6 +357,7 @@ class LLGloss(torch.nn.Module):
         update_scales=False,
         added_chain_HKL=None,
         added_chain_asu=None,
+        return_Rfactors=False,
     ):
         """
         Args:
@@ -320,15 +376,30 @@ class LLGloss(torch.nn.Module):
                 Fraction of mini-batch sampling over all miller indices,
                 e.g. 0.3 meaning each batch sample 30% of miller indices
 
+            return_Rfactors: bool
+                Whether to calculate and return R-work and R-free factors.
+                If True, returns (llg, r_work, r_free). If False, returns llg only.
+
         """
 
-        Ecalc = self.compute_Ecalc(
-            xyz_ort,
-            solvent=solvent,
-            update_scales=update_scales,
-            added_chain_HKL=added_chain_HKL,
-            added_chain_asu=added_chain_asu,
-        )
+        if return_Rfactors:
+            Ecalc, r_work, r_free = self.compute_Ecalc(
+                xyz_ort,
+                solvent=solvent,
+                update_scales=update_scales,
+                added_chain_HKL=added_chain_HKL,
+                added_chain_asu=added_chain_asu,
+                return_Rfactors=True,
+            )
+        else:
+            Ecalc = self.compute_Ecalc(
+                xyz_ort,
+                solvent=solvent,
+                update_scales=update_scales,
+                added_chain_HKL=added_chain_HKL,
+                added_chain_asu=added_chain_asu,
+                return_Rfactors=False,
+            )
         llg = 0.0
 
         if bin_labels is None:
@@ -355,4 +426,7 @@ class LLGloss(torch.nn.Module):
                 ).sum()
                 llg = llg + llg_ij
 
-        return llg
+        if return_Rfactors:
+            return llg, r_work, r_free
+        else:
+            return llg
