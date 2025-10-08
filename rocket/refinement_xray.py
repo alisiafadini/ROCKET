@@ -95,7 +95,7 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
         sfc_added_chain = SFcalculator(
             added_chain_pdb,
             tng_file,
-            expcolumns=["FP", "SIGFP"],
+            expcolumns=["FEFF", "DOBS"],
             freeflag=config.free_flag,
             set_experiment=True,
             testset_value=config.testset_value,
@@ -133,8 +133,8 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
     sfc = llg_sf.initial_SFC(
         input_pdb,
         tng_file,
-        "FP",
-        "SIGFP",
+        "FEFF",
+        "DOBS",
         Freelabel=config.free_flag,
         device=device,
         testset_value=config.testset_value,
@@ -156,8 +156,8 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
     sfc_rbr = llg_sf.initial_SFC(
         input_pdb,
         tng_file,
-        "FP",
-        "SIGFP",
+        "FEFF",
+        "DOBS",
         Freelabel=config.free_flag,
         device=device,
         solvent=False,

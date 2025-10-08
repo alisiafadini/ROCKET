@@ -4,7 +4,6 @@ import os
 import shutil
 import subprocess
 
-import reciprocalspaceship as rs
 from loguru import logger
 from SFC_Torch import PDBParser
 
@@ -41,32 +40,6 @@ em_dockedmodel_script = get_script_path(
     "from cctbx.maptbx import prepare_map_for_refinement"
 )
 xtal_edata_script = get_script_path("from phasertng.scripts import mtz_generator")
-
-
-def internal_mtz_labels(mtz_path, label_string):
-    """Extracts and renames columns from MTZ file based on input label string.
-
-    Args:
-        mtz_path (str): Path to input MTZ file.
-        label_string (str): Comma-separated string of two labels (e.g., "F,SIGF").
-
-    Returns:
-        rs.DataSet: Modified dataset with "FP" and "SIGFP" columns added.
-    """
-    labels = [label.strip() for label in label_string.split(",")]
-    if len(labels) != 2:
-        raise ValueError(
-            "xray_data_label must contain exactly two labels separated by a comma (e.g., 'F,SIGF')."  # noqa: E501
-        )
-
-    ds = rs.read_mtz(mtz_path)
-    if not all(label in ds.columns for label in labels):
-        raise ValueError(f"Labels {labels} not found in MTZ file {mtz_path}.")
-
-    ds["FP"] = ds[labels[0]]
-    ds["SIGFP"] = ds[labels[1]]
-
-    return ds
 
 
 def run_command(command, env_source=None):
@@ -434,15 +407,11 @@ def parse_args():
     parser.add_argument("--jax_params_path", default=None)
     parser.add_argument("--predocked_model", default=None)
     parser.add_argument("--fixed_model", default=None)
-    parser.add_argument("--xray_data_label", default=None)
     parser.add_argument("--map1", default=None)
     parser.add_argument("--map2", default=None)
     parser.add_argument("--full_composition", default=None)
 
     args = parser.parse_args()
-
-    if args.method == "xray" and not args.xray_data_label:
-        parser.error("--xray_data_label is required when --method is xray.")
 
     if args.method == "cryoem":
         missing = [
@@ -494,20 +463,6 @@ def cli_runpreprocess():
     prepare_rk_inputs(args.file_id, args.output_dir, args.method)
     prepare_pred_aligned(args.output_dir, args.file_id)
     seg_id = generate_seg_id_file(args.file_id, args.output_dir)
-
-    # Internal ROCKET labels
-    if args.method == "xray":
-        edata_path = os.path.join(
-            args.output_dir, "ROCKET_inputs", f"{args.file_id}-Edata.mtz"
-        )
-        logger.info(
-            f"Adding internal MTZ labels from {args.xray_data_label} to {edata_path}"
-        )
-        ds = internal_mtz_labels(edata_path, args.xray_data_label)
-        try:
-            ds.write_mtz(edata_path)
-        except Exception as e:
-            logger.info("MTZ write failed:", e)
 
     # Generate ROCKET configuration yaml files
     phase1_config = gen_config_phase1(
