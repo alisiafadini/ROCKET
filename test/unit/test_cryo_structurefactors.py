@@ -18,8 +18,8 @@ class DummyCryoSFCalc:
         # Return dummy normalized value
         return torch.tensor([1.0])
 
-    def get_scales_adam(self):
-        self.called.append("get_scales_adam")
+    def get_scales_adam(self, sub_ratio=1.0):
+        self.called.append(("get_scales_adam", sub_ratio))
 
 
 @pytest.fixture(autouse=True)
@@ -47,8 +47,7 @@ def test_initial_cryoSFC_sets_attributes():
     # Should be three calls
     assert len(called) == 3
     assert called[0] == "calc_fprotein"
-    assert called[2] == "get_scales_adam"
-    # The middle call is ('calc_Ec', tensor)
+    assert called[2] == ("get_scales_adam", 1.0)
     name, tensor_arg = called[1]
     assert name == "calc_Ec"
     assert torch.allclose(tensor_arg, torch.tensor([5.0]))

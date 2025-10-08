@@ -85,6 +85,15 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
             min_resolution=config.min_resolution,
             max_resolution=config.max_resolution,
         )
+    if type(mtz_file) is str:
+        mtz_file = rk_utils.load_mtz(mtz_file)
+
+    # Prepare reusable variables for RSCC calculation
+    dobs_values = mtz_file["Dobs"].to_numpy()
+    structure_factor = mtz_file.to_structurefactor(
+        sf_key="Emean", phase_key="PHIEmean"
+    ).to_numpy()
+    rscc_reference_Fmap = torch.tensor(dobs_values * structure_factor, device=device)
 
     # Initialize SFC
     cryo_sfc = cryo_sf.initial_cryoSFC(
@@ -94,6 +103,12 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
     sfc_rbr = cryo_sf.initial_cryoSFC(
         input_pdb, mtz_file, "Emean", "PHIEmean", device, N_BINS
     )
+    # prepare reusable variables for RSCC calculation
+    gridsize = mtz_file.get_reciprocal_grid_size(sample_rate=3.0)
+    Rg = torch.tensor(
+        rk_utils.g_function_np(2 * cryo_sfc.dmin, 1 / cryo_sfc.dHKL), device=device
+    )
+    uc_volume = cryo_sfc.unit_cell.volume
 
     reference_pos = cryo_sfc.atom_pos_orth.clone()
     target_seq = cryo_sfc._pdb.sequence
@@ -101,15 +116,41 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
         cryo_sfc.cra_name
     )
 
+    # Initialize RSCC Bfactor
+    Fprotein_plddt = cryo_sfc.calc_fprotein(Return=True)
+    ccmap = rk_utils.get_rscc_from_Fmap(
+        Fprotein_plddt.detach(),
+        rscc_reference_Fmap,
+        cryo_sfc.HKL_array,
+        gridsize,
+        Rg,
+        uc_volume,
+    )
+    atom_cc = rk_utils.interpolate_grid_points(
+        ccmap, cryo_sfc.atom_pos_frac.cpu().numpy()
+    )
+    rscc_bfactor = torch.tensor(
+        rk_utils.get_b_from_CC(atom_cc, cryo_sfc.dmin),
+        dtype=torch.float32,
+        device=device,
+    )
+
+    cryo_sfc.atom_b_iso = rscc_bfactor.clone().detach()
+    sfc_rbr.atom_b_iso = rscc_bfactor.clone().detach()
+
     # Use initial pos B factor instead of best pos B factor for weighted L2
     init_pos_bfactor = cryo_sfc.atom_b_iso.clone()
-    bfactor_weights = rk_utils.weighting_torch(init_pos_bfactor, cutoff2=20.0)
+    # Ad hoc settings for B-factor weighting cutoffs
+    cutoff1 = np.quantile(init_pos_bfactor.cpu().numpy(), 0.3)
+    cutoff2 = cutoff1 * 1.5
+    bfactor_weights = rk_utils.weighting_torch(init_pos_bfactor, cutoff1, cutoff2)
+    bfactor_weights = bfactor_weights / torch.sum(bfactor_weights)
 
     # residue_numbers = [int(name.split("-")[1]) for name in cra_calphas_list]
 
     # LLG initialization
     cryo_llgloss = cryo_targets.LLGloss(cryo_sfc, mtz_file)
-    cryo_llgloss_rbr = cryo_targets.LLGloss(cryo_sfc, mtz_file)
+    cryo_llgloss_rbr = cryo_targets.LLGloss(sfc_rbr, mtz_file)
 
     # Model initialization
     version_to_class = {
@@ -403,6 +444,28 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
 
             # Save the preRBR structure, for debugging
             cryo_llgloss_rbr.sfc.atom_pos_orth = aligned_xyz.detach().clone()
+
+            # Compute RSCC, update the Bfacotrs
+            Fprotein_plddt = cryo_llgloss_rbr.sfc.calc_fprotein(Return=True)
+            ccmap = rk_utils.get_rscc_from_Fmap(
+                Fprotein_plddt.detach(),
+                rscc_reference_Fmap,
+                cryo_llgloss_rbr.sfc.HKL_array,
+                gridsize,
+                Rg,
+                uc_volume,
+            )
+            atom_cc = rk_utils.interpolate_grid_points(
+                ccmap, cryo_llgloss_rbr.sfc.atom_pos_frac.cpu().numpy()
+            )
+            rscc_bfactor = torch.tensor(
+                rk_utils.get_b_from_CC(atom_cc, cryo_llgloss_rbr.sfc.dmin),
+                dtype=torch.float32,
+                device=device,
+            )
+            cryo_llgloss_rbr.sfc.atom_b_iso = rscc_bfactor.detach().clone()
+            cryo_llgloss.sfc.atom_b_iso = rscc_bfactor.detach().clone()
+
             cryo_llgloss_rbr.sfc.savePDB(
                 f"{output_directory_path!s}/{run_id}_{iteration}_preRBR.pdb"
             )

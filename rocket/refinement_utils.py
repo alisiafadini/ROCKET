@@ -372,17 +372,23 @@ def position_alignment(
 
     # MH @ Sep 10 2024, temp edits to convert weighted kabsch to cutoff kabsch
     if reference_bfactor is None:
-        weights = rk_utils.weighting(rk_utils.assert_numpy(pseudo_Bs))
+        pseudoB_np = rk_utils.assert_numpy(pseudo_Bs)
+        cutoff1 = np.quantile(pseudoB_np, 0.3)
+        cutoff2 = cutoff1 * 1.5
+        weights = rk_utils.weighting(pseudoB_np, cutoff1, cutoff2)
     else:
         assert reference_bfactor.shape == pseudo_Bs.shape, (
             "Reference bfactor should have same shape as model bfactor!"
         )
-        weights = rk_utils.weighting(rk_utils.assert_numpy(reference_bfactor))
+        reference_bfactor_np = rk_utils.assert_numpy(reference_bfactor)
+        cutoff1 = np.quantile(reference_bfactor_np, 0.3)
+        cutoff2 = cutoff1 * 1.5
+        weights = rk_utils.weighting(reference_bfactor_np, cutoff1, cutoff2)
     # plddts_np = rk_utils.assert_numpy(plddts)
     # weights = np.ones_like(plddts_np)
     # weights[plddts_np < 85.0] = 1e-5
 
-    aligned_xyz = rk_coordinates.weighted_kabsch(
+    aligned_xyz = rk_coordinates.iterative_kabsch_alignment(
         xyz_orth_sfc,
         best_pos,
         cra_name,
