@@ -595,8 +595,8 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
 
             progress_bar.set_postfix(
                 NEG_LLG=f"{llg_estimate:.2f}",
-                r_feff_work=f"{llgloss.sfc.r_work.item():.3f}",
-                r_feff_free=f"{llgloss.sfc.r_free.item():.3f}",
+                r_feff_work=f"{r_work.item():.3f}",
+                r_feff_free=f"{r_free.item():.3f}",
                 memory=f"{torch.cuda.max_memory_allocated() / 1024**3:.1f}G",
             )
 
