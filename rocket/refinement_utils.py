@@ -409,6 +409,7 @@ def update_sigmaA(
     Ecalc, Fc = llgloss.compute_Ecalc(
         aligned_xyz.detach(),
         return_Fc=True,
+        return_Rfactors=False,
         update_scales=True,
         added_chain_HKL=constant_fp_added_HKL,
         added_chain_asu=constant_fp_added_asu,
@@ -416,6 +417,7 @@ def update_sigmaA(
     Ecalc_rbr, _ = llgloss_rbr.compute_Ecalc(
         aligned_xyz.detach(),
         return_Fc=True,
+        return_Rfactors=False,
         solvent=False,
         update_scales=True,
         added_chain_HKL=constant_fp_added_HKL,

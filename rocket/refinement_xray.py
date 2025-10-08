@@ -553,7 +553,7 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
             rbr_loss_by_epoch.append(loss_track_pose)
 
             # LLG loss
-            L_llg = -llgloss(
+            llg, r_work, r_free = llgloss(
                 optimized_xyz,
                 bin_labels=None,
                 num_batch=config.number_of_batches,
@@ -562,14 +562,16 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
                 update_scales=config.sfc_scale,
                 added_chain_HKL=constant_fp_added_HKL,
                 added_chain_asu=constant_fp_added_asu,
+                return_Rfactors=True,
             )
+            L_llg = -llg
 
             llg_estimate = L_llg.clone().item() / (
                 config.batch_sub_ratio * config.number_of_batches
             )
             llg_losses.append(llg_estimate)
-            rwork_by_epoch.append(llgloss.sfc.r_work.item())
-            rfree_by_epoch.append(llgloss.sfc.r_free.item())
+            rwork_by_epoch.append(r_work.item())
+            rfree_by_epoch.append(r_free.item())
 
             # check if current Rfree is the best so far
             if llg_losses[-1] < best_llg:
@@ -593,8 +595,8 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
 
             progress_bar.set_postfix(
                 NEG_LLG=f"{llg_estimate:.2f}",
-                r_work=f"{llgloss.sfc.r_work.item():.3f}",
-                r_free=f"{llgloss.sfc.r_free.item():.3f}",
+                r_feff_work=f"{llgloss.sfc.r_work.item():.3f}",
+                r_feff_free=f"{llgloss.sfc.r_free.item():.3f}",
                 memory=f"{torch.cuda.max_memory_allocated() / 1024**3:.1f}G",
             )
 
