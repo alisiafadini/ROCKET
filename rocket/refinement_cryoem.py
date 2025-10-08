@@ -342,7 +342,8 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
         for key in device_processed_features_template:
             if key.startswith("template_"):
                 device_processed_features[key] = device_processed_features_template[key]
-
+    # Write out config used, start the journey
+    config.to_yaml_file(f"{output_directory_path!s}/config.yaml")
     for n in range(num_of_runs):
         run_id = rkrf_utils.number_to_letter(n)
         best_pos = reference_pos
@@ -372,6 +373,37 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
             range(iterations),
             desc=f"{target_id}, uuid: {refinement_run_uuid[:4]}, run: {run_id}",
         )
+
+        # Prepare MDTraj trajectory writer (prefer HDF5, fall back to PDB)
+        traj_writer = None
+        md = None
+        mdtraj_template = None
+        traj_path_h5 = f"{output_directory_path!s}/{run_id}_refinement_trajectory.h5"
+        traj_path_pdb = f"{output_directory_path!s}/{run_id}_refinement_trajectory.pdb"
+        try:
+            import mdtraj as md  # type: ignore
+
+            try:
+                from mdtraj.formats import HDF5TrajectoryFile  # type: ignore
+            except Exception:
+                HDF5TrajectoryFile = None  # type: ignore
+            try:
+                from mdtraj.formats import PDBTrajectoryFile  # type: ignore
+            except Exception:
+                PDBTrajectoryFile = None  # type: ignore
+
+            mdtraj_template = md.load_pdb(input_pdb)
+            if HDF5TrajectoryFile is not None:
+                traj_writer = HDF5TrajectoryFile(traj_path_h5, mode="w")
+            elif PDBTrajectoryFile is not None:
+                traj_writer = PDBTrajectoryFile(traj_path_pdb, mode="w")
+            else:
+                traj_writer = None
+        except Exception as e:  # pragma: no cover - optional dependency
+            logger.warning(
+                f"mdtraj not available or failed to initialize writer ({e}); "
+                "falling back to per-iteration PDB saves."
+            )
 
         # Run smooth stage in phase 1
         if "phase1" in config.note:
@@ -491,9 +523,39 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
 
             # Save the postRBR structure
             cryo_llgloss.sfc.atom_pos_orth = optimized_xyz.detach().clone()
-            cryo_llgloss.sfc.savePDB(
-                f"{output_directory_path!s}/{run_id}_{iteration}_postRBR.pdb"
-            )
+            # Try writing frame to trajectory writer; fallback to per-iteration PDB
+            try:
+                if (
+                    traj_writer is not None
+                    and md is not None
+                    and mdtraj_template is not None
+                ):
+                    coords_nm = (
+                        optimized_xyz.detach().cpu().numpy().reshape(1, -1, 3) / 10.0
+                    )
+                    traj_frame = md.Trajectory(coords_nm, mdtraj_template.topology)
+                    traj_writer.write(traj_frame)
+                    # flush + fsync to make previous frames durable on disk
+                    import contextlib
+
+                    if hasattr(traj_writer, "flush"):
+                        with contextlib.suppress(Exception):
+                            traj_writer.flush()
+                    path_to_sync = (
+                        traj_path_h5 if os.path.exists(traj_path_h5) else traj_path_pdb
+                    )
+                    with contextlib.suppress(Exception), open(path_to_sync, "rb") as _f:
+                        os.fsync(_f.fileno())
+                else:
+                    raise RuntimeError("no mdtraj writer")
+            except Exception:
+                pdb_path = f"{output_directory_path!s}/{run_id}_{iteration}_postRBR.pdb"
+                cryo_llgloss.sfc.savePDB(pdb_path)
+                try:
+                    with open(pdb_path, "rb") as _f:
+                        os.fsync(_f.fileno())
+                except Exception:
+                    pass
 
             # LLG loss
             L_llg = -cryo_llgloss(
@@ -582,6 +644,30 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
         f"{output_directory_path!s}/best_feat_weights_{best_run}_{best_iter}.pt",
     )
 
-    config.to_yaml_file(f"{output_directory_path!s}/config.yaml")
+    # Save best model as a single PDB (preserve input_pdb topology)
+    try:
+        if best_pos is not None:
+            try:
+                cryo_llgloss.sfc.atom_pos_orth = best_pos
+                best_name = (
+                    f"{output_directory_path!s}/best_model_{best_run}_{best_iter}.pdb"
+                )
+                cryo_llgloss.sfc.savePDB(best_name)
+            except Exception:
+                try:
+                    import mdtraj as md  # type: ignore
+
+                    topo = md.load_pdb(input_pdb).topology
+                    coords_nm = best_pos.detach().cpu().numpy().reshape(1, -1, 3) / 10.0
+                    traj = md.Trajectory(coords_nm, topo)
+                    traj.save(
+                        f"{output_directory_path!s}/best_model_{best_run}_{best_iter}.pdb"
+                    )
+                except Exception:
+                    logger.warning(
+                        "Failed to write best model PDB with both SFC and mdtraj."
+                    )
+    except NameError:
+        pass
 
     return config
