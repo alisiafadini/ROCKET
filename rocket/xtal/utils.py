@@ -465,11 +465,11 @@ def load_tng_data(tng_file, device=None):
     dobs = torch.tensor(tng["DOBS"].values, device=device)
     feff = torch.tensor(tng["FEFF"].values, device=device)
     bin_labels = torch.tensor(tng["BIN"].values, device=device)
+    resn = torch.tensor(tng["RESN"].values, device=device)
     dHKLs = torch.tensor(tng["dHKL"].values, device=device)
     bin_dHKLs = find_bin_dHKL(dHKLs, bin_labels).to(device=device)
 
-    sigmaN = structurefactors.calculate_Sigma_atoms(feff, eps, bin_labels)
-    Edata = structurefactors.normalize_Fs(feff, eps, sigmaN, bin_labels)
+    Edata = feff / resn
 
     data_dict = {
         "EDATA": Edata,
