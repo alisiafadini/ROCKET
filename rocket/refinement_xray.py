@@ -421,37 +421,22 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
         try:
             import mdtraj as md  # type: ignore
 
-            # Prefer HDF5TrajectoryFile, fall back to PDBTrajectoryFile
-            try:
-                from mdtraj.formats import HDF5TrajectoryFile  # type: ignore
-            except Exception:
-                HDF5TrajectoryFile = None  # type: ignore
             try:
                 from mdtraj.formats import PDBTrajectoryFile  # type: ignore
             except Exception:
                 PDBTrajectoryFile = None  # type: ignore
-
-            # Load input topology once (this expects the input PDB to match the
-            # atom ordering of the SFC object). MDTraj uses nanometers for
-            # coordinates internally, so we'll convert Å -> nm when writing.
+            traj_path_pdb = (
+                f"{output_directory_path!s}/{run_id}_refinement_trajectory.pdb"
+            )
             mdtraj_template = md.load_pdb(input_pdb)
-
-            if HDF5TrajectoryFile is not None:
-                traj_path_h5 = (
-                    f"{output_directory_path!s}/{run_id}_refinement_trajectory.h5"  # noqa: E501
-                )
-                traj_writer = HDF5TrajectoryFile(traj_path_h5, mode="w")
-            elif PDBTrajectoryFile is not None:
-                traj_path_pdb = (
-                    f"{output_directory_path!s}/{run_id}_refinement_trajectory.pdb"  # noqa: E501
-                )
+            if PDBTrajectoryFile is not None:
                 traj_writer = PDBTrajectoryFile(traj_path_pdb, mode="w")
             else:
                 traj_writer = None
         except Exception as e:  # pragma: no cover - optional dependency
             logger.warning(
                 f"mdtraj not available or failed to initialize writer ({e}); "
-                "falling back to one-PDB-per-iteration behavior."
+                "falling back to per-iteration PDB saves."
             )
 
         # Run smooth stage in phase 1
@@ -634,46 +619,19 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
             llgloss.sfc.atom_pos_orth = optimized_xyz
             # Save postRBR frame: either append to a single PDB trajectory using
             # MDTraj if available, or fall back to writing one PDB per iteration.
-            try:
-                if (
-                    traj_writer is not None
-                    and md is not None
-                    and mdtraj_template is not None
+            if traj_writer is not None:
+                coords_nm = optimized_xyz.detach().cpu().numpy().reshape(-1, 3) / 10.0
+                traj_writer.write(
+                    coords_nm, mdtraj_template.topology, modelIndex=iteration
+                )
+                # Flush the underlying file handle to write data immediately
+                if hasattr(traj_writer, "_file") and hasattr(
+                    traj_writer._file, "flush"
                 ):
-                    # optimized_xyz is assumed to be in Å; MDTraj expects nm.
-                    coords_nm = (
-                        optimized_xyz.detach().cpu().numpy().reshape(1, -1, 3) / 10.0
-                    )
-                    # Create a temporary mdtraj.Trajectory with the same topology
-                    # as the input PDB and write it as a frame.
-                    traj_frame = md.Trajectory(coords_nm, mdtraj_template.topology)
-                    traj_writer.write(traj_frame)
-                    # Make a best-effort to flush internal buffers and force
-                    # the OS to flush written bytes to disk so previous
-                    # frames remain available if the process crashes.
-                    import contextlib
-
-                    if hasattr(traj_writer, "flush"):
-                        with contextlib.suppress(Exception):
-                            traj_writer.flush()
-                    # Also fsync the file path we wrote to (h5 preferred)
-                    path_to_sync = (
-                        traj_path_h5 if os.path.exists(traj_path_h5) else traj_path_pdb
-                    )
-                    with contextlib.suppress(Exception), open(path_to_sync, "rb") as _f:
-                        os.fsync(_f.fileno())
-                else:
-                    raise RuntimeError("no mdtraj writer")
-            except Exception:
-                # Fallback: write individual PDB file as before
+                    traj_writer._file.flush()
+            else:
                 pdb_path = f"{output_directory_path!s}/{run_id}_{iteration}_postRBR.pdb"
                 llgloss.sfc.savePDB(pdb_path)
-                # Ensure the PDB fallback is flushed to disk
-                try:
-                    with open(pdb_path, "rb") as _f:
-                        os.fsync(_f.fileno())
-                except Exception:
-                    pass
 
             progress_bar.set_postfix(
                 NEG_LLG=f"{llg_estimate:.2f}",

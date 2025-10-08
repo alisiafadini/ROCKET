@@ -31,9 +31,7 @@ dependencies = [
     "polyleven",
     "scikit-learn",
     "seaborn",
-    # MDTraj + HDF5 support for writing trajectories
     "mdtraj",
-    "h5py",
 ]
 
 [project.optional-dependencies]

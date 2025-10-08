@@ -374,28 +374,22 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
             desc=f"{target_id}, uuid: {refinement_run_uuid[:4]}, run: {run_id}",
         )
 
-        # Prepare MDTraj trajectory writer (prefer HDF5, fall back to PDB)
+        # Prepare MDTraj PDB trajectory writer (open in append mode if exists)
         traj_writer = None
         md = None
         mdtraj_template = None
-        traj_path_h5 = f"{output_directory_path!s}/{run_id}_refinement_trajectory.h5"
-        traj_path_pdb = f"{output_directory_path!s}/{run_id}_refinement_trajectory.pdb"
         try:
             import mdtraj as md  # type: ignore
 
             try:
-                from mdtraj.formats import HDF5TrajectoryFile  # type: ignore
-            except Exception:
-                HDF5TrajectoryFile = None  # type: ignore
-            try:
                 from mdtraj.formats import PDBTrajectoryFile  # type: ignore
             except Exception:
                 PDBTrajectoryFile = None  # type: ignore
-
+            traj_path_pdb = (
+                f"{output_directory_path!s}/{run_id}_refinement_trajectory.pdb"
+            )
             mdtraj_template = md.load_pdb(input_pdb)
-            if HDF5TrajectoryFile is not None:
-                traj_writer = HDF5TrajectoryFile(traj_path_h5, mode="w")
-            elif PDBTrajectoryFile is not None:
+            if PDBTrajectoryFile is not None:
                 traj_writer = PDBTrajectoryFile(traj_path_pdb, mode="w")
             else:
                 traj_writer = None
@@ -498,9 +492,9 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
             cryo_llgloss_rbr.sfc.atom_b_iso = rscc_bfactor.detach().clone()
             cryo_llgloss.sfc.atom_b_iso = rscc_bfactor.detach().clone()
 
-            cryo_llgloss_rbr.sfc.savePDB(
-                f"{output_directory_path!s}/{run_id}_{iteration}_preRBR.pdb"
-            )
+            # cryo_llgloss_rbr.sfc.savePDB(
+            #     f"{output_directory_path!s}/{run_id}_{iteration}_preRBR.pdb"
+            # )
             if config.sfc_scale:
                 cryo_llgloss_rbr.sfc.calc_fprotein()
                 cryo_llgloss_rbr.sfc.get_scales_adam(
@@ -523,39 +517,21 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
 
             # Save the postRBR structure
             cryo_llgloss.sfc.atom_pos_orth = optimized_xyz.detach().clone()
-            # Try writing frame to trajectory writer; fallback to per-iteration PDB
-            try:
-                if (
-                    traj_writer is not None
-                    and md is not None
-                    and mdtraj_template is not None
-                ):
-                    coords_nm = (
-                        optimized_xyz.detach().cpu().numpy().reshape(1, -1, 3) / 10.0
-                    )
-                    traj_frame = md.Trajectory(coords_nm, mdtraj_template.topology)
-                    traj_writer.write(traj_frame)
-                    # flush + fsync to make previous frames durable on disk
-                    import contextlib
 
-                    if hasattr(traj_writer, "flush"):
-                        with contextlib.suppress(Exception):
-                            traj_writer.flush()
-                    path_to_sync = (
-                        traj_path_h5 if os.path.exists(traj_path_h5) else traj_path_pdb
-                    )
-                    with contextlib.suppress(Exception), open(path_to_sync, "rb") as _f:
-                        os.fsync(_f.fileno())
-                else:
-                    raise RuntimeError("no mdtraj writer")
-            except Exception:
+            # Save trajectory on the fly
+            if traj_writer is not None:
+                coords_nm = optimized_xyz.detach().cpu().numpy().reshape(-1, 3) / 10.0
+                traj_writer.write(
+                    coords_nm, mdtraj_template.topology, modelIndex=iteration
+                )
+                # Flush the underlying file handle to write data immediately
+                if hasattr(traj_writer, "_file") and hasattr(
+                    traj_writer._file, "flush"
+                ):
+                    traj_writer._file.flush()
+            else:
                 pdb_path = f"{output_directory_path!s}/{run_id}_{iteration}_postRBR.pdb"
                 cryo_llgloss.sfc.savePDB(pdb_path)
-                try:
-                    with open(pdb_path, "rb") as _f:
-                        os.fsync(_f.fileno())
-                except Exception:
-                    pass
 
             # LLG loss
             L_llg = -cryo_llgloss(
@@ -621,6 +597,10 @@ def run_cryoem_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmen
 
             time_by_epoch.append(time.time() - start_time)
             memory_by_epoch.append(torch.cuda.max_memory_allocated() / 1024**3)
+
+        # Close the trajectory writer if it was opened
+        if traj_writer is not None:
+            traj_writer.close()
 
         # Average plddt per iteration
         np.save(
