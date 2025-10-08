@@ -374,6 +374,8 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
             if key.startswith("template_"):
                 device_processed_features[key] = device_processed_features_template[key]
 
+    # Write out config used, start the journey
+    config.to_yaml_file(f"{output_directory_path!s}/config.yaml")
     for n in range(config.num_of_runs):
         run_id = rkrf_utils.number_to_letter(n)
         best_pos = reference_pos
@@ -407,6 +409,35 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
             range(config.iterations),
             desc=f"{config.file_id}, uuid: {refinement_run_uuid[:4]}, run: {run_id}",
         )
+
+        # Prepare an MDTraj trajectory writer so we can append frames
+        # to a single trajectory file instead of writing one PDB per iteration.
+        # Prefer HDF5 (smaller, single-file) and fall back to a multi-model
+        # PDB if HDF5 support isn't available. Import mdtraj lazily so the
+        # rest of the code still runs if mdtraj isn't installed.
+        traj_writer = None
+        md = None
+        mdtraj_template = None
+        try:
+            import mdtraj as md  # type: ignore
+
+            try:
+                from mdtraj.formats import PDBTrajectoryFile  # type: ignore
+            except Exception:
+                PDBTrajectoryFile = None  # type: ignore
+            traj_path_pdb = (
+                f"{output_directory_path!s}/{run_id}_refinement_trajectory.pdb"
+            )
+            mdtraj_template = md.load_pdb(input_pdb)
+            if PDBTrajectoryFile is not None:
+                traj_writer = PDBTrajectoryFile(traj_path_pdb, mode="w")
+            else:
+                traj_writer = None
+        except Exception as e:  # pragma: no cover - optional dependency
+            logger.warning(
+                f"mdtraj not available or failed to initialize writer ({e}); "
+                "falling back to per-iteration PDB saves."
+            )
 
         # Run smooth stage in phase 1
         if "phase1" in config.note:
@@ -588,10 +619,21 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
                 # best_pos_bfactor = llgloss.sfc.atom_b_iso.detach().clone()
 
             llgloss.sfc.atom_pos_orth = optimized_xyz
-            # Save postRBR PDB
-            llgloss.sfc.savePDB(
-                f"{output_directory_path!s}/{run_id}_{iteration}_postRBR.pdb"
-            )
+            # Save postRBR frame: either append to a single PDB trajectory using
+            # MDTraj if available, or fall back to writing one PDB per iteration.
+            if traj_writer is not None:
+                coords_nm = optimized_xyz.detach().cpu().numpy().reshape(-1, 3) / 10.0
+                traj_writer.write(
+                    coords_nm, mdtraj_template.topology, modelIndex=iteration
+                )
+                # Flush the underlying file handle to write data immediately
+                if hasattr(traj_writer, "_file") and hasattr(
+                    traj_writer._file, "flush"
+                ):
+                    traj_writer._file.flush()
+            else:
+                pdb_path = f"{output_directory_path!s}/{run_id}_{iteration}_postRBR.pdb"
+                llgloss.sfc.savePDB(pdb_path)
 
             progress_bar.set_postfix(
                 NEG_LLG=f"{llg_estimate:.2f}",
@@ -677,6 +719,12 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
             absolute_feats_changes.append(rk_utils.assert_numpy(mean_change))
 
         ####### Save data
+        # Close mdtraj writer if used so file is flushed and closed properly
+        try:
+            if traj_writer is not None:
+                traj_writer.close()
+        except Exception:
+            pass
         # Average plddt per iteration
         np.save(
             f"{output_directory_path!s}/mean_it_plddt_{run_id}.npy",
@@ -755,6 +803,33 @@ def run_xray_refinement(config: RocketRefinmentConfig | str) -> RocketRefinmentC
         f"{output_directory_path!s}/best_feat_weights_{best_run}_{best_iter}.pt",
     )
 
-    config.to_yaml_file(f"{output_directory_path!s}/config.yaml")
+    # Save best model as a single PDB (preserve input_pdb topology)
+    try:
+        if best_pos is not None:
+            # best_pos is in Å, set it on the llgloss.sfc object and save
+            try:
+                llgloss.sfc.atom_pos_orth = best_pos
+                best_name = (
+                    f"{output_directory_path!s}/best_model_{best_run}_{best_iter}.pdb"
+                )
+                llgloss.sfc.savePDB(best_name)
+            except Exception:
+                # Fallback: try to write using mdtraj with the input topology
+                try:
+                    import mdtraj as md  # type: ignore
+
+                    topo = md.load_pdb(input_pdb).topology
+                    coords_nm = best_pos.detach().cpu().numpy().reshape(1, -1, 3) / 10.0
+                    traj = md.Trajectory(coords_nm, topo)
+                    traj.save(
+                        f"{output_directory_path!s}/best_model_{best_run}_{best_iter}.pdb"
+                    )
+                except Exception:
+                    logger.warning(
+                        "Failed to write best model PDB with both SFC and mdtraj."
+                    )
+    except NameError:
+        # best_pos not defined; nothing to save
+        pass
 
     return config
