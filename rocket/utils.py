@@ -363,15 +363,26 @@ def get_b_from_CC(CC_values, d_min):
     CC_trunc = (CC_values + 0.001 + np.abs(CC_values - 0.001)) / 2
 
     # Flex arrays can't be used as exponents, so work around this with logs
+    # TODO: verify the constants here
+    # Randy's note: In case you’re wondering, the magic numbers and the magic formula
+    # come from some things I did in Mathematica.
+    # I worked out a formula that converts RMSD to an expected CC.
     u1 = np.exp(np.log(0.188779) * CC_trunc)
     u2 = np.exp(2.21742 * CC_trunc * np.log(CC_trunc))
     u3 = np.exp(0.777046 * np.tan(CC_trunc) * np.log(CC_trunc) * CC_trunc)
     b_values_from_CC = (
         np.power(d_min, 2) * 134.024 * np.power(0.213624 - u1 * u2 - 0.359452 * u3, 2)
     )
+    # Previous Approach, now we dropped
     # Truncate B-values at a maximum of 350 above minimum
     # 350 was chosen semi-arbitrarily as a point at which the sigmaA curve drops
     # below 0.1 at 6A, so that data beyond 6A will have little influence
-    bmax = np.min(b_values_from_CC) + 350.0
-    b_values_from_CC = (b_values_from_CC + bmax - np.abs(b_values_from_CC - bmax)) / 2
+    # bmax = np.min(b_values_from_CC) + 350.0
+    # b_values_from_CC = (b_values_from_CC + bmax - np.abs(b_values_from_CC - bmax)) / 2
+
+    # Do normal truncation instead, as Randy Suggested
+    bmin = np.min(b_values_from_CC)
+    b_values_from_CC = b_values_from_CC - bmin
+    bmax = 999.0
+    b_values_from_CC = np.clip(b_values_from_CC, 0.0, bmax)
     return b_values_from_CC
