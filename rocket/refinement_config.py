@@ -31,6 +31,7 @@ class DATAMODE(StrEnum):
 class PathConfig(BaseModel):
     path: str = ""
     file_id: str = ""
+    input_pdb: str = ""
     template_pdb: str | None = None
     input_msa: str | None = None
     sub_msa_path: str | None = None
@@ -137,6 +138,7 @@ class RocketRefinmentConfig(BaseModel):
         "file_id": "paths.file_id",
         "template_pdb": "paths.template_pdb",
         "input_msa": "paths.input_msa",
+        "input_pdb": "paths.input_pdb",
         "sub_msa_path": "paths.sub_msa_path",
         "sub_delmat_path": "paths.sub_delmat_path",
         "msa_feat_init_path": "paths.msa_feat_init_path",
