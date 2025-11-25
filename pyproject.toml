@@ -1,11 +1,11 @@
 [build-system]
 # Specifies that setuptools is used to build the package
-requires = ["setuptools>=61.0"] # Use a reasonably modern version of setuptools
+requires = ["setuptools>=61.0", "wheel"] # Use a reasonably modern version of setuptools
 build-backend = "setuptools.build_meta"
 
 [project]
 # Core project metadata (mostly replaces setup() arguments)
-name = "rocket"
+name = "rs-rocket"
 # Use dynamic versioning to read from your VERSION file
 dynamic = ["version"]
 description = "Refining Openfold predictions with Crystallographic Likelihood Targets"
@@ -13,9 +13,9 @@ readme = "README.md" # Assuming you have a README.md, otherwise adjust or remove
 requires-python = ">=3.10" # Specify your minimum supported Python version, adjust if needed
 license = { file = "LICENSE" } 
 authors = [
-    { name = "Your Name", email = "your.email@example.com" },
-]
-keywords = ["bioinformatics", "protein structure", "openfold", "crystallography", "refinement"] # Optional: Add relevant keywords
+    { name = "Alisia Fadini", email = "af3659@cumc.columbia.edu" },
+    { name = "Minhuan Li", email = "minhuanli@flatironinstitute.org" }]
+keywords = ["cryoem", "protein structure", "openfold", "crystallography", "refinement"] # Optional: Add relevant keywords
 classifiers = [ # Optional: PyPI classifiers, see https://pypi.org/classifiers/
     "Intended Audience :: Science/Research",
     "Programming Language :: Python :: 3",
