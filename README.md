@@ -1,5 +1,6 @@
 # *R*efining *O*penfold predictions with *C*rystallographic/*C*ryo-EM Li*KE*lihood *T*argets (ROCKET)
 
+![PyPI - Version](https://img.shields.io/pypi/v/rs-rocket)
 [![Build](https://github.com/alisiafadini/ROCKET/actions/workflows/test.yml/badge.svg)](https://github.com/alisiafadini/ROCKET/actions/workflows/test.yml)
 [![Ruff](https://github.com/alisiafadini/ROCKET/actions/workflows/lint.yml/badge.svg)](https://github.com/alisiafadini/ROCKET/actions/workflows/lint.yml)
 [![GitHub License](https://img.shields.io/github/license/alisiafadini/ROCKET)](https://github.com/alisiafadini/ROCKET/blob/main/LICENSE)
@@ -15,7 +16,8 @@ You can find detailed documentation and walk-through tutorials at: https://rocke
 
 ## Installation
 
-### 1. Install OpenFold
+<details>
+<summary><span style="font-size:1.3em;font-weight:bold;">1. Install OpenFold</span></summary>
 
 To ensure usability, we forked the OpenFold repo, and sorted a couple details in the installation guides. Here is what we advise ROCKET users to do:
 
@@ -109,7 +111,12 @@ To ensure usability, we forked the OpenFold repo, and sorted a couple details in
     OK (skipped=41)
     ```   
 
-### 2. Install Phenix (required from automatic preprocessing and post-refinement)
+</details>
+
+
+
+<details>
+<summary><span style="font-size: 1.3em; font-weight: bold;">2. Install Phenix (required for automatic preprocessing and post-refinement)</span></summary>
 
 [Phenix](https://phenix-online.org/) is required for automatic data preprocessing and for post-refinement when polishing final model geometry. Follow the steps below to install it and **add the path to the system environment variables**:
 
@@ -144,25 +151,26 @@ To ensure usability, we forked the OpenFold repo, and sorted a couple details in
     echo $PHENIX_ROOT 
     ``` 
 
+</details>
+
+
+
 ### 3. Install ROCKET
 
-Install ROCKET. First move to the parent folder, clone the ROCKET repo (so you don't mix the ROCKET repo with the OpenFold one), then install it with `pip`
+ROCKET is available through pypi as `rs-rocket`, you can easily install by run
+
+```
+pip install rs-rocket
+```
+
+For developer mode, you can fetch the repo and do editable installation locally 
 
 ```
 git clone https://github.com/alisiafadini/ROCKET.git
 cd ROCKET
-pip install .
+pip install -e ".[tests,CI]"
 ```
 
-It will automatically install dependencies like `SFcalculator` and `reciprocalspaceship`.
-
-Note: If you get errors about incompatibility of `prompt_toolkit`, ignore them.
-
-For develop mode, run
-
-```
-pip install -e .
-```
 
 Run `rk.score --help` after installation, if you see a normal doc strings without errors, you are good to go!
 

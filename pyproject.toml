@@ -46,13 +46,6 @@ CI = [
     "pre-commit",
 ]
 
-openfold = [
-    "openfold",
-]
-xtal = [
-    "SFcalculator-torch>=0.2.2",
-]
-
 [project.urls]
 Homepage = "https://github.com/alisiafadini/ROCKET"
 Repository = "https://github.com/alisiafadini/ROCKET"
