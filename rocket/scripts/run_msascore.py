@@ -160,11 +160,11 @@ def main():
         raise ValueError(f"Unknown datamode: {config.datamode}")
 
     # --- SFC and LLGloss Initialization ---
-    sfc = initial_SFC(input_pdb, tng_file, "FP", "SIGFP", **SFC_kwargs)
+    sfc = initial_SFC(input_pdb, tng_file, "FEFF", "DOBS", **SFC_kwargs)
     reference_pos = sfc.atom_pos_orth.clone()
     init_pos_bfactor = sfc.atom_b_iso.clone()
 
-    sfc_rbr = initial_SFC(input_pdb, tng_file, "FP", "SIGFP", **SFC_kwargs)
+    sfc_rbr = initial_SFC(input_pdb, tng_file, "FEFF", "DOBS", **SFC_kwargs)
 
     llgloss = llgloss_init(sfc, tng_file, config.min_resolution, None)
     llgloss_rbr = llgloss_init(sfc_rbr, tng_file, config.min_resolution, None)
